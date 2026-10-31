@@ -37,6 +37,13 @@ que você já possui.
   dessas salas, sem o McZee e a Maggie. O quadro na estante do Ateliê (e a
   Galeria do saguão) abre a galeria dos desenhos guardados; clique num deles
   para continuar pintando.
+- Oficina de Projetos (primeira versão): o balão da Maggie e as placas do
+  andar abrem a **História em quadrinhos** (1 a 4 quadrinhos com molduras
+  sobre o quadro; a pintura fica recortada ao quadrinho) e o **Botão ou
+  adesivo** (botão redondo, botão quadrado ou adesivo; a pintura fica dentro
+  da forma e Imprimir gera uma folha com 6 ou 12 cópias). Os trabalhos são
+  guardados como `quadrinhos-…png`, `botao-…png` e `adesivo-…png` e o último
+  de cada tipo é reaberto. O desenho animado está em andamento.
 
 - Ao abrir, o Ateliê Livre pergunta qual programa usar (ou `--program
   artist|writer`, ou `program = "artist"|"writer"|"ask"` no config).
