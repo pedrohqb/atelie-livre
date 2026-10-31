@@ -3,12 +3,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod anim;
 pub mod assets;
 pub mod balloon;
 pub mod clipart;
 pub mod frame;
 pub mod paint;
 pub mod paths;
+pub mod rng;
 pub mod scene;
 pub mod scenes;
 pub mod writer;

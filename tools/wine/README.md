@@ -21,3 +21,6 @@ as capturas ficam em `scratch/` (ignorada pelo git).
 Os scripts esperam o repositório em `/home/claude/atelie-livre`, a extração do
 `atelie-tools extract` em `out/` e o prefixo do Wine em `/root/wine-fa`; ajuste
 os caminhos para a sua máquina.
+- `atag_survey.py PASTA_ATAG PASTA_PNG [ID...]` — lista os roteiros `ATAG`
+  extraídos de um executável (origem, células, imagens coloridas e máscaras)
+  ou, com ids, as posições acumuladas de cada célula (`docs/telas/animacoes.md`).

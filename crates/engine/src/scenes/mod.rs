@@ -2,6 +2,7 @@
 
 pub mod browser;
 pub mod chooser;
+pub mod gags;
 pub mod gallery;
 pub mod paint;
 pub mod projects;

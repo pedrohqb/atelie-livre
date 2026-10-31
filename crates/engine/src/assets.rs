@@ -110,6 +110,8 @@ pub struct Assets {
     pic: [Option<Vec<u8>>; 2],
     snd: [Option<Vec<u8>>; 2],
     palettes: [Palettes; 2],
+    /// Ids das imagens de cada `.PIC`, em ordem crescente.
+    pic_ids: [Vec<u16>; 2],
     libraries: HashMap<String, Library>,
     catalog: Vec<Source>,
     images: RefCell<HashMap<ImageRef, Rc<Image>>>,
@@ -208,18 +210,21 @@ impl Assets {
         lib_sources.sort_by(|a, b| a.name.cmp(&b.name));
 
         let mut catalog = Vec::new();
+        let mut pic_ids: [Vec<u16>; 2] = [Vec::new(), Vec::new()];
         for p in PROGRAMS {
             if let Some(d) = &pic[p.idx()] {
-                let items: Vec<Item> = glob::parse(d)
-                    .map(|es| {
-                        es.iter()
-                            .map(|e| Item {
-                                label: format!("{:04x}", e.id),
-                                kind: ItemKind::Image(ImageRef::Pic(p, e.id)),
-                            })
-                            .collect()
+                let entries = glob::parse(d).unwrap_or_default();
+                let items: Vec<Item> = entries
+                    .iter()
+                    .map(|e| Item {
+                        label: format!("{:04x}", e.id),
+                        kind: ItemKind::Image(ImageRef::Pic(p, e.id)),
                     })
-                    .unwrap_or_default();
+                    .collect();
+                let mut ids: Vec<u16> = entries.iter().map(|e| e.id).collect();
+                ids.sort_unstable();
+                ids.dedup();
+                pic_ids[p.idx()] = ids;
                 push_source(&mut catalog, format!("{}.PIC", p.name()), items);
             }
         }
@@ -276,6 +281,7 @@ impl Assets {
             pic,
             snd,
             palettes,
+            pic_ids,
             libraries,
             catalog,
             images: RefCell::new(HashMap::new()),
@@ -299,6 +305,51 @@ impl Assets {
     /// Paletas de 16 e 256 cores do programa.
     pub fn palettes(&self, p: Program) -> &Palettes {
         &self.palettes[p.idx()]
+    }
+
+    /// Bytes de um recurso numerado do executável (`ATAG`, `PAT#`, ...), se existir.
+    pub fn exe_resource(&self, p: Program, kind: &str, id: u16) -> Option<Vec<u8>> {
+        self.exe[p.idx()]
+            .as_deref()
+            .and_then(|d| ne::parse(d).ok())
+            .and_then(|f| f.find(kind, id).map(|r| r.data.to_vec()))
+    }
+
+    /// Ids dos recursos numerados de um tipo do executável, em ordem crescente.
+    pub fn exe_resource_ids(&self, p: Program, kind: &str) -> Vec<u16> {
+        let mut ids: Vec<u16> = self.exe[p.idx()]
+            .as_deref()
+            .and_then(|d| ne::parse(d).ok())
+            .map(|f| {
+                f.of_kind(kind)
+                    .filter(|r| r.name.is_none())
+                    .map(|r| r.id)
+                    .collect()
+            })
+            .unwrap_or_default();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// Ids das imagens do `.PIC` do programa, em ordem crescente (vazio se faltar).
+    pub fn pic_ids(&self, p: Program) -> &[u16] {
+        &self.pic_ids[p.idx()]
+    }
+
+    /// Id da imagem que antecede `id` no `.PIC` (a versão colorida de uma
+    /// imagem de 1 bit dos roteiros `ATAG`, ver `docs/formats/atag.md`).
+    pub fn pic_prev_id(&self, p: Program, id: u16) -> Option<u16> {
+        let ids = &self.pic_ids[p.idx()];
+        let k = ids.binary_search(&id).ok()?;
+        k.checked_sub(1).map(|j| ids[j])
+    }
+
+    /// Id da `n`-ésima imagem depois de `id` no `.PIC` (as versões de 1 bit e
+    /// a máscara de uma figura colorida são as duas imagens seguintes).
+    pub fn pic_next_id(&self, p: Program, id: u16, n: usize) -> Option<u16> {
+        let ids = &self.pic_ids[p.idx()];
+        let k = ids.binary_search(&id).ok()?;
+        ids.get(k + n).copied()
     }
 
     /// Padrões 8×8 do `PAT#` 0x80 do executável; vazio se faltar.

@@ -65,6 +65,16 @@ de 1 bit e a máscara dela é `imagem + 1`. O campo parece pressupor uma
 numeração de `.PIC` diferente da desta versão; o leitor o devolve sem
 interpretar.
 
+No `.PIC` as figuras dos roteiros vêm em trincas na ordem dos ids: **versão
+colorida, versão de 1 bit, máscara** (ex.: 0x64a7, 0x64a8, 0x64a9 para o
+pássaro). Os ids não são contíguos entre trincas, então a versão colorida da
+célula é a imagem de id imediatamente anterior ao dela na lista ordenada do
+`.PIC` (`Assets::pic_prev_id`), quando tem o mesmo tamanho; vale para todas as
+células dos 162 roteiros de `ARTIST.EXE` (`tools/wine/atag_survey.py`). A
+máscara `imagem + 1` difere em 1 px de largura ou altura em dois casos
+(0x64dd, 0x6719). Algumas "coloridas" têm só 2 cores (0x600f, o buraco do
+McZee).
+
 ## Bloco 7 — passos (só nos `.ANI`)
 
 ```
@@ -188,8 +198,9 @@ as duas últimas células do rinoceronte têm o mesmo tamanho (101×48).
 | 15 | 2 | 200 | 25 | (610, 179) |
 
 O pássaro do adesivo 6 é o mesmo roteiro dos recursos 0x67 e 0x325 de
-`ARTIST.EXE` (mesma origem (628, 194), mesmos deslocamentos), que o mostram em
-1 bit no título.
+`ARTIST.EXE` (mesmos deslocamentos; 0x325 tem a mesma origem (628, 194) e 0x67
+parte de (628, 134)): 0x67 atravessa o título e 0x325 o saguão, em cores
+(`docs/telas/animacoes.md`).
 
 ## O que falta
 
