@@ -5,6 +5,7 @@
 
 pub mod assets;
 pub mod frame;
+pub mod paint;
 pub mod paths;
 pub mod scene;
 pub mod scenes;
