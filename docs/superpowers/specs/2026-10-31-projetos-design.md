@@ -95,27 +95,61 @@ Recursos encontrados (ids do `ARTIST.PIC`, grupos cor / mono / máscara):
 - Faixa de opções: só o botão de trocar entre botão e adesivo (dois cartões
   desenhados com `frame.rect`, rótulo "Botão" / "Adesivo" na Pablo 8 pt).
 
-## Desenho animado (`Flipbook`)
+## Desenho animado (`Flipbook`) — revisto pelos roteiros do original
 
-- Faixa de opções: dígitos 2 a 9 para o número de quadros (`3a7b`…`3a99`);
-  escolher um número cria ou corta os quadros (ao cortar, pergunta no balão
-  "Jogar fora os quadros a mais?"). Ao lado, TOCAR/PAUSA/PARAR (`3a61`,
-  `3a59`, `3a5d`) e a régua TEMPO (`02f7`) com o cursor entre a tartaruga
-  (`3a66`) e o coelho (`3a6d`): 5 velocidades, 1000 / 500 / 250 / 125 /
-  60 ms por quadro; padrão 250.
-- A tira de filme (`1105`… conforme N) fica **sobre a borda esquerda do
-  quadro, na vertical**, como a tira dos adesivos (x 33..74), uma casa de
-  37 px por quadro, com a miniatura do quadro (594×347 reduzida a 1/9 ≈
-  66×39, portanto a casa mostra o centro) e a casa do quadro atual em
-  verde. Clicar numa casa troca o quadro atual; o quadro anterior fica
-  visível em "papel vegetal" (pixels do quadro anterior misturados a 50 %
-  com branco) enquanto se desenha — o truque de flip book; um botão na
-  faixa ("Vegetal" ligado/desligado) controla isso.
-- Cada quadro é um `Canvas` próprio com sua `History`. Tocar mostra os
-  quadros em sequência no próprio quadro, em laço, até PARAR/PAUSA ou
-  qualquer clique no quadro.
-- Guardar: pasta `animacao-…/` descrita acima; `leave()` grava mesmo sem
-  mudanças se houver mais de um quadro com algo desenhado.
+Os roteiros de ajuda da Maggie (`WHAT` `3a00` do `ARTIST.EXE`, 86 balões)
+descrevem a tela de verdade: o Desenho Animado **não é um flip book
+desenhado quadro a quadro**, é uma **apresentação de figuras** já feitas
+("você pode ligar as figuras como em um filme e, depois, mostrar para a sua
+família"):
+
+- A tela tem **espaços numerados** (a tira de filme `10e7`…`111d`, de 2 a 10
+  casas; começa com poucos e uma seta acrescenta mais — só depois de
+  preencher os vazios, senão o Rex avisa "Primeiro preencha os espaços!") e
+  uma **pasta** (`2230000`, a pasta de desenhos) que abre uma lista de
+  figuras do usuário (e as "preferidas" da Maggie em `SHARED/USERS/MAGGIE`).
+- **Arrastar** uma figura da pasta para um espaço a coloca; arrastar uma
+  figura sobre outra troca as duas de lugar; arrastar para a pasta fechada
+  tira a figura. **Clique duplo** numa figura abre a tela de pintura com ela
+  (ao sair pela porta a figura volta atualizada ao espaço).
+- Cada espaço pode ter um **efeito especial** de transição (lista com
+  escolhas: dissolver, cortinas, etc.; e o **dado** = sortear a cada "tocar"),
+  um **som** (das categorias de sons do programa) e uma **legenda** (texto
+  curto embaixo da figura, 5 a 7 palavras).
+- **Desenho de abertura** com título (texto digitado, com o botão de girar
+  as palavras) no espaço 1 e figura de "Fim" no último.
+- **TOCAR** mostra as figuras em sequência no quadro com a transição, o som e
+  a legenda; **PAUSA** dá a Varinha Mágica para tocar sons/adesivos da figura
+  parada; **PARAR** volta aos espaços; setas vão uma figura de cada vez; a
+  régua **TEMPO** (`02f7`, tartaruga `3a66` ↔ coelho `3a6d`) define a
+  velocidade: 5 passos, 4000 / 2000 / 1000 / 500 / 250 ms por figura, padrão
+  1000.
+- Ao terminar, salva com um **nome** ("Digite um nome descritivo"), que
+  aparece depois na pasta.
+
+Versão "usável primeiro" do Ateliê Livre:
+
+- Faixa de opções: botões TOCAR/PAUSA/PARAR (`3a61`/`3a59`/`3a5d`), régua
+  TEMPO, botão da pasta (`2230000` ou um cartão "Pasta"), setas ◀ ▶.
+- O quadro (594×347) mostra, parado, a tira de espaços: miniaturas 1/4
+  (149×87) em grade 3×3 com o número em cima (dígitos `3a78`…) e a legenda
+  embaixo; tocando, mostra a figura inteira. A pasta abre uma lista como a
+  galeria (miniaturas das figuras de `desenhos/` e das amostras) dentro do
+  quadro; clique numa figura da lista = vai para o primeiro espaço vazio
+  (sem arrastar, por enquanto); clique num espaço cheio seleciona; com um
+  espaço selecionado, clicar noutro troca; a tecla Delete esvazia.
+- Efeitos por espaço (botão "Efeito" na faixa, cicla): corte, dissolver
+  (pixels aleatórios em 12 passos), cortina para a esquerda/direita/cima/
+  baixo, e "dado" (sorteia a cada tocar). Som por espaço: botão "Som" abre a
+  lista de sons já existente (`scenes/sounds.rs`). Legenda: botão "Legenda"
+  edita um texto (Pablo 8 pt) desenhado numa faixa branca de 16 px na base
+  da figura ao tocar.
+- Guardar ao sair: pasta `animacao-AAAAMMDD-HHMMSS/` com `animacao.json`
+  (`{"figuras": [{"arquivo": "desenho-….png", "efeito": "dissolver",
+  "som": "Agudo/3", "legenda": "…"}], "intervalo_ms": 1000}`), uma cópia
+  `figura-N.png` de cada figura (para não depender da pasta) e `animacao.gif`
+  (GIF animado com as transições renderizadas, paleta de 256 cores do
+  programa, sem dependências novas). `ultimo-animacao/` reabre ao entrar.
 
 ## Testes
 
@@ -123,6 +157,7 @@ Recursos encontrados (ids do `ARTIST.PIC`, grupos cor / mono / máscara):
   moldura; o PNG guardado não contém as linhas das molduras.
 - Botão: um traço que cruza a borda do círculo só pinta dentro; o PNG de
   impressão tem 6 cópias.
-- Desenho animado: com 3 quadros, desenhar no 2.º e tocar a 250 ms faz o
-  quadro mostrado mudar a cada 0,25 s; a pasta guardada tem `quadro-1.png`
-  … `quadro-3.png`, `animacao.json` e `animacao.gif`.
+- Desenho animado: com 3 figuras e TEMPO a 1000 ms, tocar mostra a figura
+  2 entre 1,0 e 2,0 s; o efeito "dissolver" muda só parte dos pixels no meio
+  da transição; a pasta guardada tem `figura-1.png` … `figura-3.png`,
+  `animacao.json` e `animacao.gif`.
