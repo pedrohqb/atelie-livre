@@ -2,8 +2,8 @@
 
 use crate::detect::{FileKind, detect};
 use crate::html::{self, Section};
-use crate::paths::{find_ci, relative, safe_component, walk_files};
 use crate::report::{Failure, FileSummary, Report};
+use engine::paths::{find_ci, relative, safe_component, walk_files};
 use formats::render::{Palettes, bitmap_to_rgba};
 use formats::{chnk, glob, macres, ne, pkbm, wave, winres};
 use serde_json::{Value, json};

@@ -4,7 +4,7 @@ mod detect;
 mod extract;
 mod html;
 mod info;
-mod paths;
+
 mod report;
 
 use clap::{Parser, Subcommand};
