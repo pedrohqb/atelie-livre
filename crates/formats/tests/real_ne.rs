@@ -142,3 +142,27 @@ fn pattern_lists_fit() {
     assert_eq!(pats[1], [0x00, 0x44, 0x00, 0x11, 0x00, 0x44, 0x00, 0x11]);
     assert_eq!(pats[3], [0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa]);
 }
+
+#[test]
+fn every_sound_decodes() {
+    use formats::wave;
+    for (file, count) in [("ARTIST/ARTIST.SND", 131), ("WRITER/WRITER.SND", 122)] {
+        let Some(d) = support::read(file) else { return };
+        let ne = ne::parse(&d).unwrap();
+        let mut n = 0;
+        for r in ne.of_kind("SND") {
+            let pcm =
+                wave::decode(r.data).unwrap_or_else(|e| panic!("{file} SND {:#x}: {e}", r.id));
+            assert_eq!(pcm.channels, 1, "{file} {:#x}", r.id);
+            assert!(
+                matches!(pcm.sample_rate, 11025 | 11127 | 11128 | 44100),
+                "{file} {:#x}: {} Hz",
+                r.id,
+                pcm.sample_rate
+            );
+            assert!(!pcm.samples.is_empty());
+            n += 1;
+        }
+        assert_eq!(n, count);
+    }
+}

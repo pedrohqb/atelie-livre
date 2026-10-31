@@ -67,7 +67,9 @@ Versão analisada: Windows 3.1, português, 1995 (pasta `MSKIDS` instalada).
   (largura, altura e profundidade visíveis; profundidades 1 e 4 observadas).
 - `ARTIST.SND` / `WRITER.SND`: DLLs NE só de recursos; tipo `SND` (131 no
   Fine Artist) e `SNDRANGE`. Cada `SND` é um arquivo RIFF/WAVE completo, formato
-  0x0002 (ADPCM da Microsoft), mono, 11.025 Hz.
+  0x0002 (ADPCM da Microsoft), mono; a maioria a 11.025 Hz, alguns a
+  11.127/11.128 Hz (taxa do Mac) e um a 44.100 Hz. `SNDRANGE` = primeiro e
+  último id dos sons (0x209–0x312).
 - Documentos (`.MAG`, `.PTM`, `.MAX`) e `MSKIDS.INF`: assinatura `CHNK`,
   criador de quatro letras (`SPLT`, `INK `), versão `u16` 4 / `u16` 4, e
   blocos com etiquetas de quatro letras (`CTBL`, `FLOR`, `FLAG`, `WIZA`,
