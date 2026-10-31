@@ -95,3 +95,25 @@ observados). `ARTIST.EXE` tem 43 padrões e `WRITER.EXE`, 18. Exemplo
 22 00 88 00 22 00 88 00 22 00 88 00 22 00 88 00     padrão 2: 22 88 22 88 ...
 55 00 aa 00 55 00 aa 00 55 00 aa 00 55 00 aa 00     padrão 3: xadrez 55 aa ...
 ```
+
+## Recursos padrão do Windows
+
+Todos no formato do Windows 3.x, sem particularidades:
+
+- **ICON**: DIB com `BITMAPINFOHEADER` (40 bytes), 32×32, em 1 ou 4 bits.
+  A altura declarada é o dobro (64): primeiro vêm as 32 linhas da imagem
+  "XOR", depois as 32 linhas da máscara "AND" de 1 bit (bit 1 = transparente).
+  Linhas de baixo para cima, alinhadas em 4 bytes; paleta em `RGBQUAD`
+  (b, g, r, 0).
+- **CURSOR**: `u16` hotspot x, `u16` hotspot y, seguidos de um DIB no mesmo
+  layout do ícone (32×32, 1 bit).
+- **BITMAP** (só em `WRITER.EXE`, 6): DIB sem o cabeçalho de arquivo
+  `BITMAPFILEHEADER`; os seis são de 1 bit.
+- **STRING**: blocos de 16 itens; cada item é `u8` tamanho + texto
+  Windows-1252 (itens vazios têm tamanho 0). O item `i` do bloco de id `b` tem
+  id de string `(b − 1) × 16 + i`. Exemplo (`ARTIST.EXE`, bloco 1):
+  `00 04 "Erro" 39 "Você precisa atualizar para um processador no mínimo 386."`
+- **VERSION**: não interpretado; a extração bruta já mostra os textos
+  legíveis.
+- **GROUP_ICON** / **GROUP_CURSOR**: diretórios que ligam um nome de ícone aos
+  recursos ICON/CURSOR; extraídos em forma bruta.

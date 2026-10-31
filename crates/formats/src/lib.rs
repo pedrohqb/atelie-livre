@@ -15,6 +15,7 @@ pub mod pkbm;
 pub mod reader;
 pub mod tag;
 pub mod wave;
+pub mod winres;
 
 pub use error::{ErrorKind, Format, FormatError, Result};
 pub use palette::Rgb;

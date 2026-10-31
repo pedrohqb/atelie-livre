@@ -166,3 +166,39 @@ fn every_sound_decodes() {
         assert_eq!(n, count);
     }
 }
+
+#[test]
+fn standard_windows_resources_decode() {
+    use formats::winres;
+    for file in ["ARTIST.EXE", "WRITER.EXE"] {
+        let Some(d) = support::read(file) else { return };
+        let ne = ne::parse(&d).unwrap();
+        for r in ne.of_kind("ICON") {
+            let img = winres::decode_icon(r.data)
+                .unwrap_or_else(|e| panic!("{file} ICON {:#x}: {e}", r.id));
+            assert_eq!((img.width, img.height), (32, 32));
+        }
+        for r in ne.of_kind("CURSOR") {
+            let (img, (x, y)) = winres::decode_cursor(r.data)
+                .unwrap_or_else(|e| panic!("{file} CURSOR {:#x}: {e}", r.id));
+            assert_eq!((img.width, img.height), (32, 32));
+            assert!(x < 32 && y < 32);
+        }
+        for r in ne.of_kind("BITMAP") {
+            winres::decode_bitmap(r.data)
+                .unwrap_or_else(|e| panic!("{file} BITMAP {:#x}: {e}", r.id));
+        }
+        for r in ne.of_kind("STRING") {
+            winres::parse_string_table(r.id, r.data)
+                .unwrap_or_else(|e| panic!("{file} STRING {:#x}: {e}", r.id));
+        }
+    }
+    let Some(d) = support::read("ARTIST.EXE") else {
+        return;
+    };
+    let ne = ne::parse(&d).unwrap();
+    assert_eq!(ne.of_kind("ICON").count(), 48);
+    let strings = winres::parse_string_table(1, ne.find("STRING", 1).unwrap().data).unwrap();
+    assert_eq!(strings[0], (1, "Erro".to_string()));
+    assert!(strings[1].1.starts_with("Você precisa"));
+}
