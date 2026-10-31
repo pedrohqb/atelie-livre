@@ -5,6 +5,10 @@
 use super::stickers::Stickers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
+use crate::paint::geom::{
+    ellipse_points, fill_ellipse_points, fill_rect_points, fill_triangle_points, polyline_points,
+    rect_points, thicken, triangle_points,
+};
 use crate::paint::store::{LAST_NAME, load_png, save_drawing};
 use crate::paint::{
     CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, line_points, page_shapes,
@@ -28,7 +32,7 @@ const ORANGE: [u8; 3] = [255, 140, 50];
 const BROWN: [u8; 3] = [185, 101, 36];
 const RED: [u8; 3] = [250, 0, 57];
 
-const PAGE_COUNT: u8 = 5;
+const PAGE_COUNT: u8 = 6;
 const STAMP_SPACING: i32 = 16;
 const EXIT: (i32, i32, i32, i32) = (580, 18, 56, 88);
 const ARROW_UP: (i32, i32, i32, i32) = (504, 58, 16, 14);
@@ -37,7 +41,7 @@ const ARROW_DOWN: (i32, i32, i32, i32) = (504, 90, 16, 14);
 const STAMPS: [u16; 12] = [
     0x164b, 0x16a9, 0x16ab, 0x16ad, 0x16af, 0x16b1, 0x16b3, 0x16b5, 0x16b7, 0x16b9, 0x16bb, 0x16bd,
 ];
-/// Botões das páginas 2, 3 e 5 do pincel.
+/// Botões das páginas 2, 3, 5 e 6 do pincel.
 const PAGE2_BUTTONS: [u16; 12] = [
     0x17e5, 0x17e7, 0x17e9, 0x1814, 0x1817, 0x1819, 0x181b, 0x181d, 0x181f, 0x1821, 0x1823, 0x1825,
 ];
@@ -47,6 +51,28 @@ const PAGE3_BUTTONS: [u16; 12] = [
 const PAGE5_BUTTONS: [u16; 12] = [
     0x17b5, 0x17cf, 0x17d1, 0x17d3, 0x17d5, 0x17d7, 0x17d9, 0x17db, 0x17dd, 0x17df, 0x17e1, 0x17e3,
 ];
+const PAGE6_BUTTONS: [u16; 12] = [
+    0x17fd, 0x17fe, 0x1800, 0x1802, 0x1804, 0x1806, 0x1808, 0x180a, 0x180c, 0x180e, 0x1810, 0x1812,
+];
+/// Sprays da página 6: (raio em pixels, pontos por atualização), do ralo ao denso.
+const SPRAYS: [(i32, u32); 12] = [
+    (6, 2),
+    (6, 5),
+    (6, 12),
+    (10, 3),
+    (10, 8),
+    (10, 20),
+    (14, 4),
+    (14, 12),
+    (14, 30),
+    (18, 6),
+    (18, 16),
+    (18, 40),
+];
+/// Distância mínima entre vértices da poligonal (página 5, botão 4).
+const POLY_STEP: i32 = 8;
+/// Espessura da serpentina (página 5, botão 5).
+const SERPENTINE_T: i32 = 3;
 const BUCKET_BUTTONS: [u16; 10] = [
     0x1590, 0x1591, 0x1593, 0x1595, 0x1597, 0x1599, 0x159b, 0x159d, 0x159f, 0x15a1,
 ];
@@ -187,9 +213,85 @@ fn canvas_rect() -> (i32, i32, i32, i32) {
     (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32)
 }
 
-struct Stroke {
-    last: (i32, i32),
-    last_stamp: (i32, i32),
+/// Gerador pseudoaleatório pequeno e determinístico (xorshift32) para os sprays.
+#[derive(Debug, Clone)]
+struct XorShift(u32);
+
+impl XorShift {
+    fn new(seed: u32) -> XorShift {
+        XorShift(seed.max(1))
+    }
+
+    fn next(&mut self) -> u32 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.0 = x;
+        x
+    }
+
+    /// Inteiro em `-r..=r`.
+    fn offset(&mut self, r: i32) -> i32 {
+        (self.next() % (2 * r as u32 + 1)) as i32 - r
+    }
+}
+
+/// O que está sendo arrastado no quadro, em coordenadas do quadro.
+enum Stroke {
+    /// Páginas 1, 2 e 4: carimba a forma ao longo do caminho.
+    Brush {
+        last: (i32, i32),
+        last_stamp: (i32, i32),
+    },
+    /// Página 5: forma elástica entre a âncora e o ponteiro, pintada só ao soltar.
+    Geom {
+        kind: usize,
+        anchor: (i32, i32),
+        pointer: (i32, i32),
+        /// Vértices das curvas livres e da poligonal.
+        verts: Vec<(i32, i32)>,
+    },
+    /// Página 6: borrifa pontos ao redor do ponteiro a cada atualização.
+    Spray {
+        rng: XorShift,
+        pos: (i32, i32),
+        radius: i32,
+        dots: u32,
+    },
+}
+
+/// Pixels da forma geométrica `kind` da página 5 entre `anchor` e `pointer`.
+fn geom_pixels(
+    kind: usize,
+    anchor: (i32, i32),
+    pointer: (i32, i32),
+    verts: &[(i32, i32)],
+) -> Vec<(i32, i32)> {
+    match kind {
+        0 => line_points(anchor, pointer),
+        1 => {
+            let mut v = line_points(anchor, pointer);
+            v.extend(line_points(anchor, (pointer.0, anchor.1)));
+            v
+        }
+        2 => polyline_points(verts, false),
+        3 => polyline_points(verts, true),
+        4 => {
+            let mut v = polyline_points(verts, false);
+            if let Some(&last) = verts.last() {
+                v.extend(line_points(last, pointer));
+            }
+            v
+        }
+        5 => thicken(&polyline_points(verts, false), SERPENTINE_T),
+        6 => fill_rect_points(anchor, pointer),
+        7 => fill_ellipse_points(anchor, pointer),
+        8 => fill_triangle_points(anchor, pointer),
+        9 => rect_points(anchor, pointer),
+        10 => ellipse_points(anchor, pointer),
+        _ => triangle_points(anchor, pointer),
+    }
 }
 
 pub struct Paint {
@@ -256,6 +358,7 @@ impl Paint {
         self.brush = (page, k);
         self.shape = match page {
             2 => self.stamps.get(k).cloned(),
+            5 | 6 => None,
             p => page_shapes(p).into_iter().nth(k),
         };
     }
@@ -318,42 +421,135 @@ impl Paint {
     }
 
     fn start_stroke(&mut self, cx: i32, cy: i32) {
-        let Some(shape) = self.shape.as_ref() else {
-            return;
-        };
-        self.history.record(&self.canvas);
-        let ink = self.ink();
-        self.canvas.stamp(shape, cx, cy, &ink);
-        self.changed = true;
-        self.stroke = Some(Stroke {
-            last: (cx, cy),
-            last_stamp: (cx, cy),
-        });
+        match self.brush.0 {
+            5 => {
+                self.stroke = Some(Stroke::Geom {
+                    kind: self.brush.1,
+                    anchor: (cx, cy),
+                    pointer: (cx, cy),
+                    verts: vec![(cx, cy)],
+                });
+            }
+            6 => {
+                let (radius, dots) = SPRAYS[self.brush.1.min(SPRAYS.len() - 1)];
+                self.history.record(&self.canvas);
+                let seed = (cx as u32).wrapping_mul(2654435761)
+                    ^ (cy as u32).wrapping_mul(40503)
+                    ^ (now_secs() as u32);
+                self.stroke = Some(Stroke::Spray {
+                    rng: XorShift::new(seed),
+                    pos: (cx, cy),
+                    radius,
+                    dots,
+                });
+                self.spray_tick();
+            }
+            _ => {
+                let Some(shape) = self.shape.as_ref() else {
+                    return;
+                };
+                self.history.record(&self.canvas);
+                let ink = self.ink();
+                self.canvas.stamp(shape, cx, cy, &ink);
+                self.changed = true;
+                self.stroke = Some(Stroke::Brush {
+                    last: (cx, cy),
+                    last_stamp: (cx, cy),
+                });
+            }
+        }
     }
 
     fn extend_stroke(&mut self, cx: i32, cy: i32) {
-        let Some(shape) = self.shape.as_ref() else {
-            return;
-        };
-        let Some(st) = self.stroke.as_mut() else {
-            return;
-        };
-        let ink = Ink {
-            color: COLORS[self.color],
-            pattern: self.patterns[self.pattern],
-        };
+        let ink = self.ink();
         let spaced = self.brush.0 == 2;
-        for p in line_points(st.last, (cx, cy)).into_iter().skip(1) {
-            if spaced {
-                let (dx, dy) = (p.0 - st.last_stamp.0, p.1 - st.last_stamp.1);
-                if dx * dx + dy * dy < STAMP_SPACING * STAMP_SPACING {
-                    continue;
+        match self.stroke.as_mut() {
+            Some(Stroke::Brush { last, last_stamp }) => {
+                let Some(shape) = self.shape.as_ref() else {
+                    return;
+                };
+                for p in line_points(*last, (cx, cy)).into_iter().skip(1) {
+                    if spaced {
+                        let (dx, dy) = (p.0 - last_stamp.0, p.1 - last_stamp.1);
+                        if dx * dx + dy * dy < STAMP_SPACING * STAMP_SPACING {
+                            continue;
+                        }
+                        *last_stamp = p;
+                    }
+                    self.canvas.stamp(shape, p.0, p.1, &ink);
                 }
-                st.last_stamp = p;
+                *last = (cx, cy);
             }
-            self.canvas.stamp(shape, p.0, p.1, &ink);
+            Some(Stroke::Geom {
+                kind,
+                pointer,
+                verts,
+                ..
+            }) => {
+                *pointer = (cx, cy);
+                match *kind {
+                    2 | 3 | 5 => verts.push((cx, cy)),
+                    4 => {
+                        let l = verts.last().copied().unwrap_or((cx, cy));
+                        let (dx, dy) = (cx - l.0, cy - l.1);
+                        if dx * dx + dy * dy >= POLY_STEP * POLY_STEP {
+                            verts.push((cx, cy));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(Stroke::Spray { pos, .. }) => *pos = (cx, cy),
+            None => {}
         }
-        st.last = (cx, cy);
+    }
+
+    /// Solta o botão: a forma elástica da página 5 vira pintura (uma ação do ovo).
+    fn end_stroke(&mut self, cx: i32, cy: i32) {
+        self.extend_stroke(cx, cy);
+        if let Some(Stroke::Geom {
+            kind,
+            anchor,
+            pointer,
+            mut verts,
+        }) = self.stroke.take()
+        {
+            if kind == 4 && verts.last() != Some(&pointer) {
+                verts.push(pointer);
+            }
+            let pixels = geom_pixels(kind, anchor, pointer, &verts);
+            self.history.record(&self.canvas);
+            let ink = self.ink();
+            for (x, y) in pixels {
+                self.canvas.plot(x, y, &ink);
+            }
+            self.changed = true;
+        }
+        self.stroke = None;
+    }
+
+    /// Uma rajada do spray ao redor do ponteiro (chamada a cada atualização).
+    fn spray_tick(&mut self) {
+        let ink = self.ink();
+        let Some(Stroke::Spray {
+            rng,
+            pos,
+            radius,
+            dots,
+        }) = self.stroke.as_mut()
+        else {
+            return;
+        };
+        let mut n = 0;
+        while n < *dots {
+            let (dx, dy) = (rng.offset(*radius), rng.offset(*radius));
+            if dx * dx + dy * dy > *radius * *radius {
+                continue;
+            }
+            self.canvas.plot(pos.0 + dx, pos.1 + dy, &ink);
+            n += 1;
+        }
+        self.changed = true;
     }
 
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
@@ -438,7 +634,7 @@ impl Paint {
         let x0 = self.options_x0();
         if let Some(k) = (0..self.option_count()).find(|&k| inside(option_rect(x0, k), x, y)) {
             match self.tool {
-                Tool::Brush if matches!(self.page, 1 | 2 | 4) => self.set_brush(self.page, k),
+                Tool::Brush if self.page != 3 => self.set_brush(self.page, k),
                 Tool::Brush => fx.push(Effect::Log(format!(
                     "página {} do pincel: ainda não disponível",
                     self.page
@@ -591,7 +787,8 @@ impl Paint {
                             let ids = match p {
                                 2 => &PAGE2_BUTTONS,
                                 3 => &PAGE3_BUTTONS,
-                                _ => &PAGE5_BUTTONS,
+                                5 => &PAGE5_BUTTONS,
+                                _ => &PAGE6_BUTTONS,
                             };
                             f.blit(&a.image(&pic(ids[k])), r.0, r.1);
                         }
@@ -676,6 +873,26 @@ impl Paint {
             f.put(x, y, self.rgb(i));
         }
     }
+
+    /// Prévia elástica da forma da página 5, só na tela (o quadro não muda).
+    fn draw_preview(&self, f: &mut Frame) {
+        let Some(Stroke::Geom {
+            kind,
+            anchor,
+            pointer,
+            verts,
+        }) = &self.stroke
+        else {
+            return;
+        };
+        let ink = self.ink();
+        for (x, y) in geom_pixels(*kind, *anchor, *pointer, verts) {
+            if x >= 0 && y >= 0 && (x as u32) < self.canvas.w && (y as u32) < self.canvas.h {
+                let (sx, sy) = (x + ORIGIN.0, y + ORIGIN.1);
+                f.put(sx, sy, self.rgb(ink.index_at(sx, sy)));
+            }
+        }
+    }
 }
 
 fn now_secs() -> u64 {
@@ -706,13 +923,11 @@ impl Scene for Paint {
                     button: MouseButton::Left,
                     x,
                     y,
-                } => {
-                    self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
-                    self.stroke = None;
-                }
+                } => self.end_stroke(x - ORIGIN.0, y - ORIGIN.1),
                 _ => {}
             }
         }
+        self.spray_tick();
         if self
             .stickers
             .update(dt, &mut self.canvas, &mut self.history)
@@ -728,6 +943,7 @@ impl Scene for Paint {
         self.draw_options(frame, assets);
         self.draw_columns(frame);
         self.draw_canvas(frame);
+        self.draw_preview(frame);
         self.stickers
             .draw_overlay(frame, assets, &self.pal, self.mouse);
     }
@@ -806,7 +1022,8 @@ mod tests {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
         p.update(&[click(510, 62)], 0.0, &a);
-        assert_eq!(p.page(), 5);
+        assert_eq!(p.page(), PAGE_COUNT);
+        assert_eq!(PAGE_COUNT, 6);
         p.update(&[click(510, 95)], 0.0, &a);
         p.update(&[click(510, 95)], 0.0, &a);
         assert_eq!(p.page(), 2);
@@ -1101,6 +1318,134 @@ mod tests {
         p.leave();
         let q = Paint::new(Some(dir.path().to_path_buf()), &a);
         assert!(painted(&q) > 0);
+    }
+
+    /// Vai para a página `page` do pincel e escolhe o botão `k`.
+    fn pick(p: &mut Paint, a: &Assets, page: u8, k: usize) {
+        while p.page() != page {
+            p.update(&[click(510, 95)], 0.0, a);
+        }
+        p.update(&[click(25 + 37 * k as i32 + 10, 70)], 0.0, a);
+    }
+
+    #[test]
+    fn page5_and_page6_options_select() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 7);
+        assert_eq!(p.brush(), (5, 7));
+        pick(&mut p, &a, 6, 11);
+        assert_eq!(p.brush(), (6, 11));
+        // página 3 continua inerte
+        let before = p.brush();
+        p.update(&[click(510, 62), click(510, 62), click(510, 62)], 0.0, &a);
+        assert_eq!(p.page(), 3);
+        let fx = p.update(&[click(35, 70)], 0.0, &a);
+        assert!(fx.iter().any(|e| matches!(e, Effect::Log(_))));
+        assert_eq!(p.brush(), before);
+    }
+
+    #[test]
+    fn rectangle_commits_on_mouseup_and_egg_undoes() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 6);
+        p.update(&[click(100, 200)], 0.0, &a);
+        p.update(&[Input::MouseMove { x: 150, y: 250 }], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        // a prévia aparece na tela sem mudar o quadro
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        assert_ne!(f.pixel(120, 220), [255, 255, 255, 255]);
+        assert_eq!(f.pixel(300, 300), [255, 255, 255, 255]);
+        assert_eq!(painted(&p), 0);
+        p.update(&[up(150, 250)], 0.0, &a);
+        assert_eq!(painted(&p), 51 * 51);
+        p.update(&[Input::MouseMove { x: 300, y: 300 }], 0.0, &a);
+        assert_eq!(painted(&p), 51 * 51);
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(painted(&p), 51 * 51);
+    }
+
+    #[test]
+    fn page5_outlines_and_curves_paint() {
+        let (_d, a) = empty_assets();
+        // contorno de retângulo 11×11 = 40 pixels
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 9);
+        p.update(&[click(100, 200), up(110, 210)], 0.0, &a);
+        assert_eq!(painted(&p), 40);
+        // reta com base: diagonal de 11 + base de 10 novos
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 1);
+        p.update(&[click(100, 200), up(110, 210)], 0.0, &a);
+        assert_eq!(painted(&p), 21);
+        // curva fechada: três vértices viram um triângulo fechado
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 3);
+        p.update(
+            &[
+                click(100, 200),
+                Input::MouseMove { x: 110, y: 200 },
+                up(110, 210),
+            ],
+            0.0,
+            &a,
+        );
+        assert_eq!(painted(&p), 30);
+        // serpentina de 3 pixels: um ponto só pinta 3×3
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 5);
+        p.update(&[click(100, 200), up(100, 200)], 0.0, &a);
+        assert_eq!(painted(&p), 9);
+        // poligonal: movimentos curtos não viram vértice
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 5, 4);
+        p.update(
+            &[
+                click(100, 200),
+                Input::MouseMove { x: 103, y: 200 },
+                Input::MouseMove { x: 100, y: 203 },
+                up(100, 200),
+            ],
+            0.0,
+            &a,
+        );
+        assert_eq!(painted(&p), 1);
+    }
+
+    #[test]
+    fn spray_adds_pixels_over_time() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        pick(&mut p, &a, 6, 0);
+        p.update(&[click(300, 300)], 0.0, &a);
+        let first = painted(&p);
+        assert!(first > 0);
+        for _ in 0..30 {
+            p.update(&[], 0.016, &a);
+        }
+        let later = painted(&p);
+        assert!(later > first);
+        // tudo dentro do raio 6
+        for (k, &v) in p.canvas().px.iter().enumerate() {
+            if v != W {
+                let (x, y) = ((k as u32 % CANVAS_W) as i32, (k as u32 / CANVAS_W) as i32);
+                let (dx, dy) = (x - (300 - ORIGIN.0), y - (300 - ORIGIN.1));
+                assert!(dx * dx + dy * dy <= 36, "pixel fora do raio: {x},{y}");
+            }
+        }
+        p.update(&[up(300, 300)], 0.0, &a);
+        let ended = painted(&p);
+        for _ in 0..10 {
+            p.update(&[], 0.016, &a);
+        }
+        assert_eq!(painted(&p), ended);
+        // um traço inteiro é uma só ação do ovo
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
     }
 
     #[test]
