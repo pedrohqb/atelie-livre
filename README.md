@@ -9,13 +9,56 @@ que você já possui.
 
 ## Estado
 
-Subprojeto 1 (leitura dos formatos de dados) concluído: todos os arquivos da
-versão Windows 3.1 em português são lidos, e as imagens e os sons são
-extraídos. A documentação dos formatos está em [`docs/formats/`](docs/formats/).
+- Subprojeto 1 (leitura dos formatos de dados) concluído: todos os arquivos
+  da versão Windows 3.1 em português são lidos, e as imagens e os sons são
+  extraídos.
+- Subprojeto 2a (plataforma) concluído: o programa `atelie-livre` abre a
+  abertura e a rua do Fine Artist em tela cheia, ampliadas e nítidas, com o
+  cursor e os sons originais, e traz um navegador de recursos. A documentação dos formatos está em [`docs/formats/`](docs/formats/).
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
-## Uso
+## Rodar o Ateliê Livre
+
+A SDL3 é compilada junto com o programa e embutida no binário; para isso, a
+máquina que compila precisa do `cmake` e dos cabeçalhos de vídeo e áudio.
+
+- CachyOS / Arch:
+  `sudo pacman -S --needed base-devel cmake libx11 libxext libxrandr libxcursor libxi libxss libxtst libxkbcommon wayland wayland-protocols libdecor alsa-lib libpulse pipewire`
+- Fedora (no Bluefin, dentro de um distrobox/toolbox Fedora):
+  `sudo dnf install gcc cmake libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXScrnSaver-devel libXtst-devel libxkbcommon-devel wayland-devel wayland-protocols-devel libdecor-devel alsa-lib-devel pulseaudio-libs-devel pipewire-devel`
+- Debian / Ubuntu:
+  `sudo apt install build-essential cmake libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libasound2-dev libpulse-dev libpipewire-0.3-dev`
+
+```sh
+cargo run --release -p app -- --data caminho/MSKIDS
+```
+
+A primeira compilação leva alguns minutos (a SDL3 é compilada uma vez). O
+binário fica em `target/release/atelie-livre` e roda sem a SDL3 instalada.
+
+Teclas: **Alt+Enter** alterna tela cheia/janela; **Ctrl+Q** sai (Esc não
+fecha o programa, de propósito); **F12** abre o navegador de recursos se
+`dev = true`. Opções: `--window`, `--scale integer|fit`, `--browser`.
+
+No navegador: ↑/↓ trocam a fonte, ←/→ (PageUp/PageDown, Home/End) percorrem
+os itens, Enter toca um som, Esc volta. Sobre uma imagem, a faixa mostra a
+posição do mouse na imagem, e um clique imprime no terminal uma linha como
+`ARTIST.PIC 6d01 x=312 y=405`.
+
+Configuração em `~/.config/atelie-livre/config.toml` (os argumentos têm
+prioridade):
+
+```toml
+data_dir = "/home/voce/MSKIDS"
+scale = "integer"      # ou "fit"
+fullscreen = true
+volume = 80            # 0 a 100
+dev = false            # true habilita o F12
+click_sound = { program = "artist", id = 0x209 }   # opcional
+```
+
+## Ferramentas de dados
 
 É preciso ter o Rust (1.85 ou mais novo) e a pasta `MSKIDS` de uma instalação
 do Fine Artist e/ou do Creative Writer, copiada para o seu computador.
