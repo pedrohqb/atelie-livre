@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod ne;
 pub mod reader;
 pub mod tag;
 
