@@ -212,10 +212,15 @@ pub fn expand_home(path: PathBuf, home: Option<PathBuf>) -> PathBuf {
     }
 }
 
-/// Argumentos têm prioridade sobre o arquivo.
+/// Argumentos têm prioridade sobre o arquivo; sem nenhum dos dois, vale `ATELIE_DATA`.
 pub fn effective(mut cfg: Config, args: &Args) -> Config {
     if let Some(d) = &args.data {
         cfg.data_dir = Some(d.clone());
+    } else if cfg.data_dir.is_none()
+        && let Some(d) = std::env::var_os("ATELIE_DATA")
+    {
+        // mesma variável dos testes e do AppRun do AppImage
+        cfg.data_dir = Some(PathBuf::from(d));
     }
     if args.window {
         cfg.fullscreen = false;

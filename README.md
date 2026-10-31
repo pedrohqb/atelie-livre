@@ -97,8 +97,23 @@ vez, e uma cópia `texto-AAAAMMDD-HHMMSS.txt` de cada texto modificado. É
 texto puro: parágrafos separados por uma linha vazia e adesivos como
 `[adesivo:ROLO:N]`; os estilos ainda não são guardados.
 
+**Tudo o que o programa grava** fica em dois lugares, fáceis de apagar
+depois de um teste: `~/.local/share/atelie-livre/` (ou
+`$XDG_DATA_HOME/atelie-livre/`: desenhos, textos, usuários) e
+`~/.config/atelie-livre/` (configuração). `rm -rf` nos dois limpa tudo.
+
+### AppImage para teste local
+
+`tools/appimage/build.sh caminho/MSKIDS` compila em modo release, embute os
+arquivos originais e gera `Atelie_Livre-x86_64.AppImage` (precisa de
+`mksquashfs`, do pacote squashfs-tools, e de `curl` para baixar o runtime do
+AppImage uma vez). Esse arquivo contém os dados do Fine Artist/Creative
+Writer, que não são livres: serve só para testar na própria máquina, nunca
+para distribuir. Sem `--data`, o programa também aceita a pasta na variável
+`ATELIE_DATA` (é o que o AppImage usa).
+
 Configuração em `~/.config/atelie-livre/config.toml` (os argumentos têm
-prioridade):
+prioridade; sem nenhum dos dois vale `ATELIE_DATA`):
 
 ```toml
 data_dir = "/home/voce/MSKIDS"

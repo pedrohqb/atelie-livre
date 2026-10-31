@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Ateliê Livre
+Comment=Fine Artist e Creative Writer para Linux
+Exec=atelie-livre
+Icon=atelie-livre
+Categories=Education;Graphics;
+Terminal=false
