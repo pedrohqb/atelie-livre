@@ -105,6 +105,7 @@ struct Library {
 }
 
 pub struct Assets {
+    dir: PathBuf,
     exe: [Option<Vec<u8>>; 2],
     pic: [Option<Vec<u8>>; 2],
     snd: [Option<Vec<u8>>; 2],
@@ -270,6 +271,7 @@ impl Assets {
             })
             .unwrap_or_default();
         Ok(Assets {
+            dir: dir.to_path_buf(),
             exe,
             pic,
             snd,
@@ -282,6 +284,11 @@ impl Assets {
             warned: RefCell::new(HashSet::new()),
             fonts,
         })
+    }
+
+    /// Pasta `MSKIDS` de onde os dados foram abertos.
+    pub fn data_dir(&self) -> &Path {
+        &self.dir
     }
 
     /// Fonte "Pablo Graphos" no tamanho em pontos (6, 8 ou 16), se instalada.
