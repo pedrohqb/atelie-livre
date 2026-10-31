@@ -11,6 +11,7 @@ pub mod error;
 pub mod fnt;
 pub mod glob;
 pub mod macres;
+pub mod mag;
 pub mod ne;
 pub mod palette;
 pub mod pkbm;

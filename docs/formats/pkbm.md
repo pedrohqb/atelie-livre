@@ -36,7 +36,7 @@ Todos os campos numéricos abaixo seguem a ordem indicada pela marca.
 | 24 | u16 | altura em pixels |
 | 26 | u16 | profundidade: 1, 4 ou 8 bits por pixel |
 | 28 | u16 | número de cores da paleta embutida (0 ou 256) |
-| 30 | u16 | offset da paleta embutida (42 quando presente) |
+| 30 | u16 | offset da paleta embutida (42, inclusive quando não há paleta) |
 | 32 | 6 bytes | desconhecido (zeros, ou valores diversos em algumas pinturas de 8 bits) |
 | 38 | u32 | offset dos pixels a partir do início do cabeçalho (42, ou 1.578 com paleta) |
 
@@ -87,6 +87,14 @@ lugar, de modo que 12 é o cinza claro (190), 13 o médio (140) e 14 o escuro
 (100), como na tabela do Mac. Confirmado comparando com o Fine Artist original
 rodando no Wine: com essa ordem o céu da tela de entrada (0x4139) sai lilás
 (136, 136, 230) e a rua (0x6d01) sai idêntica ao original, pixel a pixel.
+
+## Gravação
+
+`pkbm::encode` grava little-endian com PackBits (repetições de 3 ou mais
+bytes viram run, o resto literal, ambos até 128), campo 16 = offset dos
+pixels + tamanho descomprimido (a convenção dos `CHNK` do Windows) e a
+paleta embutida quando o `Bitmap` traz uma. Os bytes 20/21 são `08 00` por
+padrão (os das miniaturas dos desenhos salvos); `encode_with` permite outros.
 
 ## Máscaras
 

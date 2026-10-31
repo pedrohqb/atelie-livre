@@ -164,6 +164,106 @@ fn unpack_bits(r: &mut Reader<'_>, size: usize) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Bytes 20 e 21 do cabeçalho, de significado desconhecido. Os desenhos
+/// salvos trazem `(8, 0)` nas miniaturas (`THMB`) e `(40, 4)` ou `(8, 4)` na
+/// pintura principal (`PKBM 0`); as imagens dos `.PIC` trazem `(1, 0)` em
+/// 1 bit e `(0, 0)` em 4 bits. O leitor ignora os dois.
+pub type UnknownBytes = (u8, u8);
+
+/// Bytes 20/21 gravados por [`encode`]: os das miniaturas dos desenhos salvos.
+pub const DEFAULT_UNKNOWN: UnknownBytes = (8, 0);
+
+/// Grava um `PKBM` little-endian (a ordem dos documentos e bibliotecas do
+/// Windows) com compressão PackBits, nas profundidades 1, 2, 4 e 8 bits,
+/// linhas arredondadas para um número par de bytes e, se `bitmap.palette`
+/// existir, a paleta embutida logo após o cabeçalho (componentes de 16 bits
+/// com a cor no byte alto). Índices acima da profundidade são truncados.
+pub fn encode(bitmap: &Bitmap) -> Vec<u8> {
+    encode_with(bitmap, DEFAULT_UNKNOWN)
+}
+
+/// Como [`encode`], escolhendo os bytes 20/21 do cabeçalho.
+pub fn encode_with(bitmap: &Bitmap, unknown: UnknownBytes) -> Vec<u8> {
+    let depth = bitmap.depth as usize;
+    let (w, h) = (bitmap.width as usize, bitmap.height as usize);
+    let row_bytes = (w * depth).div_ceil(8).next_multiple_of(2);
+    let mut raw = vec![0u8; row_bytes * h];
+    let mask = ((1u16 << depth) - 1) as u8;
+    for (y, row) in raw.chunks_exact_mut(row_bytes.max(1)).take(h).enumerate() {
+        for x in 0..w {
+            let v = bitmap.pixels.get(y * w + x).copied().unwrap_or(0) & mask;
+            let bit = x * depth;
+            let shift = 8 - depth - bit % 8;
+            row[bit / 8] |= v << shift;
+        }
+    }
+    let stream = pack_bits(&raw);
+    let palette = bitmap.palette.as_deref().unwrap_or(&[]);
+    let pal_count = palette.len().min(u16::MAX as usize);
+    let data_offset = HEADER_LEN + 6 * pal_count;
+
+    let mut v = Vec::with_capacity(data_offset + stream.len());
+    let p16 = |v: &mut Vec<u8>, n: u16| v.extend_from_slice(&n.to_le_bytes());
+    let p32 = |v: &mut Vec<u8>, n: u32| v.extend_from_slice(&n.to_le_bytes());
+    p16(&mut v, 1); // marca de ordem de bytes
+    p16(&mut v, 0);
+    v.extend_from_slice(b"PKBM");
+    p16(&mut v, 0);
+    p16(&mut v, 1); // PackBits
+    p16(&mut v, 1);
+    p16(&mut v, HEADER_LEN as u16);
+    // nos CHNK do Windows: fim dos pixels descomprimidos (offset dos pixels + tamanho)
+    p32(&mut v, (data_offset + raw.len()) as u32);
+    v.push(unknown.0);
+    v.push(unknown.1);
+    p16(&mut v, bitmap.width);
+    p16(&mut v, bitmap.height);
+    p16(&mut v, bitmap.depth as u16);
+    p16(&mut v, pal_count as u16);
+    p16(&mut v, HEADER_LEN as u16); // offset da paleta (42 mesmo sem paleta, como no original)
+    v.extend_from_slice(&[0; 6]);
+    p32(&mut v, data_offset as u32);
+    debug_assert_eq!(v.len(), HEADER_LEN);
+    for c in &palette[..pal_count] {
+        p16(&mut v, (c.r as u16) << 8);
+        p16(&mut v, (c.g as u16) << 8);
+        p16(&mut v, (c.b as u16) << 8);
+    }
+    v.extend_from_slice(&stream);
+    v
+}
+
+/// Compressão PackBits de um fluxo contínuo: sequências de 3 ou mais bytes
+/// iguais viram repetição (até 128), o resto vira cópia literal (até 128).
+pub fn pack_bits(raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(raw.len() / 2 + 2);
+    let run_at = |i: usize| -> usize {
+        let b = raw[i];
+        raw[i..].iter().take(128).take_while(|&&x| x == b).count()
+    };
+    let mut i = 0;
+    while i < raw.len() {
+        let run = run_at(i);
+        if run >= 3 {
+            out.push((257 - run) as u8);
+            out.push(raw[i]);
+            i += run;
+            continue;
+        }
+        // literal: avança até um trecho repetido de 3+ ou 128 bytes
+        let start = i;
+        while i < raw.len() && i - start < 128 {
+            if raw.len() - i >= 3 && raw[i] == raw[i + 1] && raw[i] == raw[i + 2] {
+                break;
+            }
+            i += 1;
+        }
+        out.push((i - start - 1) as u8);
+        out.extend_from_slice(&raw[start..i]);
+    }
+    out
+}
+
 /// Paleta padrão quando a imagem não traz a sua: 1 bit branco/preto,
 /// 4 bits a `LOGPALETTE` de 16 cores, 8 bits a de 256.
 pub fn default_palette_for(depth: u8, pal16: &[Rgb], pal256: &[Rgb]) -> Vec<Rgb> {
@@ -378,6 +478,106 @@ mod tests {
         );
         assert_eq!(default_palette_for(4, &p16, &p256), p16);
         assert_eq!(default_palette_for(8, &p16, &p256), p256);
+    }
+
+    fn pattern(w: u16, h: u16, depth: u8, palette: Option<Vec<Rgb>>) -> Bitmap {
+        let mask = ((1u16 << depth) - 1) as u8;
+        let pixels = (0..w as usize * h as usize)
+            .map(|k| {
+                // trechos repetidos e trechos variados, para exercitar runs e literais
+                let v = if (k / 37) % 3 == 0 {
+                    5
+                } else {
+                    (k * 7 + k / 11) as u8
+                };
+                v & mask
+            })
+            .collect();
+        Bitmap {
+            width: w,
+            height: h,
+            depth,
+            pixels,
+            palette,
+        }
+    }
+
+    #[test]
+    fn encode_roundtrips_every_depth() {
+        for depth in [1u8, 2, 4, 8] {
+            for (w, h) in [(1, 1), (7, 3), (16, 2), (33, 5), (594, 7)] {
+                let b = pattern(w, h, depth, None);
+                let e = encode(&b);
+                assert!(is_pkbm(&e));
+                assert_eq!(decode(&e).unwrap(), b, "{w}x{h}@{depth}");
+            }
+        }
+    }
+
+    #[test]
+    fn encode_roundtrips_embedded_palette() {
+        let pal: Vec<Rgb> = (0..=255u8)
+            .map(|i| Rgb {
+                r: i,
+                g: 255 - i,
+                b: i / 2,
+            })
+            .collect();
+        let b = pattern(144, 84, 8, Some(pal));
+        let e = encode(&b);
+        assert_eq!(u16::from_le_bytes([e[28], e[29]]), 256);
+        assert_eq!(u16::from_le_bytes([e[30], e[31]]), 42);
+        assert_eq!(u32::from_le_bytes(e[38..42].try_into().unwrap()), 1578);
+        assert_eq!(
+            u32::from_le_bytes(e[16..20].try_into().unwrap()),
+            1578 + 144 * 84
+        );
+        assert_eq!(decode(&e).unwrap(), b);
+    }
+
+    #[test]
+    fn encode_header_matches_documents() {
+        let b = pattern(594, 347, 8, None);
+        let e = encode_with(&b, (40, 4));
+        assert_eq!(
+            &e[..16],
+            b"\x01\x00\x00\x00PKBM\x00\x00\x01\x00\x01\x00\x2a\x00"
+        );
+        assert_eq!(
+            u32::from_le_bytes(e[16..20].try_into().unwrap()),
+            42 + 594 * 347
+        );
+        assert_eq!((e[20], e[21]), (40, 4));
+        assert_eq!(decode(&e).unwrap(), b);
+    }
+
+    #[test]
+    fn encode_pads_rows_to_even_bytes() {
+        // 9 pixels de 1 bit: 2 bytes por linha arredondados para 2; 17 pixels: 3 → 4
+        let b = pattern(17, 3, 1, None);
+        let e = encode(&b);
+        let raw = unpack_bits(&mut Reader::new(&e[42..], Format::Pkbm), 12).unwrap();
+        assert_eq!(raw.len(), 12);
+        assert_eq!(decode(&e).unwrap(), b);
+    }
+
+    #[test]
+    fn pack_bits_runs_and_literals() {
+        assert_eq!(pack_bits(&[]), Vec::<u8>::new());
+        assert_eq!(pack_bits(&[7]), vec![0, 7]);
+        assert_eq!(pack_bits(&[7, 7]), vec![1, 7, 7]);
+        assert_eq!(pack_bits(&[7, 7, 7]), vec![0xfe, 7]);
+        assert_eq!(pack_bits(&[1, 2, 3, 3, 3, 4]), vec![1, 1, 2, 0xfe, 3, 0, 4]);
+        // repetição longa quebra em 128
+        assert_eq!(pack_bits(&[9; 300]), vec![0x81, 9, 0x81, 9, 0xd5, 9]);
+        // literal longo quebra em 128
+        let lit: Vec<u8> = (0..200u8).collect();
+        let e = pack_bits(&lit);
+        assert_eq!(e[0], 127);
+        assert_eq!(e[129], 71);
+        assert_eq!(e.len(), 202);
+        let mut r = Reader::new(&e, Format::Pkbm);
+        assert_eq!(unpack_bits(&mut r, 200).unwrap(), lit);
     }
 
     #[test]

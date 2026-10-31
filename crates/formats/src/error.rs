@@ -11,6 +11,7 @@ pub enum Format {
     Pkbm,
     Wave,
     Chnk,
+    Mag,
 }
 
 impl fmt::Display for Format {
@@ -24,6 +25,7 @@ impl fmt::Display for Format {
             Format::Pkbm => "pkbm",
             Format::Wave => "wave",
             Format::Chnk => "chnk",
+            Format::Mag => "mag",
         };
         f.write_str(s)
     }

@@ -33,21 +33,7 @@ pub fn save_png(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// Índice da cor mais próxima (distância euclidiana em RGB) entre as 256 primeiras.
-pub fn nearest(pal: &[Rgb], r: u8, g: u8, b: u8) -> u8 {
-    let d = |p: &Rgb| {
-        let dr = p.r as i32 - r as i32;
-        let dg = p.g as i32 - g as i32;
-        let db = p.b as i32 - b as i32;
-        dr * dr + dg * dg + db * db
-    };
-    pal.iter()
-        .take(256)
-        .enumerate()
-        .min_by_key(|(_, p)| d(p))
-        .map(|(i, _)| i as u8)
-        .unwrap_or(0)
-}
+pub use formats::palette::nearest;
 
 /// Abre um desenho de 594×347 (RGB ou RGBA de 8 bits); outro tamanho ou erro → `None`.
 pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
