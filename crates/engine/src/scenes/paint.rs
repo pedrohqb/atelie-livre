@@ -1740,7 +1740,8 @@ mod tests {
         let fx = p.leave();
         assert!(matches!(&fx[..], [Effect::Log(s)] if s.contains("guardado")));
         assert!(dir.path().join(LAST_NAME).exists());
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+        // ultimo.png mais a cópia com data em .png e em .mag
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
         let q = Paint::new(Some(dir.path().to_path_buf()), &a);
         assert_eq!(painted(&q), 208);
     }

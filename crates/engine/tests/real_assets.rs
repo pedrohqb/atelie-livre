@@ -372,3 +372,21 @@ fn sounds_tool_lists_mag100_categories() {
     assert!(fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
     assert_eq!(p.sounds().spots.len(), 1);
 }
+
+#[test]
+fn gallery_lists_sample_pictures() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    assert_eq!(a.data_dir(), d.as_path());
+    // 16 .MAG em SHARED/USERS/MAGGIE, dos quais 11 são desenhos de 594×347
+    assert_eq!(engine::scenes::gallery::list_samples(&d).len(), 16);
+    let g = engine::scenes::Gallery::new(None, &a);
+    assert_eq!(g.sample_count(), 11);
+    assert_eq!(g.count(), 11);
+    // SAMP6 abre com as cores aproximadas à paleta do programa
+    let pal = &a.palettes(Program::Artist).pal256;
+    let c =
+        engine::paint::store::load_picture(&d.join("SHARED/USERS/MAGGIE/SAMP6.MAG"), pal).unwrap();
+    assert_eq!((c.w, c.h), (594, 347));
+    assert!(c.px.iter().any(|&p| p != 0));
+}

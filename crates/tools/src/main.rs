@@ -4,6 +4,7 @@ mod detect;
 mod extract;
 mod html;
 mod info;
+mod mag;
 
 mod report;
 
@@ -28,6 +29,32 @@ enum Command {
     Info { file: PathBuf },
     /// Extrai imagens, sons e recursos de uma pasta instalada.
     Extract { input: PathBuf, output: PathBuf },
+    /// Converte um desenho .MAG do Fine Artist em PNG.
+    Mag2png { input: PathBuf, output: PathBuf },
+    /// Converte um PNG (de preferência 594×347) em desenho .MAG.
+    Png2mag {
+        input: PathBuf,
+        output: PathBuf,
+        /// Título do desenho.
+        #[arg(long, default_value = "Quadro Novo")]
+        title: String,
+        /// Nome do autor.
+        #[arg(long, default_value = "")]
+        author: String,
+        /// Pasta MSKIDS, para usar a paleta do ARTIST.EXE (padrão: ATELIE_DATA).
+        #[arg(long, env = "ATELIE_DATA")]
+        data: Option<PathBuf>,
+    },
+}
+
+fn simple(r: Result<(), String>) -> ExitCode {
+    match r {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -74,5 +101,19 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Command::Mag2png { input, output } => simple(mag::mag2png(&input, &output)),
+        Command::Png2mag {
+            input,
+            output,
+            title,
+            author,
+            data,
+        } => simple(mag::png2mag(
+            &input,
+            &output,
+            &title,
+            &author,
+            data.as_deref(),
+        )),
     }
 }

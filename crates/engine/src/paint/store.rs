@@ -1,11 +1,14 @@
-//! Desenhos em PNG: gravar o quadro e abrir o último.
+//! Desenhos em PNG e `.MAG`: gravar o quadro e abrir o último.
 
 use super::canvas::{CANVAS_H, CANVAS_W, Canvas};
+use formats::mag;
 use formats::palette::Rgb;
 use std::io;
 use std::path::Path;
 
 pub const LAST_NAME: &str = "ultimo.png";
+/// Título dos desenhos gravados em `.MAG`.
+pub const MAG_TITLE: &str = "Quadro Novo";
 
 /// Grava o quadro como PNG RGB, convertendo os índices pela paleta.
 pub fn save_png(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
@@ -33,21 +36,7 @@ pub fn save_png(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// Índice da cor mais próxima (distância euclidiana em RGB) entre as 256 primeiras.
-pub fn nearest(pal: &[Rgb], r: u8, g: u8, b: u8) -> u8 {
-    let d = |p: &Rgb| {
-        let dr = p.r as i32 - r as i32;
-        let dg = p.g as i32 - g as i32;
-        let db = p.b as i32 - b as i32;
-        dr * dr + dg * dg + db * db
-    };
-    pal.iter()
-        .take(256)
-        .enumerate()
-        .min_by_key(|(_, p)| d(p))
-        .map(|(i, _)| i as u8)
-        .unwrap_or(0)
-}
+pub use formats::palette::nearest;
 
 /// Abre um desenho de 594×347 (RGB ou RGBA de 8 bits); outro tamanho ou erro → `None`.
 pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
@@ -81,9 +70,68 @@ pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
     Some(c)
 }
 
+/// Abre um desenho `.MAG` do Fine Artist de 594×347; as cores da paleta do
+/// documento são aproximadas à do programa. Outro tamanho ou erro → `None`.
+pub fn load_mag(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
+    let data = std::fs::read(path).ok()?;
+    let pic = mag::read(&data).ok()?;
+    if (pic.width as u32, pic.height as u32) != (CANVAS_W, CANVAS_H) {
+        return None;
+    }
+    let mut c = Canvas::new(CANVAS_W, CANVAS_H);
+    if pic.palette == pal {
+        c.px.copy_from_slice(&pic.pixels);
+        return Some(c);
+    }
+    let mut map = [None; 256];
+    for (dst, &i) in c.px.iter_mut().zip(&pic.pixels) {
+        *dst = *map[i as usize].get_or_insert_with(|| {
+            let p = pic.palette[i as usize];
+            nearest(pal, p.r, p.g, p.b)
+        });
+    }
+    Some(c)
+}
+
+/// Abre um desenho pela extensão: `.png` ou `.mag` (sem distinguir maiúsculas).
+pub fn load_picture(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
+    let ext = path.extension()?.to_str()?;
+    if ext.eq_ignore_ascii_case("png") {
+        load_png(path, pal)
+    } else if ext.eq_ignore_ascii_case("mag") {
+        load_mag(path, pal)
+    } else {
+        None
+    }
+}
+
+/// Grava o quadro como `.MAG` do Fine Artist (título "Quadro Novo", sem autor).
+pub fn save_mag(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
+    let mut palette = pal.iter().take(256).copied().collect::<Vec<_>>();
+    palette.resize(256, Rgb { r: 0, g: 0, b: 0 });
+    let pic = mag::Picture {
+        title: MAG_TITLE.into(),
+        author: String::new(),
+        palette,
+        width: c.w as u16,
+        height: c.h as u16,
+        pixels: c.px.clone(),
+    };
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    std::fs::write(&tmp, mag::write(&pic))?;
+    std::fs::rename(&tmp, path)
+}
+
 /// `desenho-AAAAMMDD-HHMMSS.png` em UTC.
 pub fn timestamp_name(unix_secs: u64) -> String {
     format!("desenho-{}.png", timestamp(unix_secs))
+}
+
+/// `desenho-AAAAMMDD-HHMMSS` em UTC.
+pub fn timestamp_stem(unix_secs: u64) -> String {
+    format!("desenho-{}", timestamp(unix_secs))
 }
 
 /// `AAAAMMDD-HHMMSS` em UTC, para os nomes dos arquivos guardados.
@@ -108,7 +156,8 @@ pub fn timestamp(unix_secs: u64) -> String {
     )
 }
 
-/// Grava `ultimo.png` e, se o quadro mudou, também uma cópia com data e hora.
+/// Grava `ultimo.png` e, se o quadro mudou, também uma cópia com data e hora
+/// em PNG e em `.MAG` (o formato do Fine Artist).
 pub fn save_drawing(
     dir: &Path,
     c: &Canvas,
@@ -121,8 +170,11 @@ pub fn save_drawing(
     let last = dir.join(LAST_NAME);
     save_png(c, pal, &last).map_err(|e| fail(e, &last))?;
     if changed {
-        let named = dir.join(timestamp_name(now));
+        let stem = timestamp_stem(now);
+        let named = dir.join(format!("{stem}.png"));
         save_png(c, pal, &named).map_err(|e| fail(e, &named))?;
+        let named = dir.join(format!("{stem}.mag"));
+        save_mag(c, pal, &named).map_err(|e| fail(e, &named))?;
     }
     Ok(())
 }
@@ -216,6 +268,57 @@ mod tests {
         save_drawing(&d, &c, &pal(), true, 1_793_404_800).unwrap();
         assert!(d.join(LAST_NAME).exists());
         assert!(d.join("desenho-20261031-000000.png").exists());
+        let m = d.join("desenho-20261031-000000.mag");
+        assert!(m.exists());
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 3);
+        let pic = formats::mag::read(&std::fs::read(&m).unwrap()).unwrap();
+        assert_eq!(pic.title, MAG_TITLE);
+        assert_eq!(pic.author, "");
+        assert_eq!(pic.palette, pal());
+        assert_eq!(pic.pixels, c.px);
+    }
+
+    #[test]
+    fn mag_roundtrip_and_load_picture() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = Canvas::new(CANVAS_W, CANVAS_H);
+        for (k, v) in c.px.iter_mut().enumerate() {
+            *v = (k % 253) as u8;
+        }
+        let m = dir.path().join("a.MAG");
+        save_mag(&c, &pal(), &m).unwrap();
+        assert_eq!(load_mag(&m, &pal()), Some(c.clone()));
+        assert_eq!(load_picture(&m, &pal()), Some(c.clone()));
+        let p = dir.path().join("a.png");
+        save_png(&c, &pal(), &p).unwrap();
+        assert_eq!(load_picture(&p, &pal()), Some(c.clone()));
+        assert_eq!(load_picture(&dir.path().join("a.txt"), &pal()), None);
+        assert_eq!(load_picture(&dir.path().join("a"), &pal()), None);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn load_mag_with_other_palette_uses_nearest_colour() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = Canvas::new(CANVAS_W, CANVAS_H);
+        c.px.fill(3);
+        // paleta invertida: o índice 3 da gravação tem a cor do índice 252 da nossa
+        let inv: Vec<Rgb> = pal().into_iter().rev().collect();
+        let m = dir.path().join("b.mag");
+        save_mag(&c, &inv, &m).unwrap();
+        let got = load_mag(&m, &pal()).unwrap();
+        assert_eq!(got.px[0], 252);
+    }
+
+    #[test]
+    fn load_mag_wrong_size_or_garbage_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = dir.path().join("c.mag");
+        save_mag(&Canvas::new(10, 10), &pal(), &m).unwrap();
+        assert_eq!(load_mag(&m, &pal()), None);
+        std::fs::write(&m, b"CHNK lixo").unwrap();
+        assert_eq!(load_mag(&m, &pal()), None);
+        assert_eq!(load_mag(&dir.path().join("nao.mag"), &pal()), None);
     }
 
     #[test]

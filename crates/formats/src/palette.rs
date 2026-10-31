@@ -68,6 +68,39 @@ pub fn parse_ctbl(data: &[u8]) -> Result<Vec<Rgb>> {
     Ok(out)
 }
 
+/// Índice da cor mais próxima (distância euclidiana em RGB) entre as 256 primeiras.
+pub fn nearest(pal: &[Rgb], r: u8, g: u8, b: u8) -> u8 {
+    let d = |p: &Rgb| {
+        let dr = p.r as i32 - r as i32;
+        let dg = p.g as i32 - g as i32;
+        let db = p.b as i32 - b as i32;
+        dr * dr + dg * dg + db * db
+    };
+    pal.iter()
+        .take(256)
+        .enumerate()
+        .min_by_key(|(_, p)| d(p))
+        .map(|(i, _)| i as u8)
+        .unwrap_or(0)
+}
+
+/// Grava um chunk `CTBL` little-endian com a paleta: marca de ordem (1), 7,
+/// a etiqueta `COBJ` (é a que os desenhos salvos trazem), contagem e
+/// contagem × { u16 r, u16 g, u16 b } com a cor no byte alto.
+pub fn write_ctbl(pal: &[Rgb]) -> Vec<u8> {
+    let mut v = Vec::with_capacity(10 + 6 * pal.len());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&7u16.to_le_bytes());
+    v.extend_from_slice(b"COBJ");
+    v.extend_from_slice(&(pal.len() as u16).to_le_bytes());
+    for c in pal {
+        v.extend_from_slice(&((c.r as u16) << 8).to_le_bytes());
+        v.extend_from_slice(&((c.g as u16) << 8).to_le_bytes());
+        v.extend_from_slice(&((c.b as u16) << 8).to_le_bytes());
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,6 +169,45 @@ mod tests {
         assert!(parse_ctbl(&d).is_err());
         let d = ctbl(false, &[(1, 2, 3)]);
         assert!(parse_ctbl(&d[..d.len() - 1]).is_err());
+    }
+
+    #[test]
+    fn nearest_picks_closest_among_first_256() {
+        let pal = [
+            Rgb { r: 0, g: 0, b: 0 },
+            Rgb {
+                r: 255,
+                g: 255,
+                b: 255,
+            },
+            Rgb { r: 200, g: 0, b: 0 },
+        ];
+        assert_eq!(nearest(&pal, 10, 10, 10), 0);
+        assert_eq!(nearest(&pal, 250, 250, 250), 1);
+        assert_eq!(nearest(&pal, 180, 20, 0), 2);
+        assert_eq!(nearest(&[], 1, 2, 3), 0);
+        let mut big = vec![Rgb { r: 0, g: 0, b: 0 }; 256];
+        big.push(Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        });
+        assert_eq!(nearest(&big, 255, 255, 255), 0);
+    }
+
+    #[test]
+    fn write_ctbl_roundtrips() {
+        let pal: Vec<Rgb> = (0..=255u8)
+            .map(|i| Rgb {
+                r: i,
+                g: 255 - i,
+                b: i ^ 0x55,
+            })
+            .collect();
+        let d = write_ctbl(&pal);
+        assert_eq!(d.len(), 1546);
+        assert_eq!(&d[..10], b"\x01\x00\x07\x00COBJ\x00\x01");
+        assert_eq!(parse_ctbl(&d).unwrap(), pal);
     }
 
     #[test]

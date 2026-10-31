@@ -5,7 +5,8 @@ do Creative Writer; os de exemplo ficam em `SHARED/USERS/` e os dos usuários
 em `USERS/`), do arquivo de usuários `MSKIDS.INF` e das bibliotecas de
 `SHARED/STUFF` (clip-art `.ART`, molduras `.BOR`, animações `.ANI`, "checks"
 `.CHK` e bibliotecas de som `MAG100.SND`/`MAX100.SND`). Validado nos 54
-arquivos `CHNK` da instalação, inclusive em 18 `CHNK` aninhados.
+arquivos `CHNK` da instalação, inclusive em 18 `CHNK` aninhados. Os desenhos
+salvos estão detalhados em `mag.md`.
 
 É parente, mas não igual, ao formato `CHN2` do framework Kauai do 3D Movie
 Maker (`kauai/SRC/CHUNK.CPP`): mesma ideia de "chunks" identificados por
@@ -108,6 +109,17 @@ Exemplo (`2MAX100.BOR`, primeiro registro, 46 bytes):
 | `0MAG100.BOR` | 33 | 11 | — | — |
 | `MAG100.SND` | 54 | — | 50 | — |
 | `MAX100.SND` | 67 | — | 63 | — |
+
+## Gravação
+
+`chnk::write` produz arquivos little-endian 4/4 no layout dos documentos
+do Windows: dados das partes em sequência a partir do offset 0x200, sem
+alinhamento entre elas; índice no resto do primeiro bloco (cabem 20 registros
+de 24 bytes); se sobrarem registros, um segundo trecho após os dados, num
+offset múltiplo de 512; arquivo completado com zeros até múltiplo de 512. O
+campo 20 é o fim dos dados quando o índice cabe no primeiro bloco e o tamanho
+total do arquivo quando há segundo trecho, como nos exemplos (`SAMP6.MAG`:
+35268 num arquivo de 35328; `SAMP12.MAG`: 62464 = tamanho).
 
 ## Espaço livre
 
