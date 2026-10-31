@@ -2,9 +2,10 @@
 
 use crate::Image;
 use crate::paths::{find_ci, walk_files};
+use formats::fnt::Font;
 use formats::render::{Palettes, bitmap_to_rgba};
 use formats::wave::Pcm;
-use formats::{chnk, glob, ne, pkbm, wave, winres};
+use formats::{chnk, fnt, glob, ne, pkbm, wave, winres};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -114,6 +115,7 @@ pub struct Assets {
     sounds: RefCell<HashMap<SoundRef, Option<Rc<Pcm>>>>,
     cursors: RefCell<HashMap<CursorRef, Option<Cursor>>>,
     warned: RefCell<HashSet<String>>,
+    fonts: Vec<Rc<Font>>,
 }
 
 /// Quadriculado magenta e preto de 4 px, usado no lugar de imagens ausentes.
@@ -255,6 +257,18 @@ impl Assets {
             }
         }
 
+        // fonte dos balões e barras: "Pablo Graphos" (SHARED/STUFF/PABLO.FON)
+        let fonts = read_ci(dir, "SHARED/STUFF/PABLO.FON")
+            .and_then(|d| {
+                let f = ne::parse(&d).ok()?;
+                Some(
+                    f.of_kind("FONT")
+                        .filter_map(|r| fnt::parse(r.data).ok())
+                        .map(Rc::new)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_default();
         Ok(Assets {
             exe,
             pic,
@@ -266,7 +280,13 @@ impl Assets {
             sounds: RefCell::new(HashMap::new()),
             cursors: RefCell::new(HashMap::new()),
             warned: RefCell::new(HashSet::new()),
+            fonts,
         })
+    }
+
+    /// Fonte "Pablo Graphos" no tamanho em pontos (6, 8 ou 16), se instalada.
+    pub fn font(&self, points: u16) -> Option<Rc<Font>> {
+        self.fonts.iter().find(|f| f.points == points).cloned()
     }
 
     /// Paletas de 16 e 256 cores do programa.

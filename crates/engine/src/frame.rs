@@ -108,6 +108,29 @@ impl Frame {
         }
     }
 
+    /// Texto numa fonte de bitmap do Windows, com o topo da linha em `y`.
+    /// Devolve a largura desenhada.
+    pub fn text_font(
+        &mut self,
+        font: &formats::fnt::Font,
+        x: i32,
+        y: i32,
+        s: &str,
+        rgb: [u8; 3],
+    ) -> i32 {
+        let mut gx = x;
+        for g in font.glyphs(s) {
+            for (k, &on) in g.bits.iter().enumerate() {
+                if on {
+                    let w = g.width as usize;
+                    self.put(gx + (k % w) as i32, y + (k / w) as i32, rgb);
+                }
+            }
+            gx += g.width as i32;
+        }
+        gx - x
+    }
+
     /// Texto com a fonte 8×8; caracteres sem glifo viram `?`.
     pub fn text(&mut self, x: i32, y: i32, s: &str, rgb: [u8; 3]) {
         for (k, c) in s.chars().enumerate() {

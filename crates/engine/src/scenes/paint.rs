@@ -466,7 +466,7 @@ impl Paint {
         [p.r, p.g, p.b]
     }
 
-    fn draw_chrome(&self, f: &mut Frame) {
+    fn draw_chrome(&self, f: &mut Frame, a: &Assets) {
         f.fill(DARK);
         // bordas laranja: preto, claro, escuro, preto (relevo)
         for (y, c) in [(0, BLACK), (1, ORANGE), (2, ORANGE), (3, BROWN), (4, BLACK)] {
@@ -528,8 +528,19 @@ impl Paint {
             f.rect(x1, 461, 1, 14, BLACK);
             f.rect(x0 + 1, 461, x1 - x0 - 1, 14, WHITE);
         }
-        f.text(64, 464, "Ateliê", BLACK);
-        f.text(276, 464, "Quadro Novo", BLACK);
+        // textos na "Pablo Graphos" de 8 pontos, como no original
+        match a.font(8) {
+            Some(font) => {
+                f.text_font(&font, 69, 461, "Ateliê", BLACK);
+                let name = "Quadro Novo";
+                let w = font.width(name) as i32;
+                f.text_font(&font, 320 - w / 2, 462, name, BLACK);
+            }
+            None => {
+                f.text(64, 464, "Ateliê", BLACK);
+                f.text(276, 464, "Quadro Novo", BLACK);
+            }
+        }
     }
 
     fn draw_tools(&self, f: &mut Frame, a: &Assets) {
@@ -709,7 +720,7 @@ impl Scene for Paint {
     }
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
-        self.draw_chrome(frame);
+        self.draw_chrome(frame, assets);
         self.draw_tools(frame, assets);
         self.draw_options(frame, assets);
         self.draw_columns(frame);

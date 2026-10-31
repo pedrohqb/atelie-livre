@@ -18,9 +18,30 @@ pub fn decode(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// Byte Windows-1252 de um caractere; `None` se não houver.
+pub fn encode_char(c: char) -> Option<u8> {
+    match c as u32 {
+        0..=0x7f | 0xa0..=0xff => Some(c as u32 as u8),
+        _ => HIGH
+            .iter()
+            .position(|&h| h == c && h != '\u{fffd}')
+            .map(|i| 0x80 + i as u8),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encode_roundtrip() {
+        for b in (0u8..=255).filter(|b| !matches!(b, 0x81 | 0x8d | 0x8f | 0x90 | 0x9d)) {
+            let c = decode(&[b]).chars().next().unwrap();
+            assert_eq!(encode_char(c), Some(b));
+        }
+        assert_eq!(encode_char('ê'), Some(0xea));
+        assert_eq!(encode_char('中'), None);
+    }
 
     #[test]
     fn cp1252_portuguese() {

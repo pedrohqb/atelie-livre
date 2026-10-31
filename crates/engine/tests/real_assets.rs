@@ -252,3 +252,16 @@ fn clip_art_sticker_is_placed_at_full_size() {
     p.update(&[c(510, 95)], 0.0, &a);
     assert_eq!(p.stickers().page(), 1);
 }
+
+#[test]
+fn pablo_font_loads_three_sizes() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    for (pt, h) in [(6, 12), (8, 13), (16, 21)] {
+        let f = a.font(pt).expect("fonte");
+        assert_eq!(f.height, h);
+        assert_eq!(f.name, "Pablo Graphos");
+    }
+    // "Quadro Novo" mede 65 pixels na barra do original
+    assert_eq!(a.font(8).unwrap().width("Quadro Novo"), 65);
+}
