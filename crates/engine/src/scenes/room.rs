@@ -4,6 +4,7 @@
 
 use super::rooms_data::{self, Element};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
+use crate::balloon::Balloon;
 use crate::paint::Canvas;
 use crate::paint::store::{LAST_NAME, load_png};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
@@ -25,6 +26,10 @@ type Rect = (i32, i32, i32, i32);
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Action {
     Go(SceneId),
+    /// Quadro novo: apaga o último desenho e abre a pintura.
+    NewPicture,
+    /// Fecha o balão.
+    Close,
     Floor(Floor),
     Quit,
     Soon(&'static str),
@@ -92,6 +97,79 @@ impl Floor {
         }
     }
 
+    /// Balão do McZee ou da Maggie ao chegar ao andar (textos do original).
+    fn balloon(self) -> Balloon {
+        let (x, y, w) = match self {
+            Floor::Lobby => (300, 20, 300),
+            Floor::Studio => (130, 230, 200),
+            Floor::Projects => (70, 150, 300),
+            Floor::Tricks => (70, 120, 260),
+        };
+        let (text, options): (&str, &[&str]) = match self {
+            Floor::Lobby => (
+                "Oi! Eu sou o McZee. O que você quer fazer?",
+                &[
+                    "Começar a desenhar por conta própria",
+                    "Fazer uma história em quadrinhos, um botão ou adesivo, ou montar um Desenho Animado",
+                    "Aprender alguns truques de desenho",
+                    "Copiar, apagar ou limpar desenhos",
+                ],
+            ),
+            Floor::Studio => (
+                "Oba! Este é o Ateliê de Pintura! O que você quer fazer?",
+                &[
+                    "Pintar alguma coisa nova",
+                    "Trabalhar na minha última obra",
+                    "Trabalhar em um quadro mais antigo",
+                    "Outra coisa?",
+                ],
+            ),
+            Floor::Projects => (
+                "Aqui é a Maggie! Estamos no Andar dos Projetos! Vamos fazer alguma coisa juntos?",
+                &[
+                    "É, uma história em quadrinhos",
+                    "OK, vamos fazer um botão ou um adesivo",
+                    "Quero fazer um desenho animado",
+                    "Outra coisa?",
+                ],
+            ),
+            Floor::Tricks => (
+                "Seja bem-vindo ao andar dos Truques de Desenho! Eu vou te mostrar os meus truques secretos para desenhar. Com que truque você quer que eu comece?",
+                &[
+                    "Um truque básico",
+                    "Fazendo uma coisa parecer tridimensional",
+                    "Quero fazer outra coisa",
+                ],
+            ),
+        };
+        Balloon {
+            x,
+            y,
+            w,
+            text: text.into(),
+            options: options.iter().map(|o| o.to_string()).collect(),
+        }
+    }
+
+    /// Ação da opção `k` do balão.
+    fn balloon_action(self, k: usize) -> Action {
+        match (self, k) {
+            (Floor::Lobby, 0) => Action::Floor(Floor::Studio),
+            (Floor::Lobby, 1) => Action::Floor(Floor::Projects),
+            (Floor::Lobby, 2) => Action::Floor(Floor::Tricks),
+            (Floor::Lobby, _) => Action::Go(SceneId::Gallery),
+            (Floor::Studio, 0) => Action::NewPicture,
+            (Floor::Studio, 1) => Action::Go(SceneId::Paint),
+            (Floor::Studio, 2) => Action::Go(SceneId::Gallery),
+            (Floor::Projects, 0) => Action::Soon("história em quadrinhos"),
+            (Floor::Projects, 1) => Action::Soon("botão ou adesivo"),
+            (Floor::Projects, 2) => Action::Soon("desenho animado"),
+            (Floor::Tricks, 0) => Action::Soon("truques básicos"),
+            (Floor::Tricks, 1) => Action::Soon("truques 3D"),
+            _ => Action::Close,
+        }
+    }
+
     pub fn number(self) -> u8 {
         match self {
             Floor::Lobby => 1,
@@ -112,6 +190,8 @@ pub struct Room {
     hotspots: Vec<Hotspot>,
     last_drawing: Option<Canvas>,
     pal: Vec<Rgb>,
+    drawings: Option<PathBuf>,
+    balloon: Option<Balloon>,
 }
 
 impl Room {
@@ -127,10 +207,40 @@ impl Room {
             .and_then(|d| load_png(&d.join(LAST_NAME), &pal));
         Room {
             common: KidCommon::new(click),
-            floor,
             hotspots: floor.hotspots(),
             last_drawing,
             pal,
+            drawings,
+            balloon: Some(floor.balloon()),
+            floor,
+        }
+    }
+
+    pub fn balloon_open(&self) -> bool {
+        self.balloon.is_some()
+    }
+
+    fn act(&mut self, action: Action, fx: &mut Vec<Effect>) {
+        match action {
+            Action::Go(id) => fx.push(Effect::ChangeScene(id)),
+            Action::Floor(fl) => self.set_floor(fl),
+            Action::Quit => fx.push(Effect::Quit),
+            Action::Close => self.balloon = None,
+            Action::NewPicture => {
+                if let Some(d) = &self.drawings {
+                    let blank = Canvas::new(crate::paint::CANVAS_W, crate::paint::CANVAS_H);
+                    if let Err(e) =
+                        crate::paint::store::save_png(&blank, &self.pal, &d.join(LAST_NAME))
+                    {
+                        fx.push(Effect::Log(format!("quadro novo: {e}")));
+                    }
+                }
+                fx.push(Effect::ChangeScene(SceneId::Paint));
+            }
+            Action::Soon(what) => {
+                fx.push(Effect::Log(format!("{what}: ainda não disponível")));
+                self.balloon = None;
+            }
         }
     }
 
@@ -141,6 +251,7 @@ impl Room {
     fn set_floor(&mut self, floor: Floor) {
         self.floor = floor;
         self.hotspots = floor.hotspots();
+        self.balloon = Some(floor.balloon());
     }
 }
 
@@ -158,7 +269,7 @@ fn blit_white_transparent(f: &mut Frame, img: &crate::Image, x: i32, y: i32) {
 }
 
 impl Scene for Room {
-    fn update(&mut self, input: &[Input], _dt: f32, _assets: &Assets) -> Vec<Effect> {
+    fn update(&mut self, input: &[Input], _dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
         for i in input {
             let Input::Click {
@@ -169,15 +280,24 @@ impl Scene for Room {
             else {
                 continue;
             };
+            if let Some(b) = &self.balloon {
+                if let Some(k) = b.hit(assets, x, y) {
+                    let action = self.floor.balloon_action(k);
+                    self.act(action, &mut fx);
+                    break;
+                }
+                if b.contains(assets, x, y) {
+                    continue;
+                }
+                // clicar fora do balão só o fecha
+                self.balloon = None;
+                continue;
+            }
             let Some(hs) = self.hotspots.iter().find(|h| inside(h.rect, x, y)) else {
                 continue;
             };
-            match hs.action.clone() {
-                Action::Go(id) => fx.push(Effect::ChangeScene(id)),
-                Action::Floor(fl) => self.set_floor(fl),
-                Action::Quit => fx.push(Effect::Quit),
-                Action::Soon(what) => fx.push(Effect::Log(format!("{what}: ainda não disponível"))),
-            }
+            let action = hs.action.clone();
+            self.act(action, &mut fx);
             break;
         }
         fx
@@ -216,6 +336,9 @@ impl Scene for Room {
                 }
             }
         }
+        if let Some(b) = &self.balloon {
+            b.draw(frame, assets);
+        }
     }
 }
 
@@ -236,20 +359,31 @@ mod tests {
     fn lobby_directory_and_pole_tour() {
         let (_d, a) = empty_assets();
         let mut r = Room::new(Floor::Lobby, None, None, &a);
+        assert!(r.balloon_open());
+        // clique fora do balão fecha; depois os pontos quentes funcionam
+        r.update(&[click(140, 300)], 0.0, &a);
+        assert!(!r.balloon_open());
         r.update(&[click(140, 86)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Studio);
-        r.update(&[click(585, 100)], 0.0, &a);
+        assert!(r.balloon_open());
+        r.update(&[click(600, 470), click(585, 100)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Projects);
-        r.update(&[click(585, 100)], 0.0, &a);
+        r.update(&[click(600, 470), click(585, 100)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Tricks);
-        r.update(&[click(550, 100)], 0.0, &a);
+        r.update(&[click(600, 470), click(550, 100)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Lobby);
+        // opção 1 do balão do saguão: Oficina de Projetos
+        let b = r.balloon.as_ref().unwrap();
+        let (bx, by, _, _) = b.option_rect(&a, 1);
+        r.update(&[click(bx + 20, by + 3)], 0.0, &a);
+        assert_eq!(r.floor(), Floor::Projects);
     }
 
     #[test]
     fn easel_opens_paint_and_tchau_quits() {
         let (_d, a) = empty_assets();
         let mut r = Room::new(Floor::Studio, None, None, &a);
+        r.update(&[click(600, 470)], 0.0, &a);
         let fx = r.update(&[click(190, 220)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
         let fx = r.update(&[click(496, 260)], 0.0, &a);
@@ -276,6 +410,22 @@ mod tests {
         let mut f = Frame::new(640, 480);
         r.draw(&mut f, &a);
         assert_eq!(f.pixel(190, 220)[..3], [0, 0, 0]);
+    }
+
+    #[test]
+    fn studio_balloon_new_picture_blanks_last() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let pal = a.palettes(Program::Artist).pal256.clone();
+        let mut c = Canvas::new(crate::paint::CANVAS_W, crate::paint::CANVAS_H);
+        c.px.fill(255);
+        crate::paint::store::save_drawing(dir.path(), &c, &pal, false, 0).unwrap();
+        let mut r = Room::new(Floor::Studio, None, Some(dir.path().to_path_buf()), &a);
+        let (bx, by, _, _) = r.balloon.as_ref().unwrap().option_rect(&a, 0);
+        let fx = r.update(&[click(bx + 20, by + 3)], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        let last = load_png(&dir.path().join(LAST_NAME), &pal).unwrap();
+        assert!(last.px.iter().all(|&v| v == 0));
     }
 
     #[test]
