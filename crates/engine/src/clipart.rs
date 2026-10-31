@@ -28,6 +28,8 @@ impl ClipItem {
 pub struct ClipRoll {
     /// Número do `CARO`.
     pub id: u16,
+    /// Biblioteca de origem (`MAXMAG10.ART`, `MAX100.ART` ou `MAG100.ART`).
+    pub library: &'static str,
     pub name: String,
     pub icon: Option<Rc<Image>>,
     pub items: Vec<ClipItem>,
@@ -95,6 +97,7 @@ pub fn load_rolls(assets: &Assets) -> Vec<ClipRoll> {
             if !items.is_empty() {
                 rolls.push(ClipRoll {
                     id: c.id,
+                    library: name,
                     name: c.name.clone().unwrap_or_default(),
                     icon,
                     items,

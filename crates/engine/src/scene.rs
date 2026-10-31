@@ -68,6 +68,10 @@ pub enum SceneId {
     /// Galeria de desenhos guardados.
     Gallery,
     Browser,
+    /// Abertura do Creative Writer.
+    WriterSplash,
+    /// Escritório do Creative Writer (editor de texto).
+    Writer,
 }
 
 /// Pedidos de uma cena à plataforma.

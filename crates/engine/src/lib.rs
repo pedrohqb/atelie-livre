@@ -11,6 +11,7 @@ pub mod paint;
 pub mod paths;
 pub mod scene;
 pub mod scenes;
+pub mod writer;
 
 pub use formats::wave::Pcm;
 pub use formats::winres::Image;

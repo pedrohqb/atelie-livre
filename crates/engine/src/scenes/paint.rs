@@ -21,12 +21,8 @@ use formats::palette::Rgb;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-/// Cores da coluna esquerda: índices da paleta de 256 cores, de cima para baixo.
-pub const COLORS: [u8; 38] = [
-    0, 2, 18, 19, 20, 21, 22, 5, 6, 25, 26, 27, 28, 9, 10, 31, 32, 33, 7, 8, 36, 37, 38, 11, 12,
-    41, 42, 43, 3, 4, 46, 47, 48, 14, 13, 15, 52, 1,
-];
-const SWATCHES: usize = 38;
+pub use crate::paint::COLORS;
+const SWATCHES: usize = COLORS.len();
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
