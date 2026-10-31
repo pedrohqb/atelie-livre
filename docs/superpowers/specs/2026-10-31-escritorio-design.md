@@ -73,3 +73,43 @@ Depende de: 2 (Fine Artist) — reaproveita Assets, Frame, Balloon, fonte Pablo,
 Igual à pintura (moldura, barra, faixa, barra inferior) com os ids de
 `WRITER.PIC` acima; página branca (23,108)–(615,456) com borda preta de 1 px
 fora; cursor de texto = linha vertical de 2 px na cor atual, piscando a 0,5 s.
+
+## 4. Decisões tomadas na implementação (onde a seção 2 era omissa)
+
+- **Modelo**: cada parágrafo guarda uma lista de itens (caractere com estilo
+  ou adesivo); os "trechos" são derivados (`Paragraph::runs`), o que deixa o
+  cursor e a inserção simples (`writer/doc.rs`). O estilo de digitação é
+  explícito (`Document::style`): mudar de tamanho, cor ou estilo vale para o
+  que for digitado a seguir, e mover o cursor não o altera (seleção fica
+  para depois, como na seção 2.5). Alinhamento vale para o parágrafo do
+  cursor; Enter herda o alinhamento.
+- **Páginas**: área de texto de 545×301 px (página de 593×349 com margens
+  de 24 px); a diagramação (`writer/layout.rs`) nunca deixa uma linha entre
+  duas páginas. Ao digitar ou mover o cursor, a página mostrada passa a ser a
+  do cursor; PageUp/PageDown e as setas da barra de baixo só trocam a página.
+  Clique na página põe o cursor na posição mais próxima.
+- **Ícones de `WRITER.PIC`**: cada ícone vem em trinca (`id` colorido,
+  `id+1` em preto e branco = ativo, `id+2` máscara); a Página (`0800`), o
+  Ovo (`0212`), a Tesoura (`08e8`), o Livro (`0804`) e Imprimir (`0226`)
+  têm só colorido + máscara em `id+1`. Rolos dos adesivos: moldura `0249`
+  (máscara `024b`), tampas `0245` e `0239`. Itens da lista de alinhamento:
+  `0bc9`, `0bcb`, `0bcd`, `0bcf` (97×36). Explosão da tesoura: `0839`.
+- **Listas suspensas**: desenhadas com retângulos e a "Pablo Graphos" de 8
+  pontos, sob o botão, a partir de y = 105; fecham ao escolher ou a qualquer
+  outro clique (que não faz mais nada). A lista de estilos alterna cada
+  estilo; "Simples" desliga os três. A lista de tipos de letra tem só a
+  "Pablo Graphos" e a explicação.
+- **Tesoura**: a faixa mostra só a explosão (`0839` em (25,58)); recortar,
+  copiar, colar e apagar ficam para depois.
+- **Ovo**: um nível, alternando desfazer/refazer como na pintura; a
+  digitação contínua é uma ação até 1 s de pausa, movimento do cursor ou
+  ação própria (Enter, adesivo, alinhamento, explosão).
+- **Adesivos**: só os rolos de `MAXMAG10.ART` e `MAX100.ART` (`ClipRoll`
+  ganhou o campo `library`); o desenho de 1 bit é pintado em preto na
+  página, alinhado pela base. Adesivo sem desenho (rolo inexistente nos
+  dados) é um quadrado de 32×32 com um X. Ao abrir `ultimo.txt`, os tamanhos
+  são recuperados dos desenhos.
+- **Cursor** pisca com período de 1 s (0,5 s aceso), 2 px na cor de
+  digitação, com a altura do estilo do caractere anterior.
+- **Saída**: a porta encerra o programa (`Effect::Quit`), já que não há
+  prédio; o texto é guardado em `leave()`.
