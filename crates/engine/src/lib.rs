@@ -9,5 +9,6 @@ pub mod paths;
 pub mod scene;
 pub mod scenes;
 
+pub use formats::wave::Pcm;
 pub use formats::winres::Image;
 pub use frame::{Frame, SCREEN_H, SCREEN_W};

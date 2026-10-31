@@ -16,3 +16,4 @@ engine = { path = "../engine" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
+sdl3 = { version = "0.20", features = ["build-from-source-static"] }

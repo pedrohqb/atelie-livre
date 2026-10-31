@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
+mod audio;
 mod config;
+mod platform;
+mod run;
 
 use clap::Parser;
 
@@ -13,5 +16,5 @@ fn main() {
         eprintln!("aviso: {w}");
     }
     let cfg = config::effective(cfg, &args);
-    println!("{cfg:?} browser={} frames={:?}", args.browser, args.frames);
+    std::process::exit(run::run(cfg, &args));
 }
