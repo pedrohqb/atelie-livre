@@ -37,6 +37,14 @@ que você já possui.
   dessas salas, sem o McZee e a Maggie. O quadro na estante do Ateliê (e a
   Galeria do saguão) abre a galeria dos desenhos guardados; clique num deles
   para continuar pintando.
+- Oficina de Projetos — Desenho animado: uma apresentação de figuras já
+  feitas (como no original): abra a pasta e clique nos desenhos para
+  preencher os nove espaços numerados, dê a cada um um efeito de transição
+  (corte, dissolver, cortinas, dado), um som e uma legenda, e toque com
+  TOCAR / PAUSA / PARAR na velocidade da régua TEMPO. Ao sair, a animação
+  vai para `desenhos/animacao-AAAAMMDD-HHMMSS/` (figuras em PNG,
+  `animacao.json` e um `animacao.gif` com as transições) e é reaberta de
+  `ultimo-animacao/` na próxima vez.
 
 - Ao abrir, o Ateliê Livre pergunta qual programa usar (ou `--program
   artist|writer`, ou `program = "artist"|"writer"|"ask"` no config).

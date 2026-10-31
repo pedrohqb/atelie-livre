@@ -88,6 +88,59 @@ seção 4. Resumo:
   uso (ex.: "Pincel — Para pintar o quadro: segure o botão do mouse e
   arraste"). Ainda não reproduzidos.
 
+## Oficina de Projetos
+
+Os projetos da Maggie são modos da tela de pintura (mesmo quadro de 594×347
+em (23,109), mesma barra de ferramentas), com um rótulo próprio na barra
+inferior e um painel extra na faixa de opções. Desenho em
+[`docs/superpowers/specs/2026-10-31-projetos-design.md`](../superpowers/specs/2026-10-31-projetos-design.md).
+
+### Desenho animado
+
+Apresentação de figuras já feitas, como descrevem os roteiros de ajuda do
+original (`WHAT` `3a00`); a geometria não foi medida no Wine e é uma
+remontagem "usável primeiro". Código em
+`crates/engine/src/scenes/projects/flipbook.rs`.
+
+- **Faixa de opções** (y 56..104): TOCAR / PAUSA / PARAR (`3a61`, `3a59`,
+  `3a5d`, 70×12, em x 10, y 58/73/88; o botão ativo usa a versão `+3` com
+  um contorno vermelho); régua TEMPO (`02f7`, 207×58, desenhada em x 86 com
+  os 10 px de parafusos de cima cortados), cursor `3a65` sobre o trilho
+  amarelo com 5 paradas a cada 38 px entre a tartaruga (`3a69`) e o coelho
+  (`3a6f`): 4000 / 2000 / 1000 / 500 / 250 ms por figura, padrão 1000;
+  botões desenhados (cartões brancos, Pablo 8 pt): **Pasta** (300,59),
+  **<** / **>** (364 e 388), **Efeito** (414,59, mostra o efeito do espaço
+  escolhido e cicla ao clicar), **Som** (300,82) e **Legenda** (364,82);
+  "N figura(s)" em x 440.
+- **Quadro parado**: grade 3×3 de espaços numerados (células de 198×115),
+  cada um com a miniatura a 1/4 (148×86), o dígito colorido do original
+  (`3a78`…`3a97` com a máscara) no canto, a legenda embaixo e uma bolinha
+  amarela quando tem som. Clique num espaço cheio escolhe (contorno
+  vermelho); escolhido, clicar noutro troca as duas (ou move, se vazio);
+  clicar de novo desescolhe; **Delete** (ou Backspace) esvazia; ← / →
+  mostram uma figura de cada vez, em pausa. Avisos ("Primeiro preencha os
+  espaços!") aparecem numa faixa amarela no alto do quadro.
+- **Pasta**: lista dentro do quadro, 4×3 miniaturas por página, com os
+  desenhos da pasta (`.png` e `.mag`, como a galeria) seguidos das amostras
+  de `SHARED/USERS/*`; clique numa figura = vai para o primeiro espaço
+  vazio; **Fechar**, **<**, **>** na base.
+- **Som**: duas listas dentro do quadro, categorias de `MAG100.SND` à
+  esquerda e os sons ("Sem som" primeiro) à direita; o escolhido toca na
+  hora e ao começar a figura.
+- **Legenda**: digitada no próprio espaço (Enter confirma, Esc cancela);
+  ao tocar, aparece numa faixa branca de 16 px na base da figura.
+- **Efeitos**: corte, dissolver (pixels espalhados em 12 passos), cortina
+  para a esquerda / direita / cima / baixo e dado (sorteia a cada TOCAR).
+  A transição dura 0,5 s (no máximo metade do intervalo).
+- **Tocar**: as figuras em laço no quadro, cada uma pelo intervalo da régua;
+  PAUSA congela, PARAR (ou um clique no quadro) volta aos espaços.
+- **Guardar**: ao sair, `animacao-AAAAMMDD-HHMMSS/` na pasta de desenhos e a
+  cópia `ultimo-animacao/`, reaberta ao entrar de novo — ver
+  [`docs/formats/animacao.md`](../formats/animacao.md).
+- Fora, por enquanto: arrastar figuras, clique duplo para editar a figura na
+  pintura, desenho de abertura com título girado, figura "Fim", Varinha
+  Mágica na pausa, nome do desenho animado e seta de acrescentar espaços.
+
 ## Conferência
 
 Comparando o quadro gerado pelo Ateliê Livre com a captura do original no
