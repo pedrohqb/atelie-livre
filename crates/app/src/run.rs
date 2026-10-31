@@ -28,8 +28,18 @@ fn fail(msg: &str) -> i32 {
 fn make_scene(id: SceneId, cfg: &Config, assets: &Assets) -> Box<dyn Scene> {
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets)),
-        SceneId::Building => Box::new(Room::new(Floor::Lobby, cfg.click_sound.clone())),
-        SceneId::Studio => Box::new(Room::new(Floor::Studio, cfg.click_sound.clone())),
+        SceneId::Building => Box::new(Room::new(
+            Floor::Lobby,
+            cfg.click_sound.clone(),
+            drawings_dir(),
+            assets,
+        )),
+        SceneId::Studio => Box::new(Room::new(
+            Floor::Studio,
+            cfg.click_sound.clone(),
+            drawings_dir(),
+            assets,
+        )),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
         SceneId::Browser => Box::new(Browser::new()),

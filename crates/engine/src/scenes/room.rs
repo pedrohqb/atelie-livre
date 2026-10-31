@@ -4,8 +4,12 @@
 
 use super::rooms_data::{self, Element};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
+use crate::paint::Canvas;
+use crate::paint::store::{LAST_NAME, load_png};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
+use formats::palette::Rgb;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Floor {
@@ -98,18 +102,35 @@ impl Floor {
     }
 }
 
+/// Quadro no cavalete do Ateliê: o último desenho, reduzido a 1/4.
+const EASEL: (i32, i32) = (120, 179);
+const EASEL_SCALE: u32 = 4;
+
 pub struct Room {
     common: KidCommon,
     floor: Floor,
     hotspots: Vec<Hotspot>,
+    last_drawing: Option<Canvas>,
+    pal: Vec<Rgb>,
 }
 
 impl Room {
-    pub fn new(floor: Floor, click: Option<SoundRef>) -> Room {
+    pub fn new(
+        floor: Floor,
+        click: Option<SoundRef>,
+        drawings: Option<PathBuf>,
+        assets: &Assets,
+    ) -> Room {
+        let pal = assets.palettes(Program::Artist).pal256.clone();
+        let last_drawing = drawings
+            .as_ref()
+            .and_then(|d| load_png(&d.join(LAST_NAME), &pal));
         Room {
             common: KidCommon::new(click),
             floor,
             hotspots: floor.hotspots(),
+            last_drawing,
+            pal,
         }
     }
 
@@ -179,6 +200,22 @@ impl Scene for Room {
                 blit_white_transparent(frame, &img, e.x, e.y);
             }
         }
+        if self.floor == Floor::Studio
+            && let Some(c) = &self.last_drawing
+        {
+            // o desenho no cavalete, reduzido pelo vizinho mais próximo
+            for y in 0..c.h / EASEL_SCALE {
+                for x in 0..c.w / EASEL_SCALE {
+                    let i = c.px[((y * EASEL_SCALE) * c.w + x * EASEL_SCALE) as usize];
+                    let p = self
+                        .pal
+                        .get(i as usize)
+                        .copied()
+                        .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+                    frame.put(EASEL.0 + x as i32, EASEL.1 + y as i32, [p.r, p.g, p.b]);
+                }
+            }
+        }
     }
 }
 
@@ -198,7 +235,7 @@ mod tests {
     #[test]
     fn lobby_directory_and_pole_tour() {
         let (_d, a) = empty_assets();
-        let mut r = Room::new(Floor::Lobby, None);
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
         r.update(&[click(140, 86)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Studio);
         r.update(&[click(585, 100)], 0.0, &a);
@@ -212,7 +249,7 @@ mod tests {
     #[test]
     fn easel_opens_paint_and_tchau_quits() {
         let (_d, a) = empty_assets();
-        let mut r = Room::new(Floor::Studio, None);
+        let mut r = Room::new(Floor::Studio, None, None, &a);
         let fx = r.update(&[click(190, 220)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
         let fx = r.update(&[click(496, 260)], 0.0, &a);
@@ -225,11 +262,31 @@ mod tests {
     }
 
     #[test]
+    fn studio_shows_last_drawing_on_easel() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = Canvas::new(crate::paint::CANVAS_W, crate::paint::CANVAS_H);
+        c.px.fill(255); // preto na rampa de cinzas dos testes
+        crate::paint::store::save_drawing(
+            dir.path(),
+            &c,
+            &a.palettes(Program::Artist).pal256,
+            false,
+            0,
+        )
+        .unwrap();
+        let r = Room::new(Floor::Studio, None, Some(dir.path().to_path_buf()), &a);
+        let mut f = Frame::new(640, 480);
+        r.draw(&mut f, &a);
+        assert_eq!(f.pixel(190, 220)[..3], [0, 0, 0]);
+    }
+
+    #[test]
     fn draws_without_data() {
         let (_d, a) = empty_assets();
         let mut f = Frame::new(640, 480);
         for fl in [Floor::Lobby, Floor::Studio, Floor::Projects, Floor::Tricks] {
-            Room::new(fl, None).draw(&mut f, &a);
+            Room::new(fl, None, None, &a).draw(&mut f, &a);
         }
     }
 }
