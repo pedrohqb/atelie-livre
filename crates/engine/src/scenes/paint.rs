@@ -2,6 +2,7 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
 use super::stickers::Stickers;
 use crate::Frame;
@@ -380,6 +381,8 @@ pub struct Paint {
     stickers: Stickers,
     sounds: Sounds,
     mouse: (i32, i32),
+    /// Projeto da Oficina em andamento, se a tela foi aberta por ele.
+    project: Option<Project>,
 }
 
 impl Paint {
@@ -425,12 +428,25 @@ impl Paint {
             vacuum: VacuumMode::Cut,
             vacuum_anchor: None,
             clipboard: None,
+            project: None,
         };
         p.set_brush(1, 0);
         if let Some(d) = &p.drawings {
             p.sounds.load_spots(&d.join(SPOTS_NAME));
         }
         p
+    }
+
+    /// Abre a tela como um projeto da Oficina (quadro novo).
+    pub fn new_project(kind: ProjectKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
+        let mut p = Paint::new(None, assets);
+        p.drawings = drawings;
+        p.project = Some(Project::new(kind));
+        p
+    }
+
+    pub fn project(&self) -> Option<&Project> {
+        self.project.as_ref()
     }
 
     /// Grava `impressao-AAAAMMDD-HHMMSS.png` na pasta de desenhos e tenta `lp`.
@@ -775,7 +791,12 @@ impl Paint {
             return;
         }
         if inside(EXIT, x, y) {
-            fx.push(Effect::ChangeScene(SceneId::Studio));
+            let back = if self.project.is_some() {
+                SceneId::Projects
+            } else {
+                SceneId::Studio
+            };
+            fx.push(Effect::ChangeScene(back));
             return;
         }
         if let Some(t) = TOOLS
@@ -1010,16 +1031,19 @@ impl Paint {
             f.rect(x0 + 1, 461, x1 - x0 - 1, 14, WHITE);
         }
         // textos na "Pablo Graphos" de 8 pontos, como no original
+        let (label, name) = match &self.project {
+            Some(p) => (p.kind().label(), p.kind().new_name()),
+            None => ("Ateliê", "Quadro Novo"),
+        };
         match a.font(8) {
             Some(font) => {
-                f.text_font(&font, 69, 461, "Ateliê", BLACK);
-                let name = "Quadro Novo";
+                f.text_font(&font, 69, 461, label, BLACK);
                 let w = font.width(name) as i32;
                 f.text_font(&font, 320 - w / 2, 462, name, BLACK);
             }
             None => {
-                f.text(64, 464, "Ateliê", BLACK);
-                f.text(276, 464, "Quadro Novo", BLACK);
+                f.text(64, 464, label, BLACK);
+                f.text(276, 464, name, BLACK);
             }
         }
     }

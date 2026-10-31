@@ -4,6 +4,7 @@ pub mod browser;
 pub mod chooser;
 pub mod gallery;
 pub mod paint;
+pub mod projects;
 pub mod room;
 pub mod rooms_data;
 pub mod sounds;

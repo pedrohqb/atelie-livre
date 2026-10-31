@@ -41,6 +41,13 @@ fn make_scene(id: SceneId, cfg: &Config, assets: &Assets) -> Box<dyn Scene> {
             drawings_dir(),
             assets,
         )),
+        SceneId::Projects => Box::new(Room::new(
+            Floor::Projects,
+            cfg.click_sound.clone(),
+            drawings_dir(),
+            assets,
+        )),
+        SceneId::Project(kind) => Box::new(Paint::new_project(kind, drawings_dir(), assets)),
         SceneId::Chooser => Box::new(Chooser::new()),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),

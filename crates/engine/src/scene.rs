@@ -67,6 +67,10 @@ pub enum SceneId {
     /// Ateliê de Pintura (andar 2), ao sair da pintura.
     Studio,
     Paint,
+    /// Andar dos Projetos, ao sair de um projeto.
+    Projects,
+    /// Um projeto da Oficina na tela de pintura.
+    Project(crate::scenes::projects::ProjectKind),
     /// Galeria de desenhos guardados.
     Gallery,
     Browser,

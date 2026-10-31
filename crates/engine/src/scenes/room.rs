@@ -2,6 +2,7 @@
 //! Projetos e Truques de Desenho. Fundo e elementos fixos vêm de `rooms_data`
 //! (medidos no original); as áreas clicáveis estão aqui.
 
+use super::projects::ProjectKind;
 use super::rooms_data::{self, Element};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
@@ -32,6 +33,8 @@ enum Action {
     Close,
     Floor(Floor),
     Quit,
+    /// Pergunta "Botão ou adesivo?" num segundo balão.
+    AskButton,
     Soon(&'static str),
 }
 
@@ -85,8 +88,15 @@ impl Floor {
             Floor::Projects => vec![
                 h((573, 0, 24, 395), Action::Floor(Floor::Tricks)),
                 h((478, 185, 50, 20), Action::Quit),
-                h((40, 20, 170, 150), Action::Soon("história em quadrinhos")),
-                h((250, 0, 160, 120), Action::Soon("desenho animado")),
+                h(
+                    (40, 20, 170, 150),
+                    Action::Go(SceneId::Project(ProjectKind::Comics)),
+                ),
+                h(
+                    (250, 0, 160, 120),
+                    Action::Go(SceneId::Project(ProjectKind::Flipbook)),
+                ),
+                h((150, 170, 240, 110), Action::AskButton),
             ],
             Floor::Tricks => vec![
                 h((539, 0, 24, 395), Action::Floor(Floor::Lobby)),
@@ -161,9 +171,9 @@ impl Floor {
             (Floor::Studio, 0) => Action::NewPicture,
             (Floor::Studio, 1) => Action::Go(SceneId::Paint),
             (Floor::Studio, 2) => Action::Go(SceneId::Gallery),
-            (Floor::Projects, 0) => Action::Soon("história em quadrinhos"),
-            (Floor::Projects, 1) => Action::Soon("botão ou adesivo"),
-            (Floor::Projects, 2) => Action::Soon("desenho animado"),
+            (Floor::Projects, 0) => Action::Go(SceneId::Project(ProjectKind::Comics)),
+            (Floor::Projects, 1) => Action::AskButton,
+            (Floor::Projects, 2) => Action::Go(SceneId::Project(ProjectKind::Flipbook)),
             (Floor::Tricks, 0) => Action::Soon("truques básicos"),
             (Floor::Tricks, 1) => Action::Soon("truques 3D"),
             _ => Action::Close,
@@ -194,6 +204,8 @@ pub struct Room {
     balloon: Option<Balloon>,
     /// O balão aberto é o de confirmação de saída ("Tchau").
     quitting: bool,
+    /// Balão "Botão ou adesivo?" aberto.
+    asking_button: bool,
 }
 
 impl Room {
@@ -216,6 +228,7 @@ impl Room {
             balloon: Some(floor.balloon()),
             floor,
             quitting: false,
+            asking_button: false,
         }
     }
 
@@ -241,6 +254,17 @@ impl Room {
             Action::Close => {
                 self.balloon = None;
                 self.quitting = false;
+                self.asking_button = false;
+            }
+            Action::AskButton => {
+                self.asking_button = true;
+                self.balloon = Some(Balloon {
+                    x: 70,
+                    y: 150,
+                    w: 260,
+                    text: "Legal! O que você quer fazer?".into(),
+                    options: vec!["Um botão".into(), "Um adesivo".into()],
+                });
             }
             Action::NewPicture => {
                 if let Some(d) = &self.drawings {
@@ -306,7 +330,16 @@ impl Scene for Room {
                         }
                         break;
                     }
-                    let action = self.floor.balloon_action(k);
+                    let action = if self.asking_button {
+                        let kind = if k == 0 {
+                            ProjectKind::Button
+                        } else {
+                            ProjectKind::Sticker
+                        };
+                        Action::Go(SceneId::Project(kind))
+                    } else {
+                        self.floor.balloon_action(k)
+                    };
                     self.act(action, &mut fx);
                     break;
                 }
@@ -316,6 +349,7 @@ impl Scene for Room {
                 // clicar fora do balão só o fecha
                 self.balloon = None;
                 self.quitting = false;
+                self.asking_button = false;
                 continue;
             }
             let Some(hs) = self.hotspots.iter().find(|h| inside(h.rect, x, y)) else {
