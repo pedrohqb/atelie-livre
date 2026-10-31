@@ -151,3 +151,21 @@ fn patterns_from_real_exe_has_43() {
     assert_eq!(p[0], [0; 8]);
     assert_eq!(p[3], [0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa]);
 }
+
+#[test]
+fn paint_frame_matches_original_colors() {
+    // valores medidos numa captura da tela de pintura do original no Wine
+    use engine::scene::Scene;
+    use engine::scenes::Paint;
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let p = Paint::new(None, &a);
+    let mut f = engine::Frame::new(640, 480);
+    p.draw(&mut f, &a);
+    assert_eq!(f.pixel(13, 131), [255, 213, 0, 255]); // 3ª cor
+    assert_eq!(f.pixel(13, 446), [0, 0, 0, 255]); // preto, a última
+    assert_eq!(f.pixel(300, 300), [255, 255, 255, 255]); // quadro branco
+    assert_eq!(f.pixel(530, 30), [100, 100, 100, 255]); // barra de ferramentas
+    assert_eq!(f.pixel(530, 80), [140, 140, 140, 255]); // faixa de opções
+    assert_eq!(f.pixel(637, 300), [255, 140, 50, 255]); // moldura laranja
+}

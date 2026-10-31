@@ -25,7 +25,7 @@ const DARK: [u8; 3] = [100, 100, 100];
 const LIGHT: [u8; 3] = [140, 140, 140];
 const ORANGE: [u8; 3] = [255, 140, 50];
 const BROWN: [u8; 3] = [185, 101, 36];
-const RED: [u8; 3] = [213, 0, 0];
+const RED: [u8; 3] = [250, 0, 57];
 
 const PAGE_COUNT: u8 = 5;
 const STAMP_SPACING: i32 = 16;
@@ -82,7 +82,7 @@ const TOOLS: [ToolDef; 10] = [
         x: 10,
         y: 10,
         w: 37,
-        normal: (0x0495, 0x1015),
+        normal: (0x0495, 0x1001),
         active: (0x1013, 0x1015),
         action: Action::Select(Tool::Brush),
     },
@@ -98,7 +98,7 @@ const TOOLS: [ToolDef; 10] = [
         x: 113,
         y: 13,
         w: 32,
-        normal: (0x101b, 0x1027),
+        normal: (0x101b, 0x1023),
         active: (0x1025, 0x1027),
         action: Action::Unavailable("adesivos"),
     },
@@ -114,7 +114,7 @@ const TOOLS: [ToolDef; 10] = [
         x: 211,
         y: 13,
         w: 35,
-        normal: (0x1031, 0x1063),
+        normal: (0x1031, 0x103b),
         active: (0x1061, 0x1063),
         action: Action::Unavailable("palavras"),
     },
@@ -138,7 +138,7 @@ const TOOLS: [ToolDef; 10] = [
         x: 360,
         y: 9,
         w: 36,
-        normal: (0x1045, 0x1067),
+        normal: (0x1045, 0x104b),
         active: (0x1065, 0x1067),
         action: Action::Unavailable("transformadores"),
     },
@@ -465,6 +465,9 @@ impl Paint {
         // faixa de opções e linha sob a barra de ferramentas
         f.rect(5, 56, 630, 48, LIGHT);
         f.rect(5, 55, 630, 1, BLACK);
+        // nicho escuro do McZee
+        f.rect(532, 55, 1, 49, BLACK);
+        f.rect(533, 56, 47, 48, DARK);
         // colunas de cores e padrões, bordas do quadro
         f.rect(5, 109, 17, 347, WHITE);
         f.rect(618, 109, 17, 347, WHITE);
@@ -493,6 +496,9 @@ impl Paint {
             f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), t.x, t.y);
         }
         f.blit_masked(&a.image(&pic(0x1055)), &a.image(&pic(0x1057)), 537, 49);
+        // ícones da barra inferior
+        f.blit(&a.image(&pic(0x03c3)), 27, 463);
+        f.blit(&a.image(&pic(0x1403)), 526, 462);
         f.blit_masked(&a.image(&pic(0x1059)), &a.image(&pic(0x105b)), 580, 18);
     }
 
@@ -543,8 +549,8 @@ impl Paint {
                     ARROW_DOWN.0,
                     ARROW_DOWN.1,
                 );
-                f.rect(506, 74, 12, 14, BLACK);
-                f.rect(507, 75, 10, 12, WHITE);
+                f.rect(504, 75, 16, 12, BLACK);
+                f.rect(505, 76, 14, 10, WHITE);
                 f.text(508, 77, &self.page.to_string(), BLACK);
                 (self.brush.0 == self.page).then_some(self.brush.1)
             }
@@ -574,7 +580,7 @@ impl Paint {
         };
         if let Some(k) = selected {
             let r = option_rect(self.options_x0(), k);
-            f.frame_rect(r.0, r.1, r.2, r.3, 2, RED);
+            f.frame_rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, 1, RED);
         }
     }
 

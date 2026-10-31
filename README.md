@@ -14,7 +14,14 @@ que você já possui.
   extraídos.
 - Subprojeto 2a (plataforma) concluído: o programa `atelie-livre` abre a
   abertura e a rua do Fine Artist em tela cheia, ampliadas e nítidas, com o
-  cursor e os sons originais, e traz um navegador de recursos. A documentação dos formatos está em [`docs/formats/`](docs/formats/).
+  cursor e os sons originais, e traz um navegador de recursos. A
+  documentação dos formatos está em [`docs/formats/`](docs/formats/).
+- Subprojeto 2b (tela de pintura) concluído: na rua, clique na porta do
+  prédio para pintar com o pincel (formas redondas, quadradas, carimbos e
+  traços de caligrafia), a lata de tinta, as 38 cores e os padrões do
+  original; o ovo desfaz e refaz, e o aspirador limpa o quadro. Adesivos,
+  palavras, sons e as demais ferramentas ainda não funcionam.
+
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
@@ -45,6 +52,11 @@ No navegador: ↑/↓ trocam a fonte, ←/→ (PageUp/PageDown, Home/End) percor
 os itens, Enter toca um som, Esc volta. Sobre uma imagem, a faixa mostra a
 posição do mouse na imagem, e um clique imprime no terminal uma linha como
 `ARTIST.PIC 6d01 x=312 y=405`.
+
+Os desenhos são guardados ao sair da pintura (porta "Saída", Ctrl+Q ou
+fechando a janela) em `~/.local/share/atelie-livre/desenhos/` (ou
+`$XDG_DATA_HOME/atelie-livre/desenhos/`): `ultimo.png`, que é reaberto na
+próxima vez, e uma cópia com data e hora de cada desenho modificado.
 
 Configuração em `~/.config/atelie-livre/config.toml` (os argumentos têm
 prioridade):
