@@ -42,9 +42,9 @@ impl Chooser {
     }
 
     /// Copia a imagem reduzida por `div` (vizinho mais próximo).
-    fn blit_scaled(f: &mut Frame, img: &Image, x: i32, y: i32, div: u32) {
-        for dy in 0..img.height / div {
-            for dx in 0..img.width / div {
+    fn blit_scaled(f: &mut Frame, img: &Image, x: i32, y: i32, div: u32, max: (u32, u32)) {
+        for dy in 0..(img.height / div).min(max.1) {
+            for dx in 0..(img.width / div).min(max.0) {
                 let i = (((dy * div) * img.width + dx * div) * 4) as usize;
                 let p = &img.rgba[i..i + 3];
                 f.put(x + dx as i32, y + dy as i32, [p[0], p[1], p[2]]);
@@ -118,7 +118,7 @@ impl Scene for Chooser {
                 Program::Writer
             };
             let img = assets.image(&ImageRef::Pic(program, id));
-            Self::blit_scaled(frame, &img, r.0 + 5, r.1 + 2, 2);
+            Self::blit_scaled(frame, &img, r.0, r.1, 2, (r.2 as u32, r.3 as u32));
             match assets.font(8) {
                 Some(fo) => {
                     let w = fo.width(label) as i32;
