@@ -213,11 +213,20 @@ pub fn expand_home(path: PathBuf, home: Option<PathBuf>) -> PathBuf {
 }
 
 /// Argumentos têm prioridade sobre o arquivo; sem nenhum dos dois, vale `ATELIE_DATA`.
-pub fn effective(mut cfg: Config, args: &Args) -> Config {
+pub fn effective(cfg: Config, args: &Args) -> Config {
+    effective_with(cfg, args, std::env::var_os("ATELIE_DATA"))
+}
+
+/// Como [`effective`], com o valor de `ATELIE_DATA` passado explicitamente.
+pub fn effective_with(
+    mut cfg: Config,
+    args: &Args,
+    env_data: Option<std::ffi::OsString>,
+) -> Config {
     if let Some(d) = &args.data {
         cfg.data_dir = Some(d.clone());
     } else if cfg.data_dir.is_none()
-        && let Some(d) = std::env::var_os("ATELIE_DATA")
+        && let Some(d) = env_data
     {
         // mesma variável dos testes e do AppRun do AppImage
         cfg.data_dir = Some(PathBuf::from(d));
@@ -299,7 +308,12 @@ mod tests {
         assert_eq!(c.scale, Scale::Fit);
         assert_eq!(c.data_dir, Some(PathBuf::from("/x")));
         let none = Args::parse_from(["atelie-livre"]);
-        assert_eq!(effective(Config::default(), &none), Config::default());
+        assert_eq!(
+            effective_with(Config::default(), &none, None),
+            Config::default()
+        );
+        let env = effective_with(Config::default(), &none, Some("/dados".into()));
+        assert_eq!(env.data_dir, Some(PathBuf::from("/dados")));
     }
 
     #[test]
