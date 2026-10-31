@@ -23,11 +23,11 @@ Depende de: 2c
   partir de y 103. A verde (bichos) tem 9 casas de 28×32 a cada 39 px.
 - **Molduras dos rolos**: `10d3` (verde, 52 px), `10a7` (amarela, 52 px), com
   as tampas de `10cf` (14 px à esquerda) e `10ab` (12 px à direita).
-- **Roteiros dos bichos**: gravados do original com `scratch/rec.sh` (ffmpeg a
-  15 quadros/s) e `scratch/analyze.py`, que acha cada imagem e sua posição em
+- **Roteiros dos bichos**: gravados do original com `tools/wine/rec.sh` (ffmpeg a
+  15 quadros/s) e `tools/wine/analyze.py`, que acha cada imagem e sua posição em
   cada quadro, inclusive parcialmente escondida pelo balão do McZee. Viram
   `crates/engine/src/scenes/sticker_scripts.rs` (gerado por
-  `scratch/gen_scripts.py`). A cobra se repete andando para a direita até
+  `tools/wine/gen_scripts.py`). A cobra se repete andando para a direita até
   sair do quadro e não fica colada; os demais terminam numa imagem de
   repouso. Rolar a tira no original (Wine) derruba o programa, então os bichos
   10 a 16 não foram gravados e continuam com a animação aproximada.

@@ -1,5 +1,5 @@
 //! Roteiros dos adesivos animados do primeiro rolo, gravados do Fine Artist
-//! original no Wine (scratch/rec.sh + analyze.py + gen_scripts.py).
+//! original no Wine (tools/wine/rec.sh + analyze.py + gen_scripts.py).
 //! Cada passo: duração em quadros de 1/15 s e imagens (id em ARTIST.PIC,
 //! deslocamento do canto superior esquerdo em relação ao clique).
 //! Gerado; não editar à mão.

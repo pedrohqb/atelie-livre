@@ -74,8 +74,8 @@ seção 4. Resumo:
   `MAG100.ART`, na ordem dos números (spec
   [2d](../superpowers/specs/2026-10-31-adesivos-2-design.md)); tira amarela
   pontilhada, 8 casas de 34×34 a cada 41 px.
-- **Gravar animações do original**: `scratch/rec.sh ROLO CASA PASTA` coloca o
-  adesivo e grava 10 s com o ffmpeg; `scratch/analyze.py` acha as imagens em
+- **Gravar animações do original**: `tools/wine/rec.sh ROLO CASA PASTA` coloca o
+  adesivo e grava 10 s com o ffmpeg; `tools/wine/analyze.py` acha as imagens em
   cada quadro. Rolar a tira de filme no Wine derruba o programa.
 - **Lata de tinta**: faixa com 10 opções (`1590`, `1591`, `1593` … `15a1`) e,
   à esquerda, uma amostra da tinta atual.
