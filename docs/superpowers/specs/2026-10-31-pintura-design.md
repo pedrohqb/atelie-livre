@@ -22,13 +22,14 @@ no repositório.
 1. **Navegação mínima**: Abertura → Rua → (clique na porta do prédio) →
    Pintura. A porta "Saída" da pintura volta à Rua. O fluxo completo do
    original (Imaginópolis, saguão, Ateliê) fica para o 2c.
-2. **Ferramentas do 2b**: Pincel (páginas 1, 2 e 4 das formas), Lata de tinta
+2. **Ferramentas do 2b**: Pincel (páginas 1, 2 e 4 das formas; 5 e 6 no
+   adendo 4.1), Lata de tinta
    (preenchimento), Ovo desfazer, e Aspirador só com a opção 1 ("limpar o
    quadro"). As demais ferramentas (adesivos, sons, palavra, transformadores,
    super-ferramentas, imprimir) aparecem na barra, mas clicar nelas só
    registra um `Log` ("ferramenta ainda não disponível"); não mudam a
-   ferramenta ativa. As páginas 3 (efeitos) e 5 (formas geométricas) do pincel
-   aparecem com botões vazios e inertes.
+   ferramenta ativa. A página 3 (efeitos) do pincel aparece com botões
+   inertes.
 3. **Cores**: a coluna esquerda tem as 38 cores do original, que são entradas
    da `LOGPALETTE` 8 (256 cores) de `ARTIST.EXE`, nesta ordem de índices:
    `0, 2, 18, 19, 20, 21, 22, 5, 6, 25, 26, 27, 28, 9, 10, 31, 32, 33, 7, 8,
@@ -106,8 +107,44 @@ no repositório.
 | Quadro | (23,109), 594×347 | medido |
 | Barra inferior | y 460..=474: "Ateliê" à esquerda, "Quadro Novo" no centro | código |
 
-A troca de página do pincel (setas) circula 1→2→3→4→5→1 (abaixo) e ao
-contrário (acima).
+A troca de página do pincel (setas) circula 1→2→3→4→5→6→1 (abaixo) e ao
+contrário (acima). O pincel do original tem **6** páginas; a 6ª é a dos
+sprays.
+
+### 4.1 Páginas 5 e 6 do pincel (adendo)
+
+**Página 5 — formas geométricas** (botões `17b5, 17cf, 17d1, …, 17e3` de
+`ARTIST.PIC`). São ferramentas de arrasto: apertar no quadro fixa a âncora,
+mover mostra a forma elástica só na tela (o quadro não muda) e soltar pinta
+a forma com a tinta atual (cor + padrão) como **uma** ação do ovo. A caixa da
+forma tem a âncora e o ponteiro como cantos opostos. A semântica é uma
+**aproximação** do original, não medida:
+
+| Botão | Forma |
+|---|---|
+| 0 | reta de 1 pixel da âncora ao ponteiro |
+| 1 | reta com base: a mesma reta mais uma horizontal da âncora até o x do ponteiro |
+| 2 | curva livre: linha poligonal de 1 pixel seguindo o ponteiro |
+| 3 | curva fechada: igual à 2, fechada de volta à âncora ao soltar |
+| 4 | poligonal: só segmentos retos entre pontos distantes ao menos 8 pixels |
+| 5 | serpentina: curva livre com 3 pixels de espessura |
+| 6, 7, 8 | retângulo, elipse e triângulo cheios |
+| 9, 10, 11 | retângulo, elipse e triângulo vazados (contorno de 1 pixel) |
+
+O triângulo é isósceles, com a base embaixo da caixa e o ápice no meio de
+cima. A elipse usa o algoritmo do ponto médio para caixas de qualquer
+paridade; os cheios preenchem cada linha entre as pontas do contorno. A
+geometria fica em `paint/geom.rs`, puro, com testes de simetria, limites e
+contagem de pixels.
+
+**Página 6 — sprays** (botões `17fd, 17fe, 1800, 1802, …, 1812`). Enquanto o
+botão está apertado, cada atualização borrifa `N` pontos da tinta atual ao
+acaso dentro do raio `R` ao redor do ponteiro, com um gerador xorshift32
+semeado a cada traço (determinístico dentro do traço). Os 12 botões variam
+`(R, N)`: raios 6, 10, 14 e 18 pixels, cada um em três densidades (ralo,
+médio, denso). Um traço inteiro é uma ação do ovo. Também aproximação: no
+original os três últimos botões são de cor sólida e os do meio misturam
+cores; aqui todos borrifam a tinta corrente.
 
 ## 4a. Ferramenta Palavra (acrescentado depois do 2b)
 
@@ -130,6 +167,8 @@ fundo da faixa) não foram conferidos no original.
 
 Adesivos, sons, transformadores, super-ferramentas, impressão,
 efeitos da página 3, formas da página 5, opções 2+ do aspirador e da lata,
+Adesivos, sons, palavras, transformadores, super-ferramentas, impressão,
+efeitos da página 3, opções 2+ do aspirador e da lata,
 balões e falas do McZee, sons das ferramentas, galeria de desenhos, fluxo
 completo de navegação e o Creative Writer.
 
