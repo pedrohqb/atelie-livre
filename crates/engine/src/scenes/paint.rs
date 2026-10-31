@@ -1,5 +1,5 @@
 //! Tela de pintura do Fine Artist: o quadro do Ateliê de Pintura com pincel,
-//! lata de tinta, ovo desfazer, aspirador (limpar), cores e padrões.
+//! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
 use super::stickers::Stickers;
@@ -7,11 +7,14 @@ use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::paint::store::{LAST_NAME, load_png, save_drawing};
 use crate::paint::{
-    CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, line_points, page_shapes,
+    CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, balloon_pixels, line_points,
+    page_shapes, text_pixels, text_size,
 };
-use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
+use formats::fnt::Font;
 use formats::palette::Rgb;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 /// Cores da coluna esquerda: índices da paleta de 256 cores, de cima para baixo.
 pub const COLORS: [u8; 38] = [
@@ -53,12 +56,17 @@ const BUCKET_BUTTONS: [u16; 10] = [
 const VACUUM_BUTTONS: [u16; 8] = [
     0x1557, 0x1559, 0x1567, 0x1561, 0x155f, 0x155b, 0x155c, 0x1569,
 ];
+/// Opções da ferramenta Palavra: texto simples ("FORMA") e balão de fala ("Oi!").
+const WORDS_BUTTONS: [u16; 2] = [0x1797, 0x1799];
+/// Período do piscar do cursor de texto, em segundos (meio período aceso).
+const CARET_PERIOD: f32 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Brush,
     Bucket,
     Stickers,
+    Words,
     Vacuum,
 }
 
@@ -118,7 +126,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 35,
         normal: (0x1031, 0x103b),
         active: (0x1061, 0x1063),
-        action: Action::Unavailable("palavras"),
+        action: Action::Select(Tool::Words),
     },
     ToolDef {
         x: 257,
@@ -192,6 +200,15 @@ struct Stroke {
     last_stamp: (i32, i32),
 }
 
+/// Texto em edição: canto superior esquerdo da linha (coordenadas do quadro).
+struct WordsEdit {
+    x: i32,
+    y: i32,
+    text: String,
+    /// Tempo acumulado para o piscar do cursor.
+    blink: f32,
+}
+
 pub struct Paint {
     common: KidCommon,
     drawings: Option<PathBuf>,
@@ -207,6 +224,11 @@ pub struct Paint {
     /// Forma escolhida: (página, botão).
     brush: (u8, usize),
     bucket_option: usize,
+    /// Opção da Palavra: 0 = texto simples, 1 = balão de fala.
+    words_option: usize,
+    words: Option<WordsEdit>,
+    /// Fonte das palavras: "Pablo Graphos" 16 pt, senão 8 pt; `None` usa a 8×8 reserva.
+    font: Option<Rc<Font>>,
     /// Forma correspondente a `brush`, guardada para não recriar a cada movimento.
     shape: Option<Shape>,
     stroke: Option<Stroke>,
@@ -242,6 +264,9 @@ impl Paint {
             page: 1,
             brush: (1, 0),
             bucket_option: 0,
+            words_option: 0,
+            words: None,
+            font: assets.font(16).or_else(|| assets.font(8)),
             shape: None,
             stroke: None,
             changed: false,
@@ -291,6 +316,66 @@ impl Paint {
         &self.stickers
     }
 
+    /// Texto da Palavra em edição, se houver.
+    pub fn words_text(&self) -> Option<&str> {
+        self.words.as_ref().map(|w| w.text.as_str())
+    }
+
+    fn start_words(&mut self, cx: i32, cy: i32) {
+        self.words = Some(WordsEdit {
+            x: cx,
+            y: cy,
+            text: String::new(),
+            blink: 0.0,
+        });
+    }
+
+    /// Grava no quadro o texto em edição (uma ação de desfazer); texto vazio não pinta nada.
+    fn commit_words(&mut self) {
+        let Some(w) = self.words.take() else {
+            return;
+        };
+        if w.text.is_empty() {
+            return;
+        }
+        let font = self.font.clone();
+        let font = font.as_deref();
+        self.history.record(&self.canvas);
+        if self.words_option == 1 {
+            self.canvas.draw_balloon(font, w.x, w.y, &w.text);
+        }
+        self.canvas
+            .draw_text(font, w.x, w.y, &w.text, COLORS[self.color]);
+        self.changed = true;
+    }
+
+    fn type_text(&mut self, text: &str) {
+        let Some(w) = self.words.as_mut() else {
+            return;
+        };
+        w.text.extend(
+            text.chars()
+                .filter(|c| !c.is_control() && formats::cp1252::encode_char(*c).is_some()),
+        );
+        w.blink = 0.0;
+    }
+
+    fn key(&mut self, key: Key) {
+        if self.words.is_none() {
+            return;
+        }
+        match key {
+            Key::Enter => self.commit_words(),
+            Key::Backspace => {
+                if let Some(w) = self.words.as_mut() {
+                    w.text.pop();
+                    w.blink = 0.0;
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn ink(&self) -> Ink {
         Ink {
             color: COLORS[self.color],
@@ -309,6 +394,7 @@ impl Paint {
             Tool::Stickers => 0,
             Tool::Brush => 12,
             Tool::Bucket => BUCKET_BUTTONS.len(),
+            Tool::Words => WORDS_BUTTONS.len(),
             Tool::Vacuum => VACUUM_BUTTONS.len(),
         }
     }
@@ -359,6 +445,8 @@ impl Paint {
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
         self.stroke = None;
         self.finish_sticker();
+        // qualquer clique encerra o texto que estava sendo digitado
+        self.commit_words();
         if self.tool == Tool::Stickers {
             match self
                 .stickers
@@ -376,6 +464,7 @@ impl Paint {
             let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
             match self.tool {
                 Tool::Brush => self.start_stroke(cx, cy),
+                Tool::Words => self.start_words(cx, cy),
                 Tool::Bucket => {
                     let before = self.canvas.px.clone();
                     let ink = self.ink();
@@ -444,6 +533,7 @@ impl Paint {
                     self.page
                 ))),
                 Tool::Bucket => self.bucket_option = k,
+                Tool::Words => self.words_option = k,
                 Tool::Stickers => {}
                 Tool::Vacuum if k == 0 => {
                     self.history.record(&self.canvas);
@@ -633,6 +723,13 @@ impl Paint {
                 self.stickers.draw_strip(f, a);
                 None
             }
+            Tool::Words => {
+                for (k, id) in WORDS_BUTTONS.iter().enumerate() {
+                    let r = option_rect(25, k);
+                    f.blit(&a.image(&pic(*id)), r.0, r.1);
+                }
+                Some(self.words_option)
+            }
             Tool::Vacuum => {
                 f.blit_masked(&a.image(&pic(0x1119)), &a.image(&pic(0x111b)), 4, 56);
                 for (k, id) in VACUUM_BUTTONS.iter().enumerate() {
@@ -676,6 +773,34 @@ impl Paint {
             f.put(x, y, self.rgb(i));
         }
     }
+
+    /// Texto em edição sobre o quadro, com o balão (se for a opção) e o cursor piscando.
+    fn draw_words(&self, f: &mut Frame) {
+        let Some(w) = self.words.as_ref() else {
+            return;
+        };
+        let font = self.font.as_deref();
+        let (sx, sy) = (ORIGIN.0 + w.x, ORIGIN.1 + w.y);
+        let (tw, th) = text_size(font, &w.text);
+        let r = canvas_rect();
+        let mut put = |x: i32, y: i32, rgb: [u8; 3]| {
+            if inside(r, x, y) {
+                f.put(x, y, rgb);
+            }
+        };
+        if self.words_option == 1 {
+            balloon_pixels(sx, sy, tw, th, |x, y, edge| {
+                put(x, y, if edge { BLACK } else { WHITE })
+            });
+        }
+        let ink = self.rgb(COLORS[self.color]);
+        text_pixels(font, &w.text, |dx, dy| put(sx + dx, sy + dy, ink));
+        if w.blink % CARET_PERIOD < CARET_PERIOD / 2.0 {
+            for dy in 0..th as i32 {
+                put(sx + tw as i32, sy + dy, ink);
+            }
+        }
+    }
 }
 
 fn now_secs() -> u64 {
@@ -710,8 +835,17 @@ impl Scene for Paint {
                     self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
                     self.stroke = None;
                 }
+                Input::Key {
+                    key,
+                    ctrl: false,
+                    alt: false,
+                } => self.key(key),
+                Input::Text(ref t) => self.type_text(t),
                 _ => {}
             }
+        }
+        if let Some(w) = self.words.as_mut() {
+            w.blink = (w.blink + dt) % CARET_PERIOD;
         }
         if self
             .stickers
@@ -728,6 +862,7 @@ impl Scene for Paint {
         self.draw_options(frame, assets);
         self.draw_columns(frame);
         self.draw_canvas(frame);
+        self.draw_words(frame);
         self.stickers
             .draw_overlay(frame, assets, &self.pal, self.mouse);
     }
@@ -735,6 +870,7 @@ impl Scene for Paint {
     fn leave(&mut self) -> Vec<Effect> {
         self.stroke = None;
         self.finish_sticker();
+        self.commit_words();
         let Some(dir) = &self.drawings else {
             return vec![Effect::Log(
                 "sem pasta de desenhos (HOME e XDG_DATA_HOME vazios): desenho não guardado".into(),
@@ -920,12 +1056,158 @@ mod tests {
     fn inactive_tool_logs() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
-        let fx = p.update(&[click(228, 30)], 0.0, &a);
+        let fx = p.update(&[click(170, 30)], 0.0, &a);
         assert!(
             fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("palavras")))
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("sons")))
         );
         assert_eq!(p.tool(), Tool::Brush);
+    }
+
+    fn text(s: &str) -> Input {
+        Input::Text(s.to_string())
+    }
+
+    fn key(k: Key) -> Input {
+        Input::Key {
+            key: k,
+            ctrl: false,
+            alt: false,
+        }
+    }
+
+    /// Escolhe a Palavra, clica no quadro em (100, 200) e digita `s`.
+    fn words(a: &Assets, s: &str) -> Paint {
+        let mut p = Paint::new(None, a);
+        p.update(&[click(228, 30)], 0.0, a);
+        assert_eq!(p.tool(), Tool::Words);
+        p.update(&[click(100, 200), text(s)], 0.0, a);
+        p
+    }
+
+    #[test]
+    fn words_typed_then_enter_paint_text() {
+        let (_d, a) = empty_assets();
+        let mut p = words(&a, "Oi");
+        assert_eq!(p.words_text(), Some("Oi"));
+        assert_eq!(painted(&p), 0);
+        p.update(&[key(Key::Enter)], 0.0, &a);
+        assert_eq!(p.words_text(), None);
+        let n = painted(&p);
+        assert!(n > 0);
+        // fonte 8×8 reserva: tudo dentro de 16×8 a partir de (100, 200) na tela
+        let c = p.canvas();
+        for (k, &v) in c.px.iter().enumerate() {
+            if v != W {
+                let (x, y) = ((k as u32 % c.w) as i32, (k as u32 / c.w) as i32);
+                assert!((77..93).contains(&x) && (91..99).contains(&y), "({x}, {y})");
+                assert_eq!(v, 1);
+            }
+        }
+        // o ovo desfaz o texto e refaz
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(painted(&p), n);
+    }
+
+    #[test]
+    fn words_backspace_removes_and_filters_chars() {
+        let (_d, a) = empty_assets();
+        let mut p = words(&a, "Olá");
+        p.update(&[key(Key::Backspace), text("中"), text("!\u{7}")], 0.0, &a);
+        assert_eq!(p.words_text(), Some("Ol!"));
+        p.update(&[key(Key::Backspace), key(Key::Backspace)], 0.0, &a);
+        p.update(&[key(Key::Backspace), key(Key::Backspace)], 0.0, &a);
+        assert_eq!(p.words_text(), Some(""));
+    }
+
+    #[test]
+    fn words_empty_commit_paints_nothing_and_no_undo() {
+        let (_d, a) = empty_assets();
+        let mut p = words(&a, "");
+        p.update(&[key(Key::Enter)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        assert_eq!(p.words_text(), None);
+        // nada para o ovo desfazer
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+    }
+
+    #[test]
+    fn words_click_elsewhere_commits_and_restarts() {
+        let (_d, a) = empty_assets();
+        let mut p = words(&a, "A");
+        p.update(&[click(300, 300)], 0.0, &a);
+        let n = painted(&p);
+        assert!(n > 0);
+        assert_eq!(p.words_text(), Some(""));
+        p.update(&[text("B"), click(13, 150)], 0.0, &a);
+        assert!(painted(&p) > n);
+        assert_eq!(p.words_text(), None);
+    }
+
+    #[test]
+    fn words_switching_tool_commits() {
+        let (_d, a) = empty_assets();
+        let mut p = words(&a, "A");
+        p.update(&[click(20, 30)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Brush);
+        assert!(painted(&p) > 0);
+        assert_eq!(p.words_text(), None);
+    }
+
+    #[test]
+    fn words_leave_commits() {
+        let (_d, a) = empty_assets();
+        let mut p = words(&a, "A");
+        p.leave();
+        assert!(painted(&p) > 0);
+    }
+
+    #[test]
+    fn words_balloon_option_paints_white_and_outline() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        // quadro cinza para distinguir o branco do balão
+        p.update(
+            &[click(13, 113 + 9 * 8), click(70, 30), click(300, 300)],
+            0.0,
+            &a,
+        );
+        let gray = COLORS[8];
+        assert_eq!(p.canvas().get(0, 0), Some(gray));
+        p.update(&[click(228, 30), click(25 + 37 + 10, 70)], 0.0, &a);
+        p.update(&[click(13, 113 + 9 * 37)], 0.0, &a); // tinta preta
+        p.update(&[click(100, 200), text("Oi"), key(Key::Enter)], 0.0, &a);
+        let c = p.canvas();
+        // texto 16×8 em (77, 91): balão de (71, 85) a (99, 105) exclusivos
+        assert_eq!(c.get(71, 85), Some(1));
+        assert_eq!(c.get(98, 104), Some(1));
+        assert_eq!(c.get(72, 86), Some(0));
+        assert_eq!(c.get(76, 90), Some(0));
+        assert_eq!(c.get(94, 99), Some(0));
+        assert_eq!(c.get(70, 84), Some(gray));
+        assert!(c.px.contains(&1));
+        // cursor de texto e balão não travam o desenho
+        let mut f = Frame::new(640, 480);
+        p.update(&[click(300, 300), text("x")], 0.3, &a);
+        p.draw(&mut f, &a);
+        p.update(&[], 0.4, &a);
+        p.draw(&mut f, &a);
+    }
+
+    #[test]
+    fn words_text_ignored_without_session() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(
+            &[text("abc"), key(Key::Enter), key(Key::Backspace)],
+            0.0,
+            &a,
+        );
+        assert_eq!(p.words_text(), None);
+        assert_eq!(painted(&p), 0);
     }
 
     #[test]
@@ -1108,7 +1390,7 @@ mod tests {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
         let mut f = Frame::new(640, 480);
-        for t in [70, 320, 129, 20] {
+        for t in [70, 320, 129, 228, 20] {
             p.update(&[click(t, 30)], 0.0, &a);
             p.draw(&mut f, &a);
         }

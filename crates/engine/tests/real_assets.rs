@@ -265,3 +265,24 @@ fn pablo_font_loads_three_sizes() {
     // "Quadro Novo" mede 65 pixels na barra do original
     assert_eq!(a.font(8).unwrap().width("Quadro Novo"), 65);
 }
+
+#[test]
+fn words_font_16pt_renders_oi_wider_than_10px() {
+    use engine::paint::{Canvas, text_size};
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let font = a.font(16).expect("fonte de 16 pontos");
+    let (w, h) = text_size(Some(&font), "Oi");
+    assert!(w > 10, "largura {w}");
+    assert_eq!(h, 21);
+    let mut c = Canvas::new(100, 40);
+    c.draw_text(Some(&font), 5, 5, "Oi", 1);
+    let cols: std::collections::BTreeSet<usize> =
+        c.px.iter()
+            .enumerate()
+            .filter(|(_, v)| **v == 1)
+            .map(|(k, _)| k % 100)
+            .collect();
+    let span = cols.iter().max().unwrap() - cols.iter().min().unwrap() + 1;
+    assert!(span > 10, "glifos ocupam {span} colunas");
+}
