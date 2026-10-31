@@ -5,7 +5,7 @@ use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, texts_dir}
 use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
-use engine::scenes::{Browser, Floor, Gallery, Paint, Room, Splash, Street, Writer};
+use engine::scenes::{Browser, Chooser, Floor, Gallery, Paint, Room, Splash, Street, Writer};
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
 use sdl3::keyboard::{Keycode, Mod};
@@ -41,6 +41,7 @@ fn make_scene(id: SceneId, cfg: &Config, assets: &Assets) -> Box<dyn Scene> {
             drawings_dir(),
             assets,
         )),
+        SceneId::Chooser => Box::new(Chooser::new()),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
         SceneId::Browser => Box::new(Browser::new()),
@@ -55,6 +56,7 @@ fn first_scene(browser: bool, program: ProgramChoice) -> SceneId {
         (true, _) => SceneId::Browser,
         (false, ProgramChoice::Writer) => SceneId::WriterSplash,
         (false, ProgramChoice::Artist) => SceneId::Splash,
+        (false, ProgramChoice::Ask) => SceneId::Chooser,
     }
 }
 
@@ -336,5 +338,6 @@ mod tests {
             SceneId::WriterSplash
         );
         assert_eq!(first_scene(true, ProgramChoice::Writer), SceneId::Browser);
+        assert_eq!(first_scene(false, ProgramChoice::Ask), SceneId::Chooser);
     }
 }

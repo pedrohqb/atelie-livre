@@ -58,6 +58,8 @@ pub enum Input {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SceneId {
+    /// Escolha do programa.
+    Chooser,
     Splash,
     Street,
     /// Prédio: saguão e andares.

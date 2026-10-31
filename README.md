@@ -38,6 +38,8 @@ que você já possui.
   Galeria do saguão) abre a galeria dos desenhos guardados; clique num deles
   para continuar pintando.
 
+- Ao abrir, o Ateliê Livre pergunta qual programa usar (ou `--program
+  artist|writer`, ou `program = "artist"|"writer"|"ask"` no config).
 - Subprojeto 3a (Creative Writer, primeira versão): `atelie-livre --program
   writer` (ou `program = "writer"` no config) abre a tela de título do
   Creative Writer e vai direto ao Escritório: a página branca com a barra de

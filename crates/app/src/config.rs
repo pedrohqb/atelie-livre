@@ -14,8 +14,10 @@ pub enum Scale {
 /// Qual dos dois programas abrir.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum ProgramChoice {
-    /// Fine Artist (padrão).
+    /// Pergunta ao abrir (padrão).
     #[default]
+    Ask,
+    /// Fine Artist.
     Artist,
     /// Creative Writer.
     Writer,
@@ -41,7 +43,7 @@ impl Default for Config {
             volume: 80,
             click_sound: None,
             dev: false,
-            program: ProgramChoice::Artist,
+            program: ProgramChoice::Ask,
         }
     }
 }
@@ -155,6 +157,10 @@ pub fn parse_config(text: &str) -> (Config, Vec<String>) {
                 }
                 Some("writer") => {
                     cfg.program = ProgramChoice::Writer;
+                    true
+                }
+                Some("ask") => {
+                    cfg.program = ProgramChoice::Ask;
                     true
                 }
                 _ => false,
@@ -322,7 +328,7 @@ mod tests {
         assert!(w.is_empty());
         assert_eq!(c.program, ProgramChoice::Writer);
         let (c, w) = parse_config("program = \"pintor\"\n");
-        assert_eq!(c.program, ProgramChoice::Artist);
+        assert_eq!(c.program, ProgramChoice::Ask);
         assert_eq!(w.len(), 1);
         let args = Args::parse_from(["atelie-livre", "--program", "writer"]);
         assert_eq!(
