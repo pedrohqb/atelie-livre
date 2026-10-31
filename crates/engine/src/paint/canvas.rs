@@ -61,6 +61,13 @@ impl Canvas {
         self.index(x, y).map(|i| self.px[i])
     }
 
+    /// Escreve o índice `v` no pixel, sem tinta nem padrão (recortado nas bordas).
+    pub fn set(&mut self, x: i32, y: i32, v: u8) {
+        if let Some(i) = self.index(x, y) {
+            self.px[i] = v;
+        }
+    }
+
     /// Pinta um pixel do quadro com a tinta (recortado nas bordas).
     pub fn plot(&mut self, x: i32, y: i32, ink: &Ink) {
         if let Some(i) = self.index(x, y) {

@@ -59,6 +59,7 @@ fn map_key(k: Keycode) -> Key {
         Keycode::End => Key::End,
         Keycode::Return | Keycode::KpEnter => Key::Enter,
         Keycode::Escape => Key::Escape,
+        Keycode::Backspace => Key::Backspace,
         Keycode::F12 => Key::F12,
         Keycode::Q => Key::Q,
         _ => Key::Other,
@@ -164,6 +165,8 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         Ok(p) => p,
         Err(e) => return fail(&format!("eventos: {e}")),
     };
+    // texto digitado chega como `Event::TextInput` (já com acentos compostos)
+    video.text_input().start(canvas.window());
 
     let mut stack: Vec<Box<dyn Scene>> = vec![make_scene(
         if args.browser {
@@ -210,6 +213,11 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         stack.push(make_scene(SceneId::Browser, &cfg, &assets));
                     } else {
                         inputs.push(Input::Key { key, ctrl, alt });
+                    }
+                }
+                Event::TextInput { text, .. } => {
+                    if !text.is_empty() {
+                        inputs.push(Input::Text(text));
                     }
                 }
                 Event::MouseMotion { x, y, .. } => {

@@ -22,13 +22,14 @@ pub enum Key {
     End,
     Enter,
     Escape,
+    Backspace,
     F12,
     Q,
     Other,
 }
 
 /// Entrada já em coordenadas lógicas (640×480).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Input {
     MouseMove {
         x: i32,
@@ -51,6 +52,8 @@ pub enum Input {
         ctrl: bool,
         alt: bool,
     },
+    /// Texto digitado (UTF-8), já composto pelo sistema (acentos, teclado morto).
+    Text(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
