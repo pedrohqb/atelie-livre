@@ -5,6 +5,7 @@ mod extract;
 mod html;
 mod info;
 mod mag;
+mod what;
 
 mod report;
 
@@ -29,6 +30,13 @@ enum Command {
     Info { file: PathBuf },
     /// Extrai imagens, sons e recursos de uma pasta instalada.
     Extract { input: PathBuf, output: PathBuf },
+    /// Mostra os balões de um bloco WHAT de um executável (ou todos, sem `--block`).
+    What {
+        exe: PathBuf,
+        /// Id do bloco em hexadecimal (ex.: 3a00).
+        #[arg(long)]
+        block: Option<String>,
+    },
     /// Converte um desenho .MAG do Fine Artist em PNG.
     Mag2png { input: PathBuf, output: PathBuf },
     /// Converte um PNG (de preferência 594×347) em desenho .MAG.
@@ -101,6 +109,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Command::What { exe, block } => simple(what::run(&exe, block.as_deref())),
         Command::Mag2png { input, output } => simple(mag::mag2png(&input, &output)),
         Command::Png2mag {
             input,

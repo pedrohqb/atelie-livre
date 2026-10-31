@@ -164,10 +164,22 @@ pub const STUDIO: &[Element] = &[
 pub const PROJECTS_BG: u16 = 0x67fb;
 pub const PROJECTS: &[Element] = &[
     Element {
+        id: 0x6801,
+        mask: 0x6809,
+        x: 39,
+        y: 13,
+    },
+    Element {
         id: 0x680b,
         mask: 0x0000,
         x: 254,
         y: 3,
+    },
+    Element {
+        id: 0x6813,
+        mask: 0x6819,
+        x: 153,
+        y: 168,
     },
     Element {
         id: 0x6833,

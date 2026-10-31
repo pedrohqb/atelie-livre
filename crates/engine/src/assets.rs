@@ -315,6 +315,13 @@ impl Assets {
             .and_then(|f| f.find(kind, id).map(|r| r.data.to_vec()))
     }
 
+    /// Balões de um bloco `WHAT` do executável (ajuda e assistentes), vazio se faltar.
+    pub fn dialogs(&self, p: Program, block: u16) -> Vec<formats::what::Record> {
+        self.exe_resource(p, "WHAT", block)
+            .and_then(|d| formats::what::parse(&d).ok())
+            .unwrap_or_default()
+    }
+
     /// Ids dos recursos numerados de um tipo do executável, em ordem crescente.
     pub fn exe_resource_ids(&self, p: Program, kind: &str) -> Vec<u16> {
         let mut ids: Vec<u16> = self.exe[p.idx()]

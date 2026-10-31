@@ -13,6 +13,7 @@ pub enum Format {
     Wave,
     Chnk,
     Mag,
+    What,
 }
 
 impl fmt::Display for Format {
@@ -28,6 +29,7 @@ impl fmt::Display for Format {
             Format::Wave => "wave",
             Format::Chnk => "chnk",
             Format::Mag => "mag",
+            Format::What => "what",
         };
         f.write_str(s)
     }

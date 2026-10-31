@@ -5,6 +5,7 @@
 use crate::Frame;
 use crate::assets::Assets;
 use formats::fnt::Font;
+use formats::what::{Item, PIC_OPTION, PIC_OPTION_PICTURE, Record};
 use std::rc::Rc;
 
 const YELLOW: [u8; 3] = [255, 238, 76];
@@ -20,6 +21,35 @@ pub struct Balloon {
     pub w: i32,
     pub text: String,
     pub options: Vec<String>,
+}
+
+impl Balloon {
+    /// Balão a partir de um registro `WHAT` do original: o texto antes da
+    /// primeira opção vira `text` (o `@` vira `name`), as opções ficam na ordem
+    /// em que aparecem e a largura é a do original.
+    pub fn from_record(r: &Record, x: i32, y: i32, name: &str) -> Balloon {
+        let mut text = String::new();
+        let mut in_options = false;
+        for i in &r.items {
+            match i {
+                Item::Picture { id, .. } if *id == PIC_OPTION || *id == PIC_OPTION_PICTURE => {
+                    in_options = true;
+                }
+                Item::Text { text: t, .. } if !in_options => text.push_str(t),
+                Item::Newline if !in_options => text.push('\n'),
+                _ => {}
+            }
+        }
+        let text = text.replace('@', name).trim().to_string();
+        let options: Vec<(u16, String)> = r.options();
+        Balloon {
+            x,
+            y,
+            w: r.width.max(120) as i32,
+            text,
+            options: options.into_iter().map(|o| o.1).collect(),
+        }
+    }
 }
 
 /// Quebra o texto em linhas que cabem em `width` pixels.

@@ -390,3 +390,28 @@ fn gallery_lists_sample_pictures() {
     assert_eq!((c.w, c.h), (594, 347));
     assert!(c.px.iter().any(|&p| p != 0));
 }
+
+#[test]
+fn what_blocks_decode_with_options_and_links() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    // 3c00: assistente do botão/adesivo; registro 2 pergunta botão ou adesivo
+    let w = a.dialogs(Program::Artist, 0x3c00);
+    assert_eq!(w.len(), 34);
+    assert_eq!(w[2].title, "Button or sticker");
+    assert_eq!((w[2].width, w[2].height), (0xd0, 0x46));
+    assert_eq!(w[2].options().len(), 2);
+    assert!(w[2].options()[1].1.contains("adesivo"));
+    // 3a00: desenho animado; "pasta" é a palavra do glossário 78
+    let w = a.dialogs(Program::Artist, 0x3a00);
+    assert_eq!(w[78].title, "pasta");
+    assert_eq!(w[4].links(), vec![(78, String::new())]);
+    // todos os blocos decodificam
+    for id in a.exe_resource_ids(Program::Artist, "WHAT") {
+        let w = a.dialogs(Program::Artist, id);
+        assert!(!w.is_empty(), "WHAT {id:04x}");
+        for r in &w {
+            assert!(r.width > 0, "WHAT {id:04x} {}", r.title);
+        }
+    }
+}

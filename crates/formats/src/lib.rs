@@ -20,6 +20,7 @@ pub mod reader;
 pub mod render;
 pub mod tag;
 pub mod wave;
+pub mod what;
 pub mod winres;
 pub mod wmf;
 

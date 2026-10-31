@@ -111,9 +111,36 @@ impl Floor {
             ],
         }
     }
+}
 
-    /// Balão do McZee ou da Maggie ao chegar ao andar (textos do original).
-    fn balloon(self) -> Balloon {
+/// Bloco `WHAT` com os balões das salas e índice do balão de chegada de cada andar.
+const ROOMS_WHAT: u16 = 0x100d;
+
+/// Nome usado no lugar do `@` dos balões (não há cadastro de usuário ainda).
+const USER_NAME: &str = "artista";
+
+impl Floor {
+    /// Balão de chegada ao andar: o do `WHAT` do original quando os dados
+    /// estão instalados, senão o texto reserva.
+    fn balloon(self, assets: &Assets) -> Balloon {
+        let k = match self {
+            Floor::Lobby => 1,
+            Floor::Studio => 26,
+            Floor::Projects => 31,
+            Floor::Tricks => 42,
+        };
+        let fallback = self.fallback_balloon();
+        match assets.dialogs(Program::Artist, ROOMS_WHAT).get(k) {
+            Some(r) if r.options().len() == fallback.options.len() => {
+                Balloon::from_record(r, fallback.x, fallback.y, USER_NAME)
+            }
+            _ => fallback,
+        }
+    }
+
+    /// Balão do McZee ou da Maggie ao chegar ao andar (textos do original,
+    /// usados quando o `ARTIST.EXE` não está instalado).
+    fn fallback_balloon(self) -> Balloon {
         let (x, y, w) = match self {
             Floor::Lobby => (300, 20, 300),
             Floor::Studio => (130, 230, 200),
@@ -261,7 +288,7 @@ impl Room {
             last_drawing,
             pal,
             drawings,
-            balloon: Some(floor.balloon()),
+            balloon: Some(floor.balloon(assets)),
             floor,
             quitting: false,
             asking_button: false,
@@ -284,10 +311,10 @@ impl Room {
         self.balloon.is_some()
     }
 
-    fn act(&mut self, action: Action, fx: &mut Vec<Effect>) {
+    fn act(&mut self, action: Action, fx: &mut Vec<Effect>, assets: &Assets) {
         match action {
             Action::Go(id) => fx.push(Effect::ChangeScene(id)),
-            Action::Floor(fl) => self.set_floor(fl),
+            Action::Floor(fl) => self.set_floor(fl, assets),
             Action::Quit => {
                 // como no original: "O que você quer fazer?"
                 self.quitting = true;
@@ -336,10 +363,10 @@ impl Room {
         self.floor
     }
 
-    fn set_floor(&mut self, floor: Floor) {
+    fn set_floor(&mut self, floor: Floor, assets: &Assets) {
         self.floor = floor;
         self.hotspots = floor.hotspots();
-        self.balloon = Some(floor.balloon());
+        self.balloon = Some(floor.balloon(assets));
         self.character = floor.character(&mut self.rng);
         self.gags = GagPlayer::with_rng(
             floor.gag_scripts(),
@@ -387,7 +414,7 @@ impl Scene for Room {
                         if k == 0 {
                             fx.push(Effect::Quit);
                         } else {
-                            self.act(Action::Close, &mut fx);
+                            self.act(Action::Close, &mut fx, assets);
                         }
                         break;
                     }
@@ -401,7 +428,7 @@ impl Scene for Room {
                     } else {
                         self.floor.balloon_action(k)
                     };
-                    self.act(action, &mut fx);
+                    self.act(action, &mut fx, assets);
                     break;
                 }
                 if b.contains(assets, x, y) {
@@ -417,7 +444,7 @@ impl Scene for Room {
                 continue;
             };
             let action = hs.action.clone();
-            self.act(action, &mut fx);
+            self.act(action, &mut fx, assets);
             break;
         }
         fx
