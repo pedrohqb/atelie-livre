@@ -18,6 +18,7 @@ pub mod render;
 pub mod tag;
 pub mod wave;
 pub mod winres;
+pub mod wmf;
 
 pub use error::{ErrorKind, Format, FormatError, Result};
 pub use palette::Rgb;

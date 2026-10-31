@@ -70,6 +70,13 @@ seção 4. Resumo:
   em `N+5`, máscara em `N+6`). O adesivo colocado se anima com deslocamento
   (o pássaro sai andando e volta); os roteiros ainda não foram achados — veja
   a spec [2c](../superpowers/specs/2026-10-31-adesivos-design.md).
+- **Rolos de clip-art**: os 28 `CARO` de `MAXMAG10.ART`, `MAX100.ART` e
+  `MAG100.ART`, na ordem dos números (spec
+  [2d](../superpowers/specs/2026-10-31-adesivos-2-design.md)); tira amarela
+  pontilhada, 8 casas de 34×34 a cada 41 px.
+- **Gravar animações do original**: `scratch/rec.sh ROLO CASA PASTA` coloca o
+  adesivo e grava 10 s com o ffmpeg; `scratch/analyze.py` acha as imagens em
+  cada quadro. Rolar a tira de filme no Wine derruba o programa.
 - **Lata de tinta**: faixa com 10 opções (`1590`, `1591`, `1593` … `15a1`) e,
   à esquerda, uma amostra da tinta atual.
 - **Aspirador**: 8 opções (`1557`, `1559`, `1567`, `1561`, `155f`, `155b`,

@@ -284,6 +284,15 @@ impl Assets {
             .unwrap_or_default()
     }
 
+    /// Conteúdo bruto de uma biblioteca de `SHARED/STUFF` (nome sem distinguir maiúsculas).
+    pub fn library_bytes(&self, name: &str) -> Option<&[u8]> {
+        let wanted = name.to_lowercase();
+        self.libraries
+            .iter()
+            .find(|(k, _)| k.to_lowercase() == wanted)
+            .map(|(_, l)| l.data.as_slice())
+    }
+
     pub fn catalog(&self) -> &[Source] {
         &self.catalog
     }

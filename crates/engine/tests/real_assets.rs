@@ -172,7 +172,7 @@ fn paint_frame_matches_original_colors() {
 
 #[test]
 fn sticker_frames_have_masks_and_thumbnails() {
-    use engine::scenes::paint::{ANIMALS, THUMBS};
+    use engine::scenes::stickers::{ANIMALS, THUMBS};
     let Some(d) = data_dir() else { return };
     let a = Assets::open(&d).unwrap();
     for frames in ANIMALS {
@@ -195,4 +195,60 @@ fn sticker_frames_have_masks_and_thumbnails() {
         let t = a.image(&ImageRef::Pic(Program::Artist, id));
         assert!(t.width <= 30 && t.height <= 30, "{id:#x}");
     }
+}
+
+#[test]
+fn clip_art_rolls_are_the_28_carousels() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let rolls = engine::clipart::load_rolls(&a);
+    let ids: Vec<u16> = rolls.iter().map(|r| r.id).collect();
+    assert_eq!(ids, (0..28).collect::<Vec<u16>>());
+    // rolos conferidos no original: 0 começa pelo skate (128×46), 3 é dinossauro
+    let skate = rolls[0].items[0].art().unwrap();
+    assert_eq!((skate.width, skate.height), (128, 46));
+    assert_eq!(rolls[0].name, "Hobby");
+    for r in &rolls {
+        assert!(r.icon.is_some(), "rolo {}", r.id);
+        for it in &r.items {
+            assert!(it.art().is_some(), "rolo {}", r.id);
+            assert!(it.preview.is_some(), "rolo {}", r.id);
+        }
+    }
+}
+
+#[test]
+fn clip_art_sticker_is_placed_at_full_size() {
+    use engine::scene::{Input, MouseButton, Scene};
+    use engine::scenes::Paint;
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let mut p = Paint::new(None, &a);
+    let c = |x, y| Input::Click {
+        button: MouseButton::Left,
+        x,
+        y,
+    };
+    // ferramenta de adesivos, rolo 2 (skate), primeira casa da tira amarela
+    p.update(&[c(129, 30), c(100, 80)], 0.0, &a);
+    assert_eq!(p.stickers().roll(), 1);
+    assert!(p.stickers().film_open());
+    p.update(&[c(106, 120)], 0.0, &a);
+    assert!(p.stickers().holding());
+    p.update(&[c(330, 280)], 0.0, &a);
+    let px = &p.canvas().px;
+    let w = p.canvas().w as usize;
+    let (mut x0, mut x1) = (usize::MAX, 0);
+    for (k, v) in px.iter().enumerate() {
+        if *v != 0 {
+            x0 = x0.min(k % w);
+            x1 = x1.max(k % w);
+        }
+    }
+    // o skate tem 128 pixels de largura e fica centrado no clique
+    assert_eq!(x1 - x0 + 1, 128);
+    assert_eq!(x0 as i32, 330 - 23 - 64);
+    // página seguinte de rolos
+    p.update(&[c(510, 95)], 0.0, &a);
+    assert_eq!(p.stickers().page(), 1);
 }

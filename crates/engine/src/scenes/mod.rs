@@ -3,6 +3,8 @@
 pub mod browser;
 pub mod paint;
 pub mod splash;
+pub mod sticker_scripts;
+pub mod stickers;
 pub mod street;
 
 pub use browser::Browser;

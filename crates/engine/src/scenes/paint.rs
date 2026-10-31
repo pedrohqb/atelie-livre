@@ -2,9 +2,9 @@
 //! lata de tinta, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+use super::stickers::Stickers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
-use crate::paint::stamp::Stamp;
 use crate::paint::store::{LAST_NAME, load_png, save_drawing};
 use crate::paint::{
     CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, line_points, page_shapes,
@@ -50,46 +50,6 @@ const PAGE5_BUTTONS: [u16; 12] = [
 const BUCKET_BUTTONS: [u16; 10] = [
     0x1590, 0x1591, 0x1593, 0x1595, 0x1597, 0x1599, 0x159b, 0x159d, 0x159f, 0x15a1,
 ];
-/// Primeiro rolo de adesivos: quadros de cada bicho em `ARTIST.PIC` (spec 2c).
-/// Em cada grupo, `N` é o colorido, `N+5` o traço e `N+6` a máscara.
-pub const ANIMALS: [&[u16]; 16] = [
-    &[0x753b, 0x7543, 0x754b],
-    &[0x7553, 0x755b, 0x7563],
-    &[0x757b, 0x7583],
-    &[0x758b, 0x7593],
-    &[0x759b, 0x75a3, 0x75ab, 0x75b3],
-    &[0x75bb, 0x75c3, 0x75cb, 0x75d3],
-    &[0x75db, 0x75e3, 0x75eb, 0x75f3],
-    &[0x75fb, 0x7603, 0x760b, 0x7613, 0x761b, 0x7623],
-    &[0x762b, 0x7633, 0x763b, 0x7643, 0x764b, 0x7653],
-    &[0x765b, 0x7663, 0x766b, 0x7673, 0x767b],
-    &[0x7683, 0x768b, 0x7693, 0x769b],
-    &[0x76a3, 0x76ab, 0x76b3, 0x76bb],
-    &[0x76c3, 0x76cb, 0x76d3, 0x76db, 0x76e3, 0x76eb],
-    &[0x76f3, 0x76fb, 0x7703, 0x770b],
-    &[0x7713, 0x771b, 0x7723, 0x772b],
-    &[0x7733, 0x773b],
-];
-/// Miniaturas em traço de cada bicho, na tira de filme.
-pub const THUMBS: [u16; 16] = [
-    0x7743, 0x77ec, 0x77ed, 0x77ee, 0x77ef, 0x77f0, 0x77f1, 0x77f2, 0x77f3, 0x77f4, 0x77f5, 0x77f6,
-    0x77f7, 0x77f8, 0x77f9, 0x77fa,
-];
-const STICKER_FPS: f32 = 8.0;
-const STICKER_LOOPS: usize = 2;
-const ROLL: (i32, i32, i32, i32) = (9, 58, 66, 42);
-const FILM: (i32, i32, i32, i32) = (33, 58, 42, 409);
-/// Topo da tira (onde fica o rolo escolhido): clicar fecha a tira.
-const FILM_TOP: (i32, i32, i32, i32) = (33, 58, 42, 42);
-const FILM_CELLS: usize = 9;
-const FILM_UP: (i32, i32, i32, i32) = (39, 452, 12, 12);
-const FILM_DOWN: (i32, i32, i32, i32) = (57, 452, 12, 12);
-const GREEN: [u8; 3] = [71, 140, 80];
-
-fn film_cell(k: usize) -> (i32, i32, i32, i32) {
-    (40, 103 + 39 * k as i32, 28, 32)
-}
-
 const VACUUM_BUTTONS: [u16; 8] = [
     0x1557, 0x1559, 0x1567, 0x1561, 0x155f, 0x155b, 0x155c, 0x1569,
 ];
@@ -227,16 +187,6 @@ fn canvas_rect() -> (i32, i32, i32, i32) {
     (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32)
 }
 
-/// Adesivo colocado, ainda se animando: centro do primeiro quadro (no quadro),
-/// tempo decorrido e o primeiro quadro já convertido, colado ao terminar.
-struct Playing {
-    animal: usize,
-    cx: i32,
-    cy: i32,
-    t: f32,
-    stamp: Stamp,
-}
-
 struct Stroke {
     last: (i32, i32),
     last_stamp: (i32, i32),
@@ -261,10 +211,7 @@ pub struct Paint {
     shape: Option<Shape>,
     stroke: Option<Stroke>,
     changed: bool,
-    film_open: bool,
-    film_scroll: usize,
-    held: Option<usize>,
-    playing: Option<Playing>,
+    stickers: Stickers,
     mouse: (i32, i32),
 }
 
@@ -298,10 +245,7 @@ impl Paint {
             shape: None,
             stroke: None,
             changed: false,
-            film_open: false,
-            film_scroll: 0,
-            held: None,
-            playing: None,
+            stickers: Stickers::new(assets),
             mouse: (0, 0),
         };
         p.set_brush(1, 0);
@@ -342,78 +286,21 @@ impl Paint {
         &self.canvas
     }
 
-    /// Bicho na mão (escolhido na tira, ainda não colocado).
-    pub fn held(&self) -> Option<usize> {
-        self.held
-    }
-
-    pub fn film_open(&self) -> bool {
-        self.film_open
-    }
-
-    pub fn is_animating(&self) -> bool {
-        self.playing.is_some()
-    }
-
-    /// Termina a animação em curso colando o adesivo (primeiro quadro) no quadro.
-    fn finish_sticker(&mut self) {
-        let Some(p) = self.playing.take() else { return };
-        let (w, h) = (p.stamp.w as i32, p.stamp.h as i32);
-        self.canvas.paste(&p.stamp, p.cx - w / 2, p.cy - h / 2);
-        self.changed = true;
-    }
-
-    /// Clique quando a ferramenta é a de adesivos; verdadeiro se foi tratado.
-    fn sticker_click(&mut self, x: i32, y: i32, assets: &Assets) -> bool {
-        if self.film_open && inside(FILM, x, y) {
-            let max_scroll = ANIMALS.len().saturating_sub(FILM_CELLS);
-            if inside(FILM_TOP, x, y) {
-                self.film_open = false;
-            } else if inside(FILM_UP, x, y) {
-                self.film_scroll = self.film_scroll.saturating_sub(1);
-            } else if inside(FILM_DOWN, x, y) {
-                self.film_scroll = (self.film_scroll + 1).min(max_scroll);
-            } else if let Some(k) = (0..FILM_CELLS).find(|&k| inside(film_cell(k), x, y)) {
-                let animal = self.film_scroll + k;
-                if animal < ANIMALS.len() {
-                    self.held = Some(animal);
-                    self.film_open = false;
-                }
-            }
-            return true;
-        }
-        if inside(ROLL, x, y) {
-            self.film_open = !self.film_open;
-            self.held = None;
-            return true;
-        }
-        if let Some(animal) = self.held
-            && inside(canvas_rect(), x, y)
-        {
-            let id = ANIMALS[animal][0];
-            let stamp = Stamp::from_images(
-                &assets.image(&pic(id)),
-                &assets.image(&pic(id + 6)),
-                &self.pal,
-            );
-            self.history.record(&self.canvas);
-            self.held = None;
-            self.playing = Some(Playing {
-                animal,
-                cx: x - ORIGIN.0,
-                cy: y - ORIGIN.1,
-                t: 0.0,
-                stamp,
-            });
-            return true;
-        }
-        false
+    /// Ferramenta de adesivos (rolos, tira, adesivo na mão, animação).
+    pub fn stickers(&self) -> &Stickers {
+        &self.stickers
     }
 
     fn ink(&self) -> Ink {
         Ink {
             color: COLORS[self.color],
             pattern: self.patterns[self.pattern],
+        }
+    }
+
+    fn finish_sticker(&mut self) {
+        if self.stickers.finish(&mut self.canvas) {
+            self.changed = true;
         }
     }
 
@@ -472,11 +359,19 @@ impl Paint {
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
         self.stroke = None;
         self.finish_sticker();
-        if self.tool == Tool::Stickers && self.sticker_click(x, y, assets) {
-            return;
+        if self.tool == Tool::Stickers {
+            match self
+                .stickers
+                .click(x, y, &mut self.canvas, &mut self.history, assets, &self.pal)
+            {
+                Some(placed) => {
+                    self.changed |= placed;
+                    return;
+                }
+                // qualquer outro clique solta o adesivo que estava na mão
+                None => self.stickers.reset(),
+            }
         }
-        // qualquer outro clique solta o adesivo que estava na mão
-        self.held = None;
         if inside(canvas_rect(), x, y) {
             let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
             match self.tool {
@@ -505,7 +400,7 @@ impl Paint {
             match t.action {
                 Action::Select(tool) => {
                     self.tool = tool;
-                    self.film_open = false;
+                    self.stickers.reset();
                 }
                 Action::Undo => {
                     if self.history.toggle(&mut self.canvas) {
@@ -724,18 +619,7 @@ impl Paint {
                 Some(self.bucket_option)
             }
             Tool::Stickers => {
-                f.blit_masked(
-                    &a.image(&pic(0x10cf)),
-                    &a.image(&pic(0x10d1)),
-                    ROLL.0,
-                    ROLL.1,
-                );
-                let t = a.image(&pic(THUMBS[0]));
-                f.blit(
-                    &t,
-                    ROLL.0 + 33 - t.width as i32 / 2,
-                    ROLL.1 + 21 - t.height as i32 / 2,
-                );
+                self.stickers.draw_strip(f, a);
                 None
             }
             Tool::Vacuum => {
@@ -774,113 +658,11 @@ impl Paint {
         }
     }
 
-    /// Tira de filme, animação em curso e adesivo na mão.
-    fn draw_stickers(&self, f: &mut Frame, a: &Assets) {
-        let clip = canvas_rect();
-        if let Some(p) = &self.playing {
-            let frames = ANIMALS[p.animal];
-            let id = frames[(p.t * STICKER_FPS) as usize % frames.len()];
-            let img = a.image(&pic(id));
-            // alinhados pelo centro da base do primeiro quadro
-            let bottom = ORIGIN.1 + p.cy - p.stamp.h as i32 / 2 + p.stamp.h as i32;
-            let x = ORIGIN.0 + p.cx - img.width as i32 / 2;
-            blit_clipped(
-                f,
-                &img,
-                &a.image(&pic(id + 6)),
-                x,
-                bottom - img.height as i32,
-                clip,
-            );
-        }
-        if let Some(animal) = self.held
-            && inside(clip, self.mouse.0, self.mouse.1)
-        {
-            let id = ANIMALS[animal][0];
-            let img = a.image(&pic(id));
-            let (x, y) = (
-                self.mouse.0 - img.width as i32 / 2,
-                self.mouse.1 - img.height as i32 / 2,
-            );
-            blit_clipped(f, &img, &a.image(&pic(id + 6)), x, y, clip);
-        }
-        if self.tool == Tool::Stickers && self.film_open {
-            let (fx, fy, fw, fh) = FILM;
-            f.rect(fx, fy, fw, fh, BLACK);
-            f.rect(fx + 1, fy + 1, fw - 2, fh - 2, GREEN);
-            // furos do filme: 2×3 brancos com contorno preto, a cada 7 pixels
-            for y in (fy + 2..fy + fh - 4).step_by(7) {
-                for hx in [fx + 2, fx + 36] {
-                    f.rect(hx, y - 1, 4, 5, BLACK);
-                    f.rect(hx + 1, y, 2, 3, WHITE);
-                }
-            }
-            let mut cell = |r: (i32, i32, i32, i32), thumb: Option<u16>| {
-                f.rect(r.0, r.1, r.2, r.3, BLACK);
-                f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, WHITE);
-                if let Some(id) = thumb {
-                    let t = a.image(&pic(id));
-                    let (tw, th) = (t.width as i32, t.height as i32);
-                    // recortada ao interior: a miniatura do dodô (30×30) é maior que a casa
-                    let inner = (r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2);
-                    let (x, y) = (r.0 + r.2 / 2 - tw / 2, r.1 + r.3 / 2 - th / 2);
-                    blit_clipped(f, &t, &t, x, y, inner);
-                }
-            };
-            cell((40, 65, 28, 32), Some(THUMBS[0]));
-            for k in 0..FILM_CELLS {
-                cell(film_cell(k), THUMBS.get(self.film_scroll + k).copied());
-            }
-            f.blit_masked(
-                &a.image(&pic(0x02db)),
-                &a.image(&pic(0x02dd)),
-                FILM_UP.0,
-                FILM_UP.1,
-            );
-            f.blit_masked(
-                &a.image(&pic(0x02df)),
-                &a.image(&pic(0x02e1)),
-                FILM_DOWN.0,
-                FILM_DOWN.1,
-            );
-        }
-    }
-
     fn draw_canvas(&self, f: &mut Frame) {
         for (k, &i) in self.canvas.px.iter().enumerate() {
             let x = ORIGIN.0 + (k as u32 % self.canvas.w) as i32;
             let y = ORIGIN.1 + (k as u32 / self.canvas.w) as i32;
             f.put(x, y, self.rgb(i));
-        }
-    }
-}
-
-/// `blit_masked` recortado a um retângulo da tela.
-fn blit_clipped(
-    f: &mut Frame,
-    img: &crate::Image,
-    mask: &crate::Image,
-    x: i32,
-    y: i32,
-    clip: (i32, i32, i32, i32),
-) {
-    let masked = (mask.width, mask.height) == (img.width, img.height);
-    for dy in 0..img.height as i32 {
-        for dx in 0..img.width as i32 {
-            let (sx, sy) = (x + dx, y + dy);
-            if !inside(clip, sx, sy) {
-                continue;
-            }
-            let i = ((dy as u32 * img.width + dx as u32) * 4) as usize;
-            let opaque = if masked {
-                let m = &mask.rgba[i..i + 3];
-                (m[0] as u32 + m[1] as u32 + m[2] as u32) < 384
-            } else {
-                img.rgba[i + 3] != 0
-            };
-            if opaque {
-                f.put(sx, sy, [img.rgba[i], img.rgba[i + 1], img.rgba[i + 2]]);
-            }
         }
     }
 }
@@ -920,12 +702,8 @@ impl Scene for Paint {
                 _ => {}
             }
         }
-        if let Some(p) = self.playing.as_mut() {
-            p.t += dt.max(0.0);
-            let total = ANIMALS[p.animal].len() * STICKER_LOOPS;
-            if (p.t * STICKER_FPS) as usize >= total {
-                self.finish_sticker();
-            }
+        if self.stickers.update(dt, &mut self.canvas) {
+            self.changed = true;
         }
         fx
     }
@@ -936,7 +714,8 @@ impl Scene for Paint {
         self.draw_options(frame, assets);
         self.draw_columns(frame);
         self.draw_canvas(frame);
-        self.draw_stickers(frame, assets);
+        self.stickers
+            .draw_overlay(frame, assets, &self.pal, self.mouse);
     }
 
     fn leave(&mut self) -> Vec<Effect> {
@@ -960,6 +739,7 @@ impl Scene for Paint {
 mod tests {
     use super::*;
     use crate::paint::WHITE as W;
+    use crate::scenes::stickers::ANIMALS;
     use crate::scenes::testutil::empty_assets;
 
     fn click(x: i32, y: i32) -> Input {
@@ -1166,18 +946,18 @@ mod tests {
         p.update(&[click(129, 30)], 0.0, &a);
         assert_eq!(p.tool(), Tool::Stickers);
         p.update(&[click(40, 80)], 0.0, &a);
-        assert!(p.film_open());
+        assert!(p.stickers().film_open());
         // casa 1 da tira: o peixe-espada
         p.update(&[click(54, 103 + 39 + 10)], 0.0, &a);
-        assert_eq!(p.held(), Some(1));
-        assert!(!p.film_open());
+        assert_eq!(p.stickers().held_animal(), Some(1));
+        assert!(!p.stickers().film_open());
         p.update(&[click(300, 300)], 0.0, &a);
-        assert!(p.is_animating());
+        assert!(p.stickers().is_animating());
         assert_eq!(painted(&p), 0);
         p.update(&[], 10.0, &a);
-        assert!(!p.is_animating());
+        assert!(!p.stickers().is_animating());
         assert!(painted(&p) > 0);
-        assert_eq!(p.held(), None);
+        assert_eq!(p.stickers().held_animal(), None);
         // o ovo desfaz a colagem
         p.update(&[click(270, 30)], 0.0, &a);
         assert_eq!(painted(&p), 0);
@@ -1188,11 +968,11 @@ mod tests {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
         p.update(&[click(129, 30), click(40, 80), click(54, 113)], 0.0, &a);
-        assert_eq!(p.held(), Some(0));
+        assert_eq!(p.stickers().held_animal(), Some(0));
         p.update(&[click(13, 150)], 0.0, &a);
-        assert_eq!(p.held(), None);
+        assert_eq!(p.stickers().held_animal(), None);
         p.update(&[click(300, 300)], 0.0, &a);
-        assert!(!p.is_animating());
+        assert!(!p.stickers().is_animating());
     }
 
     #[test]
@@ -1205,13 +985,35 @@ mod tests {
         }
         // última casa visível = último bicho
         p.update(&[click(54, 103 + 39 * 8 + 10)], 0.0, &a);
-        assert_eq!(p.held(), Some(ANIMALS.len() - 1));
+        assert_eq!(p.stickers().held_animal(), Some(ANIMALS.len() - 1));
         p.update(&[click(40, 80)], 0.0, &a);
         for _ in 0..20 {
             p.update(&[click(42, 456)], 0.0, &a);
         }
         p.update(&[click(54, 113)], 0.0, &a);
-        assert_eq!(p.held(), Some(0));
+        assert_eq!(p.stickers().held_animal(), Some(0));
+    }
+
+    #[test]
+    fn snake_leaves_without_pasting() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(
+            &[
+                click(129, 30),
+                click(40, 80),
+                click(54, 113),
+                click(100, 300),
+            ],
+            0.0,
+            &a,
+        );
+        assert!(p.stickers().is_animating());
+        for _ in 0..200 {
+            p.update(&[], 0.1, &a);
+        }
+        assert!(!p.stickers().is_animating());
+        assert_eq!(painted(&p), 0);
     }
 
     #[test]
@@ -1222,15 +1024,15 @@ mod tests {
             &[
                 click(129, 30),
                 click(40, 80),
-                click(54, 113),
+                click(54, 152),
                 click(300, 300),
             ],
             0.0,
             &a,
         );
-        assert!(p.is_animating());
+        assert!(p.stickers().is_animating());
         p.update(&[click(13, 150)], 0.0, &a);
-        assert!(!p.is_animating());
+        assert!(!p.stickers().is_animating());
         assert!(painted(&p) > 0);
     }
 
@@ -1243,7 +1045,7 @@ mod tests {
             &[
                 click(129, 30),
                 click(40, 80),
-                click(54, 113),
+                click(54, 152),
                 click(300, 300),
             ],
             0.0,
