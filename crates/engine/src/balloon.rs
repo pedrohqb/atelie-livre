@@ -53,37 +53,45 @@ impl Balloon {
         font.map_or(10, |f| f.height as i32 + LINE_GAP)
     }
 
-    /// Altura total; `None` de fonte usa a 8×8.
-    fn layout(&self, font: Option<&Font>) -> (Vec<String>, i32) {
+    fn wrap_any(font: Option<&Font>, text: &str, width: u32) -> Vec<String> {
+        match font {
+            Some(f) => wrap(f, text, width),
+            None => text.split('\n').map(str::to_string).collect(),
+        }
+    }
+
+    /// Linhas do texto, linhas de cada opção e altura total; sem fonte, usa a 8×8.
+    fn layout(&self, font: Option<&Font>) -> (Vec<String>, Vec<Vec<String>>, i32) {
         let inner = (self.w - 2 * PAD) as u32;
-        let lines = match font {
-            Some(f) => wrap(f, &self.text, inner),
-            None => self.text.split('\n').map(str::to_string).collect(),
-        };
+        let lines = Self::wrap_any(font, &self.text, inner);
+        let opts: Vec<Vec<String>> = self
+            .options
+            .iter()
+            .map(|o| Self::wrap_any(font, o, inner.saturating_sub((BULLET + 4) as u32)))
+            .collect();
         let lh = Self::line_h(font);
         let mut h = 2 * PAD + lines.len() as i32 * lh;
-        if !self.options.is_empty() {
-            h += 4 + self.options.len() as i32 * (lh + 4);
+        if !opts.is_empty() {
+            h += 4 + opts.iter().map(|o| o.len() as i32 * lh + 4).sum::<i32>();
         }
-        (lines, h)
+        (lines, opts, h)
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
-        self.layout(Self::font(a).as_deref()).1
+        self.layout(Self::font(a).as_deref()).2
     }
 
     /// Retângulo (x, y, w, h) da opção `k`.
     pub fn option_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
         let font = Self::font(a);
-        let (lines, _) = self.layout(font.as_deref());
+        let (lines, opts, _) = self.layout(font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        let y0 = self.y + PAD + lines.len() as i32 * lh + 4;
-        (
-            self.x + PAD,
-            y0 + k as i32 * (lh + 4) - 2,
-            self.w - 2 * PAD,
-            lh + 4,
-        )
+        let mut y0 = self.y + PAD + lines.len() as i32 * lh + 4;
+        for o in opts.iter().take(k) {
+            y0 += o.len() as i32 * lh + 4;
+        }
+        let n = opts.get(k).map_or(1, |o| o.len() as i32);
+        (self.x + PAD, y0 - 2, self.w - 2 * PAD, n * lh + 4)
     }
 
     /// Índice da opção clicada em (x, y), se houver.
@@ -101,7 +109,7 @@ impl Balloon {
 
     pub fn draw(&self, f: &mut Frame, a: &Assets) {
         let font = Self::font(a);
-        let (lines, h) = self.layout(font.as_deref());
+        let (lines, opts, h) = self.layout(font.as_deref());
         let lh = Self::line_h(font.as_deref());
         // fundo pontilhado: amarelo nas posições (x + y) ímpares de 1 em 3
         f.rect(self.x, self.y, self.w, h, BLACK);
@@ -130,7 +138,7 @@ impl Balloon {
             }
             ty += lh;
         }
-        for (k, opt) in self.options.iter().enumerate() {
+        for (k, opt) in opts.iter().enumerate() {
             let r = self.option_rect(a, k);
             // bolinha preta com brilho branco
             let (bx, by) = (r.0, r.1 + 2 + (lh - 10) / 2);
@@ -147,11 +155,14 @@ impl Balloon {
             f.put(bx + 6, by + 2, WHITE);
             f.put(bx + 6, by + 4, WHITE);
             f.put(bx + 7, by + 3, WHITE);
-            match &font {
-                Some(fo) => {
-                    f.text_font(fo, r.0 + BULLET + 4, r.1 + 2, opt, BLACK);
+            for (j, line) in opt.iter().enumerate() {
+                let ly = r.1 + 2 + j as i32 * lh;
+                match &font {
+                    Some(fo) => {
+                        f.text_font(fo, r.0 + BULLET + 4, ly, line, BLACK);
+                    }
+                    None => f.text(r.0 + BULLET + 4, ly, line, BLACK),
                 }
-                None => f.text(r.0 + BULLET + 4, r.1 + 2, opt, BLACK),
             }
         }
     }
