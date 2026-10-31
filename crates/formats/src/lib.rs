@@ -14,6 +14,7 @@ pub mod ne;
 pub mod palette;
 pub mod pkbm;
 pub mod reader;
+pub mod render;
 pub mod tag;
 pub mod wave;
 pub mod winres;

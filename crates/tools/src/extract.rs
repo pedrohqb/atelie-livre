@@ -4,7 +4,8 @@ use crate::detect::{FileKind, detect};
 use crate::html::{self, Section};
 use crate::paths::{find_ci, relative, safe_component, walk_files};
 use crate::report::{Failure, FileSummary, Report};
-use formats::{Rgb, chnk, glob, macres, ne, palette, pkbm, wave, winres};
+use formats::render::{Palettes, bitmap_to_rgba};
+use formats::{chnk, glob, macres, ne, pkbm, wave, winres};
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::io;
@@ -19,34 +20,6 @@ const EXPECTED: [&str; 6] = [
     "WRITER/WRITER.PIC",
     "WRITER/WRITER.SND",
 ];
-
-struct Palettes {
-    pal16: Vec<Rgb>,
-    pal256: Vec<Rgb>,
-}
-
-impl Palettes {
-    /// Lê as `LOGPALETTE` 4 e 8 de um executável; sem ele, uma rampa de cinzas.
-    fn from_exe(path: Option<&PathBuf>) -> Palettes {
-        let read = |id: u16| -> Option<Vec<Rgb>> {
-            let data = std::fs::read(path?).ok()?;
-            let f = ne::parse(&data).ok()?;
-            palette::parse_logpalette(f.find("LOGPALETTE", id)?.data).ok()
-        };
-        let gray = |n: usize| -> Vec<Rgb> {
-            (0..n)
-                .map(|i| {
-                    let v = (255 - i * 255 / (n - 1)) as u8;
-                    Rgb { r: v, g: v, b: v }
-                })
-                .collect()
-        };
-        Palettes {
-            pal16: read(4).unwrap_or_else(|| gray(16)),
-            pal256: read(8).unwrap_or_else(|| gray(256)),
-        }
-    }
-}
 
 struct Ctx<'a> {
     input: &'a Path,
@@ -87,8 +60,9 @@ pub fn run(input: &Path, output: &Path) -> io::Result<Report> {
         sections: Vec::new(),
     };
     let found: Vec<Option<PathBuf>> = EXPECTED.iter().map(|rel| find_ci(input, rel)).collect();
-    let artist_pal = Palettes::from_exe(found[0].as_ref());
-    let writer_pal = Palettes::from_exe(found[1].as_ref());
+    let read = |p: Option<&PathBuf>| p.and_then(|p| std::fs::read(p).ok());
+    let artist_pal = Palettes::from_exe(read(found[0].as_ref()).as_deref());
+    let writer_pal = Palettes::from_exe(read(found[1].as_ref()).as_deref());
     let other_pal = if found[0].is_some() || found[1].is_none() {
         &artist_pal
     } else {
@@ -365,31 +339,6 @@ fn extract_glob(
 /// Profundidade máxima de CHNK aninhados (os dados reais têm 1 nível).
 const MAX_NESTING: usize = 8;
 
-/// Paleta de um arquivo CHNK: a `CTBL` do próprio arquivo substitui a de 16 ou a de
-/// 256 cores do executável, conforme o número de cores dela.
-fn chnk_palettes(f: &chnk::ChunkFile<'_>, base: &Palettes) -> Palettes {
-    let ctbl = f
-        .chunks
-        .iter()
-        .flat_map(|c| &c.parts)
-        .find(|p| p.tag.0 == *b"CTBL")
-        .and_then(|p| palette::parse_ctbl(p.data).ok());
-    match ctbl {
-        Some(c) if c.len() == 16 => Palettes {
-            pal16: c,
-            pal256: base.pal256.clone(),
-        },
-        Some(c) if c.len() == 256 => Palettes {
-            pal16: base.pal16.clone(),
-            pal256: c,
-        },
-        _ => Palettes {
-            pal16: base.pal16.clone(),
-            pal256: base.pal256.clone(),
-        },
-    }
-}
-
 /// Grava as partes de um CHNK (recursivamente) e devolve a árvore para o JSON.
 #[allow(clippy::too_many_arguments)]
 fn extract_chnk(
@@ -402,7 +351,7 @@ fn extract_chnk(
     pal: &Palettes,
     depth: usize,
 ) -> io::Result<Value> {
-    let pal = &chnk_palettes(f, pal);
+    let pal = &pal.for_chnk(f);
     let mut chunks = Vec::new();
     for c in &f.chunks {
         let mut parts = Vec::new();
@@ -504,19 +453,8 @@ fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 fn write_bitmap(path: &Path, b: &pkbm::Bitmap, pal: &Palettes) -> io::Result<()> {
-    let colors = b
-        .palette
-        .clone()
-        .unwrap_or_else(|| pkbm::default_palette_for(b.depth, &pal.pal16, &pal.pal256));
-    let mut rgba = Vec::with_capacity(b.pixels.len() * 4);
-    for &i in &b.pixels {
-        let c = colors
-            .get(i as usize)
-            .copied()
-            .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-        rgba.extend_from_slice(&[c.r, c.g, c.b, 255]);
-    }
-    write_png(path, b.width as u32, b.height as u32, &rgba)
+    let img = bitmap_to_rgba(b, pal);
+    write_png(path, img.width, img.height, &img.rgba)
 }
 
 fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> io::Result<()> {
