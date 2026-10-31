@@ -99,7 +99,16 @@ target/release/atelie-tools info caminho/MSKIDS/ARTIST.EXE
 
 # extrai imagens (PNG), sons (WAV), recursos e documentos para uma pasta
 target/release/atelie-tools extract caminho/MSKIDS saida
+
+# converte um desenho .MAG do Fine Artist em PNG, e um PNG (594×347) em .MAG
+target/release/atelie-tools mag2png caminho/MSKIDS/SHARED/USERS/MAGGIE/SAMP6.MAG praia.png
+target/release/atelie-tools png2mag praia.png praia.mag --title "Praia" --data caminho/MSKIDS
 ```
+
+O `png2mag` aproxima as cores à paleta do `ARTIST.EXE` da pasta indicada por
+`--data` (ou pela variável `ATELIE_DATA`); sem a pasta, o PNG precisa ter até
+256 cores. Os `.MAG` gravados seguem a estrutura dos desenhos de exemplo da
+instalação, para abrir no Fine Artist original (ver `docs/formats/mag.md`).
 
 O `extract` gera `saida/index.html`, uma folha de contato com todas as imagens
 e os sons, e `saida/report.json`, com o que foi processado, o que falhou e o
