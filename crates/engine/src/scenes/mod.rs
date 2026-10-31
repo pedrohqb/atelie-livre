@@ -1,8 +1,10 @@
 //! Cenas do subprojeto 2a.
 
+pub mod browser;
 pub mod splash;
 pub mod street;
 
+pub use browser::Browser;
 pub use splash::Splash;
 pub use street::Street;
 
