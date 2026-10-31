@@ -1,0 +1,16 @@
+[package]
+name = "tools"
+version = "0.1.0"
+description = "Ferramentas de linha de comando do Ateliê Livre"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "atelie-tools"
+path = "src/main.rs"
+
+[dependencies]
+formats = { path = "../formats" }
+clap = { version = "4", features = ["derive"] }
