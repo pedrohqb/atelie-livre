@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod chnk;
 pub mod cp1252;
 pub mod error;
 pub mod glob;

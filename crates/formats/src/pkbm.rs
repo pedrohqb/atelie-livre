@@ -42,8 +42,11 @@ impl Ordered<'_> {
     }
 }
 
+/// A etiqueta aparece como `PKBM` ou, quando gravada como u32 little-endian, `MBKP`.
 pub fn is_pkbm(data: &[u8]) -> bool {
-    data.len() >= 8 && &data[4..8] == b"PKBM" && matches!(&data[0..2], [0, 1] | [1, 0])
+    data.len() >= 8
+        && matches!(&data[4..8], b"PKBM" | b"MBKP")
+        && matches!(&data[0..2], [0, 1] | [1, 0])
 }
 
 pub fn decode(data: &[u8]) -> Result<Bitmap> {
@@ -333,6 +336,15 @@ mod tests {
             decode(&d).unwrap_err().kind,
             ErrorKind::Unsupported(_)
         ));
+    }
+
+    #[test]
+    fn accepts_byte_swapped_tag() {
+        // nas bibliotecas CHNK a etiqueta aparece como "MBKP" (u32 little-endian)
+        let mut d = build(Order::Little, (2, 1, 8), false, &[], &[3, 4]);
+        d[4..8].copy_from_slice(b"MBKP");
+        assert!(is_pkbm(&d));
+        assert_eq!(decode(&d).unwrap().pixels, [3, 4]);
     }
 
     #[test]

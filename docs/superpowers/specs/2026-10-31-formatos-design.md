@@ -149,7 +149,7 @@ Biblioteca sem janela, som ou E/S de rede; depende só de `std` (e de
 | `glob` | bytes de um `.PIC` | `GlobArchive` com `entries()` → `(id, &[u8])` |
 | `pkbm` | dados de uma entrada `GLOB` | `Bitmap { width, height, depth, pixels: Vec<u8> /* índices */, mask: Option<Vec<u8>> }` |
 | `adpcm` | um recurso `SND` (RIFF/WAVE) | `Pcm { sample_rate, channels, samples: Vec<i16> }`; aceita também PCM não comprimido |
-| `chnk` | bytes de um documento | `ChunkFile { creator: Tag, version: (u16, u16), chunks: Vec<Chunk> }`, `Chunk { tag, id, offset, len, children }` |
+| `chnk` | bytes de um documento ou biblioteca | `ChunkFile { creator, version, byte_order, chunks }`, `Chunk { tag, id: u16, flags, name, parts }`, `Part { tag, offset, data }` (o índice não tem lista de filhos; um chunk tem partes, e flags 4 marca parte que é um CHNK aninhado) |
 | `macres` | `STR#`, `STR`, `PAT#` | `Vec<String>` (Windows-1252 → UTF-8), `String`, padrões 8×8 |
 
 Regras:
