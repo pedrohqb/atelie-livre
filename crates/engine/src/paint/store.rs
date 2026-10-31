@@ -83,6 +83,11 @@ pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
 
 /// `desenho-AAAAMMDD-HHMMSS.png` em UTC.
 pub fn timestamp_name(unix_secs: u64) -> String {
+    format!("desenho-{}.png", timestamp(unix_secs))
+}
+
+/// `AAAAMMDD-HHMMSS` em UTC, para os nomes dos arquivos guardados.
+pub fn timestamp(unix_secs: u64) -> String {
     let days = (unix_secs / 86_400) as i64;
     let rem = unix_secs % 86_400;
     // civil_from_days (Howard Hinnant)
@@ -96,7 +101,7 @@ pub fn timestamp_name(unix_secs: u64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
     format!(
-        "desenho-{y:04}{m:02}{d:02}-{:02}{:02}{:02}.png",
+        "{y:04}{m:02}{d:02}-{:02}{:02}{:02}",
         rem / 3600,
         rem % 3600 / 60,
         rem % 60

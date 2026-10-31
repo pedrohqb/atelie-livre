@@ -10,6 +10,7 @@ pub mod splash;
 pub mod sticker_scripts;
 pub mod stickers;
 pub mod street;
+pub mod writer;
 
 pub use browser::Browser;
 pub use gallery::Gallery;
@@ -17,6 +18,7 @@ pub use paint::Paint;
 pub use room::{Floor, Room};
 pub use splash::Splash;
 pub use street::Street;
+pub use writer::Writer;
 
 #[cfg(test)]
 pub(crate) mod testutil {

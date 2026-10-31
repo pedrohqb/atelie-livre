@@ -11,6 +11,16 @@ pub enum Scale {
     Fit,
 }
 
+/// Qual dos dois programas abrir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum ProgramChoice {
+    /// Fine Artist (padrão).
+    #[default]
+    Artist,
+    /// Creative Writer.
+    Writer,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub data_dir: Option<PathBuf>,
@@ -19,6 +29,7 @@ pub struct Config {
     pub volume: u8,
     pub click_sound: Option<SoundRef>,
     pub dev: bool,
+    pub program: ProgramChoice,
 }
 
 impl Default for Config {
@@ -30,6 +41,7 @@ impl Default for Config {
             volume: 80,
             click_sound: None,
             dev: false,
+            program: ProgramChoice::Artist,
         }
     }
 }
@@ -49,6 +61,9 @@ pub struct Args {
     /// Começa no navegador de recursos.
     #[arg(long)]
     pub browser: bool,
+    /// Programa a abrir: artist (Fine Artist) ou writer (Creative Writer).
+    #[arg(long, value_enum)]
+    pub program: Option<ProgramChoice>,
     /// Encerra após N quadros (testes).
     #[arg(long, hide = true)]
     pub frames: Option<u32>,
@@ -73,6 +88,22 @@ pub fn drawings_dir() -> Option<PathBuf> {
             .map(PathBuf::from)
     };
     drawings_dir_from(env("XDG_DATA_HOME"), env("HOME"))
+}
+
+/// Pasta dos textos do Creative Writer: `$XDG_DATA_HOME/atelie-livre/textos`,
+/// senão `~/.local/share/atelie-livre/textos`; `None` sem nenhum dos dois.
+pub fn texts_dir_from(xdg_data: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
+    let base = xdg_data.or_else(|| home.map(|h| h.join(".local").join("share")))?;
+    Some(base.join("atelie-livre").join("textos"))
+}
+
+pub fn texts_dir() -> Option<PathBuf> {
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    texts_dir_from(env("XDG_DATA_HOME"), env("HOME"))
 }
 
 pub fn config_path() -> PathBuf {
@@ -117,6 +148,17 @@ pub fn parse_config(text: &str) -> (Config, Vec<String>) {
             },
             "fullscreen" => value.as_bool().map(|b| cfg.fullscreen = b).is_some(),
             "dev" => value.as_bool().map(|b| cfg.dev = b).is_some(),
+            "program" => match value.as_str() {
+                Some("artist") => {
+                    cfg.program = ProgramChoice::Artist;
+                    true
+                }
+                Some("writer") => {
+                    cfg.program = ProgramChoice::Writer;
+                    true
+                }
+                _ => false,
+            },
             "volume" => value
                 .as_integer()
                 .map(|v| cfg.volume = v.clamp(0, 100) as u8)
@@ -174,6 +216,9 @@ pub fn effective(mut cfg: Config, args: &Args) -> Config {
     }
     if let Some(s) = args.scale {
         cfg.scale = s;
+    }
+    if let Some(p) = args.program {
+        cfg.program = p;
     }
     cfg
 }
@@ -269,6 +314,37 @@ mod tests {
             expand_home(PathBuf::from("~/x"), None),
             PathBuf::from("~/x")
         );
+    }
+
+    #[test]
+    fn program_parses_from_file_and_args() {
+        let (c, w) = parse_config("program = \"writer\"\n");
+        assert!(w.is_empty());
+        assert_eq!(c.program, ProgramChoice::Writer);
+        let (c, w) = parse_config("program = \"pintor\"\n");
+        assert_eq!(c.program, ProgramChoice::Artist);
+        assert_eq!(w.len(), 1);
+        let args = Args::parse_from(["atelie-livre", "--program", "writer"]);
+        assert_eq!(
+            effective(Config::default(), &args).program,
+            ProgramChoice::Writer
+        );
+        let (file, _) = parse_config("program = \"writer\"\n");
+        let args = Args::parse_from(["atelie-livre", "--program", "artist"]);
+        assert_eq!(effective(file, &args).program, ProgramChoice::Artist);
+    }
+
+    #[test]
+    fn texts_dir_like_drawings_dir() {
+        assert_eq!(
+            texts_dir_from(Some("/x".into()), Some("/h".into())),
+            Some(PathBuf::from("/x/atelie-livre/textos"))
+        );
+        assert_eq!(
+            texts_dir_from(None, Some("/h".into())),
+            Some(PathBuf::from("/h/.local/share/atelie-livre/textos"))
+        );
+        assert_eq!(texts_dir_from(None, None), None);
     }
 
     #[test]

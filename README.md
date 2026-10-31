@@ -38,6 +38,19 @@ que você já possui.
   Galeria do saguão) abre a galeria dos desenhos guardados; clique num deles
   para continuar pintando.
 
+- Subprojeto 3a (Creative Writer, primeira versão): `atelie-livre --program
+  writer` (ou `program = "writer"` no config) abre a tela de título do
+  Creative Writer e vai direto ao Escritório: a página branca com a barra de
+  ferramentas e a faixa de opções do original. Digite; Enter faz um novo
+  parágrafo; as setas, Home, End, PageUp e PageDown (e as setas de "Pág."
+  na barra de baixo) movem o cursor e as páginas; a faixa do Texto abre as
+  listas de tamanho (de Gigante a Minúsculo), cor (as 38 da pintura),
+  estilo (negrito, inclinado, sublinhado) e alinhamento. Os adesivos de
+  clip-art entram no texto na posição do cursor, como um caractere grande.
+  O ovo desfaz e refaz uma ação; a explosão da tesoura apaga tudo. Só há um
+  tipo de letra (a "Pablo Graphos"); sons, inseto, mão, livro, página,
+  imprimir e o prédio do Creative Writer ainda não existem.
+
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
@@ -62,7 +75,8 @@ binário fica em `target/release/atelie-livre` e roda sem a SDL3 instalada.
 
 Teclas: **Alt+Enter** alterna tela cheia/janela; **Ctrl+Q** sai (Esc não
 fecha o programa, de propósito); **F12** abre o navegador de recursos se
-`dev = true`. Opções: `--window`, `--scale integer|fit`, `--browser`.
+`dev = true`. Opções: `--window`, `--scale integer|fit`, `--browser`,
+`--program artist|writer`.
 
 No navegador: ↑/↓ trocam a fonte, ←/→ (PageUp/PageDown, Home/End) percorrem
 os itens, Enter toca um som, Esc volta. Sobre uma imagem, a faixa mostra a
@@ -74,6 +88,13 @@ fechando a janela) em `~/.local/share/atelie-livre/desenhos/` (ou
 `$XDG_DATA_HOME/atelie-livre/desenhos/`): `ultimo.png`, que é reaberto na
 próxima vez, e uma cópia com data e hora de cada desenho modificado.
 
+Os textos do Creative Writer são guardados ao sair (porta "Saída", Ctrl+Q
+ou fechando a janela) em `~/.local/share/atelie-livre/textos/` (ou
+`$XDG_DATA_HOME/atelie-livre/textos/`): `ultimo.txt`, reaberto na próxima
+vez, e uma cópia `texto-AAAAMMDD-HHMMSS.txt` de cada texto modificado. É
+texto puro: parágrafos separados por uma linha vazia e adesivos como
+`[adesivo:ROLO:N]`; os estilos ainda não são guardados.
+
 Configuração em `~/.config/atelie-livre/config.toml` (os argumentos têm
 prioridade):
 
@@ -83,6 +104,7 @@ scale = "integer"      # ou "fit"
 fullscreen = true
 volume = 80            # 0 a 100
 dev = false            # true habilita o F12
+program = "artist"     # ou "writer" (Creative Writer)
 click_sound = { program = "artist", id = 0x209 }   # opcional
 ```
 

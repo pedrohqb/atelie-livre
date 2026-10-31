@@ -10,6 +10,13 @@ pub const ORIGIN: (i32, i32) = (23, 109);
 pub const WHITE: u8 = 0;
 pub const BLACK: u8 = 1;
 
+/// As 38 cores das colunas da pintura (e da lista de cores do Escritório):
+/// índices da paleta de 256 cores, de cima para baixo.
+pub const COLORS: [u8; 38] = [
+    0, 2, 18, 19, 20, 21, 22, 5, 6, 25, 26, 27, 28, 9, 10, 31, 32, 33, 7, 8, 36, 37, 38, 11, 12,
+    41, 42, 43, 3, 4, 46, 47, 48, 14, 13, 15, 52, 1,
+];
+
 /// Cor mais padrão 8×8. No pixel de tela `(x, y)`, bit 0 pinta a cor e bit 1 pinta branco.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ink {
