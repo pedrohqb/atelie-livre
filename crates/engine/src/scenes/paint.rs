@@ -2,6 +2,7 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
 use super::stickers::Stickers;
@@ -417,9 +418,22 @@ impl Paint {
     /// Abre a tela como um projeto da Oficina (quadro novo).
     pub fn new_project(kind: ProjectKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
         let mut p = Paint::new(None, assets);
+        p.project = Some(match kind {
+            ProjectKind::Flipbook => {
+                Project::Flipbook(Box::new(Flipbook::open(drawings.as_deref(), assets)))
+            }
+            k => Project::new(k),
+        });
         p.drawings = drawings;
-        p.project = Some(Project::new(kind));
         p
+    }
+
+    /// Desenho animado em andamento, se a tela é esse projeto.
+    pub fn flipbook(&self) -> Option<&Flipbook> {
+        match &self.project {
+            Some(Project::Flipbook(fb)) => Some(fb),
+            _ => None,
+        }
     }
 
     pub fn project(&self) -> Option<&Project> {
@@ -720,6 +734,13 @@ impl Paint {
     }
 
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        // desenho animado: fora da porta de saída, tudo é do projeto
+        if let Some(Project::Flipbook(fb)) = self.project.as_mut()
+            && !inside(EXIT, x, y)
+        {
+            fx.extend(fb.click(x, y, self.drawings.as_deref(), assets));
+            return;
+        }
         self.stroke = None;
         self.finish_sticker();
         // qualquer clique encerra o texto que estava sendo digitado
@@ -1258,10 +1279,20 @@ impl Scene for Paint {
                     key,
                     ctrl: false,
                     alt: false,
-                } => self.key(key),
-                Input::Text(ref t) => self.type_text(t),
+                } => match self.project.as_mut() {
+                    Some(Project::Flipbook(fb)) => fb.key(key),
+                    _ => self.key(key),
+                },
+                Input::Text(ref t) => match self.project.as_mut() {
+                    Some(Project::Flipbook(fb)) => fb.text(t),
+                    _ => self.type_text(t),
+                },
                 _ => {}
             }
+        }
+        if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
+            fx.extend(fb.update(dt));
+            return fx;
         }
         if let Some(w) = self.words.as_mut() {
             w.blink = (w.blink + dt) % CARET_PERIOD;
@@ -1280,6 +1311,12 @@ impl Scene for Paint {
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         self.draw_chrome(frame, assets);
         self.draw_tools(frame, assets);
+        if let Some(Project::Flipbook(fb)) = &self.project {
+            fb.draw_strip(frame, assets);
+            self.draw_columns(frame);
+            fb.draw_canvas(frame, assets);
+            return;
+        }
         self.draw_options(frame, assets);
         self.draw_columns(frame);
         self.draw_canvas(frame);
@@ -1308,6 +1345,16 @@ impl Scene for Paint {
                 "sem pasta de desenhos (HOME e XDG_DATA_HOME vazios): desenho não guardado".into(),
             )];
         };
+        if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
+            if !fb.needs_save() {
+                return vec![Effect::Log("desenho animado sem mudanças".into())];
+            }
+            let msg = match fb.save(dir, now_secs()) {
+                Ok(p) => format!("desenho animado guardado em {}", p.display()),
+                Err(e) => e,
+            };
+            return vec![Effect::Log(msg)];
+        }
         if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
             return vec![Effect::Log(format!("sons: {e}"))];
         }
