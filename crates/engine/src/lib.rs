@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod assets;
 pub mod frame;
 pub mod paths;
 
