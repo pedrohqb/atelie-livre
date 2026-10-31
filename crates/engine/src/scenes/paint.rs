@@ -299,7 +299,7 @@ impl Paint {
     }
 
     fn finish_sticker(&mut self) {
-        if self.stickers.finish(&mut self.canvas) {
+        if self.stickers.finish(&mut self.canvas, &mut self.history) {
             self.changed = true;
         }
     }
@@ -713,7 +713,10 @@ impl Scene for Paint {
                 _ => {}
             }
         }
-        if self.stickers.update(dt, &mut self.canvas) {
+        if self
+            .stickers
+            .update(dt, &mut self.canvas, &mut self.history)
+        {
             self.changed = true;
         }
         fx
@@ -1025,6 +1028,39 @@ mod tests {
         }
         assert!(!p.stickers().is_animating());
         assert_eq!(painted(&p), 0);
+    }
+
+    #[test]
+    fn snake_does_not_mark_drawing_changed() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(
+            &[
+                click(129, 30),
+                click(40, 80),
+                click(54, 113),
+                click(100, 300),
+            ],
+            0.0,
+            &a,
+        );
+        for _ in 0..200 {
+            p.update(&[], 0.1, &a);
+        }
+        p.leave();
+        // só ultimo.png: a cobra foi embora sem pintar nada
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn roll_click_toggles_film() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(129, 30), click(40, 80)], 0.0, &a);
+        assert!(p.stickers().film_open());
+        p.update(&[click(40, 80)], 0.0, &a);
+        assert!(!p.stickers().film_open());
     }
 
     #[test]

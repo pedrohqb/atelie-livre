@@ -125,6 +125,8 @@ struct Playing {
     cx: i32,
     cy: i32,
     t: f32,
+    /// Metade da altura do primeiro quadro (base dos quadros sem roteiro).
+    base_half: i32,
     /// Imagem de repouso (colada ao terminar) e canto superior esquerdo no quadro.
     rest: Option<(Stamp, i32, i32)>,
 }
@@ -231,32 +233,34 @@ impl Stickers {
         self.held = None;
     }
 
-    /// Termina a animação em curso, colando a imagem de repouso.
-    pub fn finish(&mut self, canvas: &mut Canvas) -> bool {
+    /// Termina a animação em curso, colando a imagem de repouso (ação do ovo).
+    /// Verdadeiro se algo foi colado.
+    pub fn finish(&mut self, canvas: &mut Canvas, history: &mut History) -> bool {
         let Some(p) = self.playing.take() else {
             return false;
         };
-        if let Some((stamp, x, y)) = &p.rest {
-            canvas.paste(stamp, *x, *y);
-        }
+        let Some((stamp, x, y)) = &p.rest else {
+            return false;
+        };
+        history.record(canvas);
+        canvas.paste(stamp, *x, *y);
         true
     }
 
     /// Avança a animação; verdadeiro se ela terminou (e colou) neste passo.
-    pub fn update(&mut self, dt: f32, canvas: &mut Canvas) -> bool {
+    pub fn update(&mut self, dt: f32, canvas: &mut Canvas, history: &mut History) -> bool {
         let Some(p) = self.playing.as_mut() else {
             return false;
         };
         p.t += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
         if Self::frame_images(p).is_none() {
-            self.finish(canvas);
-            return true;
+            return self.finish(canvas, history);
         }
         false
     }
 
-    /// Imagens visíveis no instante atual: (id, x, y na tela, `x, y` é o centro);
-    /// `None` = acabou.
+    /// Imagens visíveis no instante atual: (id, x, y na tela, `x, y` é o centro
+    /// da base, como nos quadros sem roteiro); `None` = acabou.
     fn frame_images(p: &Playing) -> Option<Vec<(u16, i32, i32, bool)>> {
         let (sx, sy) = (ORIGIN.0 + p.cx, ORIGIN.1 + p.cy);
         match &SCRIPTS[p.animal] {
@@ -268,8 +272,9 @@ impl Stickers {
                 if k >= frames.len() * FALLBACK_LOOPS {
                     return None;
                 }
-                // sem roteiro gravado: quadros no lugar, centrados no clique
-                Some(vec![(frames[k % frames.len()], sx, sy, true)])
+                // sem roteiro gravado: quadros no lugar, alinhados pelo centro da
+                // base do primeiro quadro (que fica centrado no clique)
+                Some(vec![(frames[k % frames.len()], sx, sy + p.base_half, true)])
             }
         }
     }
@@ -297,7 +302,9 @@ impl Stickers {
                     let item = self.scroll + j;
                     if item < n {
                         self.held = self.make_held(item, pal);
-                        self.film_open = false;
+                        if self.held.is_some() {
+                            self.film_open = false;
+                        }
                     }
                 }
                 return Some(false);
@@ -317,19 +324,24 @@ impl Stickers {
         if let Some(k) = (0..ROLLS_PER_PAGE).find(|&k| inside(slot_rect(k), x, y)) {
             let roll = self.page * ROLLS_PER_PAGE + k;
             if roll < self.roll_count() {
-                self.roll = roll;
-                self.scroll = 0;
-                self.film_open = true;
+                if self.film_open && roll == self.roll {
+                    self.film_open = false;
+                } else {
+                    self.roll = roll;
+                    self.scroll = 0;
+                    self.film_open = true;
+                }
                 self.held = None;
             }
             return Some(false);
         }
         if self.held.is_some() && inside(canvas_rect(), x, y) {
             let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
-            history.record(canvas);
             match self.held.take() {
                 Some(Held::Clip(stamp)) => {
+                    history.record(canvas);
                     canvas.paste(&stamp, cx - stamp.w as i32 / 2, cy - stamp.h as i32 / 2);
+                    return Some(true);
                 }
                 Some(Held::Animal(animal)) => {
                     let stamp = |id: u16| {
@@ -339,6 +351,7 @@ impl Stickers {
                             pal,
                         )
                     };
+                    let base_half = assets.image(&pic(ANIMALS[animal][0])).height as i32 / 2;
                     let rest = match &SCRIPTS[animal] {
                         // a cobra (sem repouso) vai embora pela direita
                         Some(sc) => sc
@@ -355,12 +368,13 @@ impl Stickers {
                         cx,
                         cy,
                         t: 0.0,
+                        base_half,
                         rest,
                     });
                 }
                 None => {}
             }
-            return Some(true);
+            return Some(false);
         }
         None
     }
@@ -385,6 +399,9 @@ impl Stickers {
         blit_part(f, &right, &right_mask, end - 52, STRIP_Y, (52, 64));
         for k in 0..ROLLS_PER_PAGE {
             let roll = self.page * ROLLS_PER_PAGE + k;
+            if roll >= self.roll_count() {
+                break;
+            }
             let r = slot_rect(k);
             let (frame, mask) = if roll == 0 {
                 (0x10d3, 0x10d5)
@@ -431,7 +448,7 @@ impl Stickers {
             for (id, x, y, centered) in images {
                 let img = a.image(&pic(id));
                 let (x, y) = if centered {
-                    (x - img.width as i32 / 2, y - img.height as i32 / 2)
+                    (x - img.width as i32 / 2, y - img.height as i32)
                 } else {
                     (x, y)
                 };
@@ -543,6 +560,9 @@ fn script_images(s: &Script, frame: usize, sx: i32, sy: i32) -> Option<Vec<(u16,
         None if frame >= cycle => return None,
         None => (0, frame),
     };
+    if round > 64 {
+        return None;
+    }
     let (shx, shy) = s
         .repeat_shift
         .map(|(x, y)| (x as i32 * round as i32, y as i32 * round as i32))
