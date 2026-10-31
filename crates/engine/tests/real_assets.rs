@@ -115,3 +115,17 @@ fn artist_only_install_lists_only_artist() {
     let img = a.image(&ImageRef::Pic(Program::Artist, 0x6ca7));
     assert_eq!((img.width, img.height), (640, 480));
 }
+
+#[test]
+fn sign_in_sky_matches_original_colors() {
+    // céu da tela de entrada (0x4139), conferido numa captura do programa original no Wine
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let img = a.image(&ImageRef::Pic(Program::Artist, 0x4139));
+    let mut counts = std::collections::HashMap::new();
+    for p in img.rgba.chunks(4) {
+        *counts.entry([p[0], p[1], p[2]]).or_insert(0usize) += 1;
+    }
+    let top = counts.into_iter().max_by_key(|(_, n)| *n).unwrap().0;
+    assert_eq!(top, [136, 136, 230]);
+}

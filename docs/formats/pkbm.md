@@ -68,7 +68,7 @@ ignorado.
 | Profundidade | Paleta, em ordem de preferência |
 |---|---|
 | 1 bit | 0 = branco, 1 = preto |
-| 4 bits | `CTBL` de 16 cores do próprio arquivo `CHNK` (animações); senão `LOGPALETTE` 4 do executável |
+| 4 bits | `CTBL` de 16 cores do próprio arquivo `CHNK` (animações); senão `LOGPALETTE` 4 do executável **reordenada para a ordem do Mac** (ver abaixo) |
 | 8 bits | paleta embutida na imagem; senão `CTBL` de 256 cores do próprio arquivo `CHNK` (desenhos salvos); senão `LOGPALETTE` 8 do executável |
 
 Os desenhos salvos (`.MAG`, `.PTM`) guardam a paleta da pintura no chunk
@@ -77,6 +77,14 @@ do mesmo documento e diferente da `LOGPALETTE` do executável. A animação
 `A-MAG100.ANI` também traz uma `CTBL` própria, de 16 cores, usada pelas suas
 imagens de 4 bits. As imagens dos `.PIC` usam as `LOGPALETTE` do executável;
 nelas, as 16 primeiras cores da paleta de 256 coincidem com a de 16.
+
+**Ordem das 16 cores.** As imagens de 4 bits vieram do Mac, cuja tabela de 16
+cores tem o branco no índice 0 e o preto no 15. A `LOGPALETTE` de 16 cores do
+Windows tem o branco no 0 e o preto no 1. Por isso o índice `i` de uma imagem de
+4 bits corresponde à entrada `LOGPALETTE[i + 1]` para `i` de 1 a 14, o índice 0 à
+entrada 0 e o 15 à entrada 1. Confirmado comparando a tela de entrada (0x4139)
+com o Fine Artist original rodando no Wine: com essa ordem, o céu sai lilás
+(136, 136, 230), como no original.
 
 ## Máscaras
 

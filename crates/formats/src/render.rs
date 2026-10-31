@@ -23,13 +23,27 @@ fn gray(n: usize) -> Vec<Rgb> {
 
 impl Palettes {
     /// Paletas `LOGPALETTE` 4 (16 cores) e 8 (256 cores) de um executável NE.
+    ///
+    /// As imagens de 4 bits vieram do Mac, onde o índice 0 é branco e o 15 é preto;
+    /// a `LOGPALETTE` de 16 cores do Windows tem o preto no índice 1. A paleta de
+    /// 16 é reordenada para a ordem do Mac: 0→0, 1..14→2..15, 15→1.
     pub fn from_exe(exe: Option<&[u8]>) -> Palettes {
         let f = exe.and_then(|d| ne::parse(d).ok());
         let read = |id: u16| -> Option<Vec<Rgb>> {
             palette::parse_logpalette(f.as_ref()?.find("LOGPALETTE", id)?.data).ok()
         };
+        let pal16 = match read(4) {
+            Some(p) if p.len() == 16 => {
+                let mut mac = vec![p[0]];
+                mac.extend_from_slice(&p[2..16]);
+                mac.push(p[1]);
+                mac
+            }
+            Some(p) => p,
+            None => gray(16),
+        };
         Palettes {
-            pal16: read(4).unwrap_or_else(|| gray(16)),
+            pal16,
             pal256: read(8).unwrap_or_else(|| gray(256)),
         }
     }
@@ -103,6 +117,29 @@ mod tests {
         assert_eq!(p.pal256.len(), 256);
         assert_eq!(p.pal16[0], rgb(255, 255, 255));
         assert_eq!(p.pal256[255], rgb(0, 0, 0));
+    }
+
+    fn exe_with_logpalette(colors16: &[Rgb]) -> Vec<u8> {
+        // NE mínimo com um recurso nomeado LOGPALETTE id 4
+        let mut pal = vec![0x00, 0x03];
+        pal.extend_from_slice(&(colors16.len() as u16).to_le_bytes());
+        for c in colors16 {
+            pal.extend_from_slice(&[c.r, c.g, c.b, 0]);
+        }
+        crate::ne::tests::tiny_ne_with(&[(0, Some("LOGPALETTE"), 0x8004, &pal)])
+    }
+
+    #[test]
+    fn from_exe_reorders_16_colors_to_mac_order() {
+        // imagens de 4 bits vêm do Mac (0 = branco, 15 = preto); a LOGPALETTE do
+        // Windows tem o preto no índice 1: 0→0, 1..14→2..15, 15→1
+        let colors: Vec<Rgb> = (0..16u8).map(|k| rgb(k, k, k)).collect();
+        let p = Palettes::from_exe(Some(&exe_with_logpalette(&colors)));
+        let order: Vec<u8> = p.pal16.iter().map(|c| c.r).collect();
+        assert_eq!(
+            order,
+            [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1]
+        );
     }
 
     #[test]
