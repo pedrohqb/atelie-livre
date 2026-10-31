@@ -192,6 +192,8 @@ pub struct Room {
     pal: Vec<Rgb>,
     drawings: Option<PathBuf>,
     balloon: Option<Balloon>,
+    /// O balão aberto é o de confirmação de saída ("Tchau").
+    quitting: bool,
 }
 
 impl Room {
@@ -213,6 +215,7 @@ impl Room {
             drawings,
             balloon: Some(floor.balloon()),
             floor,
+            quitting: false,
         }
     }
 
@@ -224,8 +227,21 @@ impl Room {
         match action {
             Action::Go(id) => fx.push(Effect::ChangeScene(id)),
             Action::Floor(fl) => self.set_floor(fl),
-            Action::Quit => fx.push(Effect::Quit),
-            Action::Close => self.balloon = None,
+            Action::Quit => {
+                // como no original: "O que você quer fazer?"
+                self.quitting = true;
+                self.balloon = Some(Balloon {
+                    x: 210,
+                    y: 180,
+                    w: 220,
+                    text: "Epa! O que você quer fazer?".into(),
+                    options: vec!["Sair do Fine Artist".into(), "Continuar trabalhando".into()],
+                });
+            }
+            Action::Close => {
+                self.balloon = None;
+                self.quitting = false;
+            }
             Action::NewPicture => {
                 if let Some(d) = &self.drawings {
                     let blank = Canvas::new(crate::paint::CANVAS_W, crate::paint::CANVAS_H);
@@ -282,6 +298,14 @@ impl Scene for Room {
             };
             if let Some(b) = &self.balloon {
                 if let Some(k) = b.hit(assets, x, y) {
+                    if self.quitting {
+                        if k == 0 {
+                            fx.push(Effect::Quit);
+                        } else {
+                            self.act(Action::Close, &mut fx);
+                        }
+                        break;
+                    }
                     let action = self.floor.balloon_action(k);
                     self.act(action, &mut fx);
                     break;
@@ -291,6 +315,7 @@ impl Scene for Room {
                 }
                 // clicar fora do balão só o fecha
                 self.balloon = None;
+                self.quitting = false;
                 continue;
             }
             let Some(hs) = self.hotspots.iter().find(|h| inside(h.rect, x, y)) else {
@@ -386,8 +411,16 @@ mod tests {
         r.update(&[click(600, 470)], 0.0, &a);
         let fx = r.update(&[click(190, 220)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
-        let fx = r.update(&[click(496, 260)], 0.0, &a);
+        r.update(&[click(496, 260)], 0.0, &a);
+        assert!(r.balloon_open());
+        let (bx, by, _, _) = r.balloon.as_ref().unwrap().option_rect(&a, 1);
+        r.update(&[click(bx + 20, by + 3)], 0.0, &a);
+        assert!(!r.balloon_open());
+        r.update(&[click(496, 260)], 0.0, &a);
+        let (bx, by, _, _) = r.balloon.as_ref().unwrap().option_rect(&a, 0);
+        let fx = r.update(&[click(bx + 20, by + 3)], 0.0, &a);
         assert!(fx.contains(&Effect::Quit));
+        r.update(&[click(600, 470)], 0.0, &a);
         let fx = r.update(&[click(350, 100)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Gallery)));
     }
