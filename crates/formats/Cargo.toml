@@ -1,0 +1,11 @@
+[package]
+name = "formats"
+version = "0.1.0"
+description = "Leitores dos formatos de dados do Ateliê Livre"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+thiserror = "2"
