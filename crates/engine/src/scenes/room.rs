@@ -1,12 +1,17 @@
 //! Salas do prédio do Fine Artist: saguão, Ateliê de Pintura, Oficina de
 //! Projetos e Truques de Desenho. Fundo e elementos fixos vêm de `rooms_data`
-//! (medidos no original); as áreas clicáveis estão aqui.
+//! (medidos no original); as áreas clicáveis estão aqui. Em cada andar há um
+//! personagem parado à esquerda (McZee com uma fantasia sorteada no saguão e
+//! no Ateliê; Maggie nos andares 3 e 4) e, de tempos em tempos, uma animação
+//! ambiente do andar (`gags`).
 
+use super::gags::{self, Character, GagPlayer};
 use super::rooms_data::{self, Element};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::paint::Canvas;
 use crate::paint::store::{LAST_NAME, load_png};
+use crate::rng::XorShift;
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
@@ -170,6 +175,27 @@ impl Floor {
         }
     }
 
+    /// Roteiros `ATAG` das animações ambientes do andar.
+    fn gag_scripts(self) -> &'static [u16] {
+        match self {
+            Floor::Lobby => gags::LOBBY_SCRIPTS,
+            Floor::Studio => gags::STUDIO_SCRIPTS,
+            Floor::Projects => gags::PROJECTS_SCRIPTS,
+            Floor::Tricks => gags::TRICKS_SCRIPTS,
+        }
+    }
+
+    /// Personagem parado do andar, com a fantasia ou pose sorteada.
+    fn character(self, rng: &mut XorShift) -> Option<Character> {
+        match self {
+            Floor::Lobby => Character::pick(gags::MCZEE_COSTUMES, gags::MCZEE_LOBBY, rng),
+            Floor::Studio => Character::pick(gags::MCZEE_COSTUMES, gags::MCZEE_STUDIO, rng),
+            Floor::Projects | Floor::Tricks => {
+                Character::pick(gags::MAGGIE_POSES, gags::MAGGIE_POS, rng)
+            }
+        }
+    }
+
     pub fn number(self) -> u8 {
         match self {
             Floor::Lobby => 1,
@@ -184,6 +210,10 @@ impl Floor {
 const EASEL: (i32, i32) = (120, 179);
 const EASEL_SCALE: u32 = 4;
 
+/// Espera antes da primeira animação ambiente e entre as seguintes (s).
+const GAG_FIRST: (f32, f32) = (4.0, 10.0);
+const GAG_BETWEEN: (f32, f32) = (12.0, 30.0);
+
 pub struct Room {
     common: KidCommon,
     floor: Floor,
@@ -194,6 +224,9 @@ pub struct Room {
     balloon: Option<Balloon>,
     /// O balão aberto é o de confirmação de saída ("Tchau").
     quitting: bool,
+    rng: XorShift,
+    character: Option<Character>,
+    gags: GagPlayer,
 }
 
 impl Room {
@@ -207,6 +240,9 @@ impl Room {
         let last_drawing = drawings
             .as_ref()
             .and_then(|d| load_png(&d.join(LAST_NAME), &pal));
+        let mut rng = XorShift::from_clock();
+        let character = floor.character(&mut rng);
+        let gags = GagPlayer::with_rng(floor.gag_scripts(), GAG_FIRST, GAG_BETWEEN, rng.clone());
         Room {
             common: KidCommon::new(click),
             hotspots: floor.hotspots(),
@@ -216,7 +252,19 @@ impl Room {
             balloon: Some(floor.balloon()),
             floor,
             quitting: false,
+            rng,
+            character,
+            gags,
         }
+    }
+
+    pub fn character(&self) -> Option<&Character> {
+        self.character.as_ref()
+    }
+
+    /// Há uma animação ambiente em curso.
+    pub fn gag_playing(&self) -> bool {
+        self.gags.is_playing()
     }
 
     pub fn balloon_open(&self) -> bool {
@@ -268,6 +316,13 @@ impl Room {
         self.floor = floor;
         self.hotspots = floor.hotspots();
         self.balloon = Some(floor.balloon());
+        self.character = floor.character(&mut self.rng);
+        self.gags = GagPlayer::with_rng(
+            floor.gag_scripts(),
+            GAG_FIRST,
+            GAG_BETWEEN,
+            XorShift::new(self.rng.next_u32()),
+        );
     }
 }
 
@@ -285,8 +340,14 @@ fn blit_white_transparent(f: &mut Frame, img: &crate::Image, x: i32, y: i32) {
 }
 
 impl Scene for Room {
-    fn update(&mut self, input: &[Input], _dt: f32, assets: &Assets) -> Vec<Effect> {
+    fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
+        fx.extend(
+            self.gags
+                .update(dt, assets)
+                .into_iter()
+                .map(Effect::PlaySound),
+        );
         for i in input {
             let Input::Click {
                 button: MouseButton::Left,
@@ -345,6 +406,10 @@ impl Scene for Room {
                 blit_white_transparent(frame, &img, e.x, e.y);
             }
         }
+        if let Some(c) = &self.character {
+            c.draw(frame, assets);
+        }
+        self.gags.draw(frame, assets);
         if self.floor == Floor::Studio
             && let Some(c) = &self.last_drawing
         {
@@ -466,7 +531,48 @@ mod tests {
         let (_d, a) = empty_assets();
         let mut f = Frame::new(640, 480);
         for fl in [Floor::Lobby, Floor::Studio, Floor::Projects, Floor::Tricks] {
-            Room::new(fl, None, None, &a).draw(&mut f, &a);
+            let mut r = Room::new(fl, None, None, &a);
+            // as animações ambientes tentam carregar e falham sem quebrar
+            for _ in 0..40 {
+                let fx = r.update(&[], 1.0, &a);
+                assert!(!fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
+            }
+            r.draw(&mut f, &a);
         }
+    }
+
+    #[test]
+    fn each_floor_has_its_character() {
+        let (_d, a) = empty_assets();
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        let c = r.character().unwrap().clone();
+        assert!(gags::MCZEE_COSTUMES.contains(&c.image));
+        assert_eq!((c.x, c.y), gags::MCZEE_LOBBY);
+        r.update(&[click(140, 300), click(140, 66)], 0.0, &a);
+        assert_eq!(r.floor(), Floor::Projects);
+        let c = r.character().unwrap();
+        assert!(gags::MAGGIE_POSES.contains(&c.image));
+        assert_eq!((c.x, c.y), gags::MAGGIE_POS);
+    }
+
+    #[test]
+    fn room_gags_play_with_real_data() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        let mut f = Frame::new(640, 480);
+        let mut played = 0;
+        for _ in 0..200 {
+            r.update(&[], 0.1, &a);
+            if r.gags.is_playing() {
+                played += 1;
+                r.draw(&mut f, &a);
+            }
+        }
+        assert!(played > 0);
+        // McZee fantasiado à esquerda do saguão: pixel não branco na barriga
+        r.draw(&mut f, &a);
+        assert_ne!(f.pixel(60, 300)[..3], [255, 255, 255]);
     }
 }

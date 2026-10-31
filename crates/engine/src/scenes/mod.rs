@@ -1,6 +1,7 @@
 //! Cenas do Ateliê Livre.
 
 pub mod browser;
+pub mod gags;
 pub mod gallery;
 pub mod paint;
 pub mod room;

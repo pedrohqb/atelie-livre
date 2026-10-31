@@ -1,5 +1,9 @@
 //! Abertura: tela de título do Fine Artist; clique ou 5 s levam à rua.
+//! Enquanto espera, tocam as animações do título: o pássaro atravessa a
+//! tela e depois os demais roteiros (McZee saindo do buraco com chapéus,
+//! porco, gafanhoto...) em ordem sorteada.
 
+use super::gags::{GagPlayer, TITLE_BIRD, TITLE_SCRIPTS};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
@@ -14,22 +18,34 @@ pub struct Splash {
     common: KidCommon,
     elapsed: f32,
     done: bool,
+    gags: GagPlayer,
 }
 
 impl Splash {
     pub fn new(click: Option<SoundRef>) -> Splash {
+        let mut gags = GagPlayer::new(TITLE_SCRIPTS, (0.3, 0.3), (0.5, 1.5));
+        gags.queue(TITLE_BIRD);
         Splash {
             common: KidCommon::new(click),
             elapsed: 0.0,
             done: false,
+            gags,
         }
     }
 }
 
 impl Scene for Splash {
-    fn update(&mut self, input: &[Input], dt: f32, _assets: &Assets) -> Vec<Effect> {
+    fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
         self.elapsed += dt;
+        if !self.done {
+            fx.extend(
+                self.gags
+                    .update(dt, assets)
+                    .into_iter()
+                    .map(Effect::PlaySound),
+            );
+        }
         let clicked = input.iter().any(|i| {
             matches!(
                 i,
@@ -54,6 +70,7 @@ impl Scene for Splash {
             (SCREEN_W as i32 - img.width as i32) / 2,
             (SCREEN_H as i32 - img.height as i32) / 2,
         );
+        self.gags.draw(frame, assets);
     }
 }
 
@@ -125,6 +142,36 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, Effect::PlaySound(_)))
         );
+    }
+
+    #[test]
+    fn splash_without_data_runs_gags_quietly() {
+        let (_d, a) = empty_assets();
+        let mut s = Splash::new(None);
+        for _ in 0..30 {
+            let fx = s.update(&[], 0.1, &a);
+            assert!(!fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
+        }
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        s.draw(&mut f, &a);
+    }
+
+    #[test]
+    fn splash_plays_bird_first_with_real_data() {
+        let Some(a) = assets() else { return };
+        let mut s = Splash::new(None);
+        let mut sounds = Vec::new();
+        for _ in 0..12 {
+            sounds.extend(s.update(&[], 0.1, &a).into_iter().filter_map(|e| match e {
+                Effect::PlaySound(snd) => Some(snd),
+                _ => None,
+            }));
+        }
+        // o pássaro (0x67) começa aos 0,3 s e sua primeira célula toca o som 0x217
+        assert!(s.gags.is_playing());
+        assert!(sounds.contains(&SoundRef::Snd(Program::Artist, 0x217)));
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        s.draw(&mut f, &a);
     }
 
     #[test]
