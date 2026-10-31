@@ -821,7 +821,10 @@ impl Paint {
                 if let Some(id) = thumb {
                     let t = a.image(&pic(id));
                     let (tw, th) = (t.width as i32, t.height as i32);
-                    f.blit(&t, r.0 + r.2 / 2 - tw / 2, r.1 + r.3 / 2 - th / 2);
+                    // recortada ao interior: a miniatura do dodô (30×30) é maior que a casa
+                    let inner = (r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2);
+                    let (x, y) = (r.0 + r.2 / 2 - tw / 2, r.1 + r.3 / 2 - th / 2);
+                    blit_clipped(f, &t, &t, x, y, inner);
                 }
             };
             cell((40, 65, 28, 32), Some(THUMBS[0]));

@@ -38,13 +38,13 @@ código do programa.
    centro da base, e para no primeiro quadro. Ao parar, ele é **colado no
    quadro** (vira pintura; o ovo desfaz). Adesivos como objetos móveis e
    reanimáveis ficam para depois.
-3. **Interface**: a faixa mostra um rolo (moldura `10cf` em (9,58), com a
-   miniatura da cobra); clicar nele abre ou fecha a tira. A tira fica em
-   x 33..75, y 100..465, com 10 casas de 30×30 em `(39, 104 + 34·k)` e setas
-   `02db` (39,452) e `02df` (57,452) para rolar. A miniatura é o quadro em
-   traço (`N+5`) reduzido para caber em 28×28 (um pixel escuro na área
-   reduzida vira preto). Com a tira aberta, ela recebe os cliques antes do
-   quadro.
+3. **Interface** (medida no original): a faixa mostra um rolo (moldura
+   `10cf` em (9,58), com a miniatura da cobra); clicar nele abre ou fecha a
+   tira. A tira ocupa x 33..74, y 58..466: no topo, a casa do rolo (clicar ali
+   fecha a tira); depois 9 casas de 28×32 em `(40, 103 + 39·k)` e as setas
+   `02db` (39,452) e `02df` (57,452) para rolar. As miniaturas são os bitmaps
+   em traço do original: `7743` (cobra) e `77ec`…`77fa`, na ordem dos bichos.
+   Com a tira aberta, ela recebe os cliques antes do quadro.
 4. **Adesivo na mão**: depois de escolhido, o primeiro quadro é desenhado
    centrado no ponteiro sobre o quadro; um clique fora do quadro (em outra
    ferramenta, cor etc.) o solta sem colocar. Cada escolha coloca um adesivo.
