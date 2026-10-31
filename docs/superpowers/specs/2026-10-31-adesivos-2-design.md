@@ -41,3 +41,14 @@ Depende de: 2c
 3. Bichos 1 a 9: roteiro gravado. Bichos 10 a 16: animação aproximada (2c).
 4. "Adesivos animados" e "faça o seu" aparecem na faixa, sem ação.
 5. O código de adesivos sai de `paint.rs` para `scenes/stickers.rs`.
+
+## 3. Adendo: roteiros decodificados (ATAG)
+
+O formato `ATAG` foi decifrado (`docs/formats/atag.md`, `formats::atag`): os
+16 bichos do rolo têm seus roteiros e quadros em `SHARED/STUFF/A-MAG100.ANI`
+(células com duração em ms, passos com deslocamento a partir do canto do
+adesivo em repouso, centrado no clique). A ferramenta de adesivos usa esses
+roteiros para todos os 16 bichos (`Stickers::ani`); as gravações em
+`sticker_scripts.rs` ficam só de reserva, para instalações sem o `.ANI`.
+Conferido: o peixe-espada reproduz as posições gravadas do original. Ao
+terminar, o adesivo volta à célula 0 no ponto do clique e é colado.

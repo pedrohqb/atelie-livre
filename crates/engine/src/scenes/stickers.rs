@@ -10,6 +10,7 @@ use crate::paint::stamp::Stamp;
 use crate::paint::{Canvas, Cell, History, ORIGIN, Shape};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
+use std::rc::Rc;
 
 /// Primeiro rolo: quadros de cada bicho em `ARTIST.PIC` (`N` cor, `N+6` máscara).
 pub const ANIMALS: [&[u16]; 16] = [
@@ -119,6 +120,33 @@ enum Held {
     Clip(Stamp),
 }
 
+/// Roteiro de um bicho lido de `A-MAG100.ANI` (`formats::atag`): células
+/// (imagem, máscara, duração em ms) e passos (célula, deslocamento).
+pub struct AniAnimal {
+    /// Imagem, máscara (preto = opaco, já invertida em relação ao `.ANI`) e duração em ms.
+    cells: Vec<(Rc<Image>, Rc<Image>, u32)>,
+    steps: Vec<(usize, i32, i32)>,
+    /// Tamanho da célula 0 (o adesivo em repouso, centrado no clique).
+    size0: (i32, i32),
+}
+
+impl AniAnimal {
+    /// Imagem e posição de tela no instante `t_ms`, com o clique em `(sx, sy)`;
+    /// `None` quando o roteiro acabou.
+    fn frame_at(&self, t_ms: u32, sx: i32, sy: i32) -> Option<(Rc<Image>, Rc<Image>, i32, i32)> {
+        let mut acc = 0u32;
+        for &(cell, x, y) in &self.steps {
+            let (img, mask, ms) = self.cells.get(cell)?.clone();
+            acc = acc.saturating_add(ms.max(1));
+            if t_ms < acc {
+                let (x0, y0) = (sx - self.size0.0 / 2, sy - self.size0.1 / 2);
+                return Some((img, mask, x0 + x, y0 + y));
+            }
+        }
+        None
+    }
+}
+
 /// Bicho colocado, se animando. `cx, cy`: clique no quadro.
 struct Playing {
     animal: usize,
@@ -160,11 +188,60 @@ pub struct Stickers {
     scroll: usize,
     held: Option<Held>,
     playing: Option<Playing>,
+    /// Roteiros do `.ANI` (vazio se a biblioteca faltar: usa os gravados).
+    ani: Vec<AniAnimal>,
+}
+
+/// Lê os roteiros dos bichos de `A-MAG100.ANI`.
+fn load_ani(assets: &Assets) -> Vec<AniAnimal> {
+    assets
+        .animations("A-MAG100.ANI")
+        .into_iter()
+        .filter_map(|(_, script, images)| {
+            let sc = formats::atag::parse(&script).ok()?;
+            let cells: Vec<(Rc<Image>, Rc<Image>, u32)> = sc
+                .cells
+                .iter()
+                .map(|c| {
+                    let img = assets.image(images.get(c.image as usize)?);
+                    // no .ANI a máscara é branca onde é opaco; aqui preto = opaco
+                    let m = assets.image(images.get(c.mask as usize)?);
+                    let mut inv = (*m).clone();
+                    for px in inv.rgba.chunks_exact_mut(4) {
+                        px[0] = 255 - px[0];
+                        px[1] = 255 - px[1];
+                        px[2] = 255 - px[2];
+                    }
+                    Some((img, Rc::new(inv), c.duration_ms))
+                })
+                .collect::<Option<_>>()?;
+            let steps: Vec<(usize, i32, i32)> = sc
+                .playback()
+                .iter()
+                .map(|st| (st.cell as usize, st.x as i32, st.y as i32))
+                .collect();
+            if cells.is_empty() || steps.iter().any(|&(c, _, _)| c >= cells.len()) {
+                return None;
+            }
+            let first = cells[0].0.clone();
+            Some(AniAnimal {
+                cells,
+                steps,
+                size0: (first.width as i32, first.height as i32),
+            })
+        })
+        .collect()
 }
 
 impl Stickers {
     pub fn new(assets: &Assets) -> Stickers {
+        let ani = load_ani(assets);
         Stickers {
+            ani: if ani.len() == ANIMALS.len() {
+                ani
+            } else {
+                Vec::new()
+            },
             clip: load_rolls(assets),
             page: 0,
             roll: 0,
@@ -205,6 +282,10 @@ impl Stickers {
             Some(Held::Animal(a)) => Some(a),
             _ => None,
         }
+    }
+
+    pub fn ani_len(&self) -> usize {
+        self.ani.len()
     }
 
     pub fn is_animating(&self) -> bool {
@@ -249,11 +330,16 @@ impl Stickers {
 
     /// Avança a animação; verdadeiro se ela terminou (e colou) neste passo.
     pub fn update(&mut self, dt: f32, canvas: &mut Canvas, history: &mut History) -> bool {
-        let Some(p) = self.playing.as_mut() else {
+        if let Some(p) = self.playing.as_mut() {
+            p.t += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
+        } else {
             return false;
-        };
-        p.t += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
-        if Self::frame_images(p).is_none() {
+        }
+        let done = self
+            .playing
+            .as_ref()
+            .is_some_and(|p| self.frame_images(p).is_none());
+        if done {
             return self.finish(canvas, history);
         }
         false
@@ -261,11 +347,18 @@ impl Stickers {
 
     /// Imagens visíveis no instante atual: (id, x, y na tela, `x, y` é o centro
     /// da base, como nos quadros sem roteiro); `None` = acabou.
-    fn frame_images(p: &Playing) -> Option<Vec<(u16, i32, i32, bool)>> {
+    fn frame_images(&self, p: &Playing) -> Option<Vec<Frame3>> {
         let (sx, sy) = (ORIGIN.0 + p.cx, ORIGIN.1 + p.cy);
+        if let Some(an) = self.ani.get(p.animal) {
+            let (img, mask, x, y) = an.frame_at((p.t * 1000.0) as u32, sx, sy)?;
+            return Some(vec![Frame3::Lib(img, mask, x, y)]);
+        }
         match &SCRIPTS[p.animal] {
-            Some(s) => script_images(s, (p.t * SCRIPT_FPS) as usize, sx, sy)
-                .map(|v| v.into_iter().map(|(id, x, y)| (id, x, y, false)).collect()),
+            Some(s) => script_images(s, (p.t * SCRIPT_FPS) as usize, sx, sy).map(|v| {
+                v.into_iter()
+                    .map(|(id, x, y)| Frame3::Pic(id, x, y, false))
+                    .collect()
+            }),
             None => {
                 let frames = ANIMALS[p.animal];
                 let k = (p.t * FALLBACK_FPS) as usize;
@@ -274,7 +367,12 @@ impl Stickers {
                 }
                 // sem roteiro gravado: quadros no lugar, alinhados pelo centro da
                 // base do primeiro quadro (que fica centrado no clique)
-                Some(vec![(frames[k % frames.len()], sx, sy + p.base_half, true)])
+                Some(vec![Frame3::Pic(
+                    frames[k % frames.len()],
+                    sx,
+                    sy + p.base_half,
+                    true,
+                )])
             }
         }
     }
@@ -352,16 +450,24 @@ impl Stickers {
                         )
                     };
                     let base_half = assets.image(&pic(ANIMALS[animal][0])).height as i32 / 2;
-                    let rest = match &SCRIPTS[animal] {
-                        // a cobra (sem repouso) vai embora pela direita
-                        Some(sc) => sc
-                            .rest
-                            .map(|(id, dx, dy)| (stamp(id), cx + dx as i32, cy + dy as i32)),
-                        None => {
-                            let s = stamp(ANIMALS[animal][0]);
+                    let rest = match (self.ani.get(animal), &SCRIPTS[animal]) {
+                        // com o roteiro do .ANI, o adesivo volta à célula 0 no clique
+                        (Some(an), _) => {
+                            let s = Stamp::from_images(&an.cells[0].0, &an.cells[0].1, pal);
                             let (w, h) = (s.w as i32, s.h as i32);
                             Some((s, cx - w / 2, cy - h / 2))
                         }
+                        (None, sc) => match sc {
+                            // a cobra (sem repouso) vai embora pela direita
+                            Some(sc) => sc
+                                .rest
+                                .map(|(id, dx, dy)| (stamp(id), cx + dx as i32, cy + dy as i32)),
+                            None => {
+                                let s = stamp(ANIMALS[animal][0]);
+                                let (w, h) = (s.w as i32, s.h as i32);
+                                Some((s, cx - w / 2, cy - h / 2))
+                            }
+                        },
                     };
                     self.playing = Some(Playing {
                         animal,
@@ -443,20 +549,32 @@ impl Stickers {
     pub fn draw_overlay(&self, f: &mut Frame, a: &Assets, pal: &[Rgb], mouse: (i32, i32)) {
         let clip = canvas_rect();
         if let Some(p) = &self.playing
-            && let Some(images) = Self::frame_images(p)
+            && let Some(images) = self.frame_images(p)
         {
-            for (id, x, y, centered) in images {
-                let img = a.image(&pic(id));
-                let (x, y) = if centered {
-                    (x - img.width as i32 / 2, y - img.height as i32)
-                } else {
-                    (x, y)
-                };
-                blit_clipped(f, &img, &a.image(&pic(id + 6)), x, y, clip);
+            for fr in images {
+                match fr {
+                    Frame3::Pic(id, x, y, centered) => {
+                        let img = a.image(&pic(id));
+                        let (x, y) = if centered {
+                            (x - img.width as i32 / 2, y - img.height as i32)
+                        } else {
+                            (x, y)
+                        };
+                        blit_clipped(f, &img, &a.image(&pic(id + 6)), x, y, clip);
+                    }
+                    Frame3::Lib(img, mask, x, y) => {
+                        blit_clipped(f, &img, &mask, x, y, clip);
+                    }
+                }
             }
         }
         if inside(clip, mouse.0, mouse.1) {
             match &self.held {
+                Some(Held::Animal(animal)) if self.ani.get(*animal).is_some() => {
+                    let an = &self.ani[*animal];
+                    let (x, y) = (mouse.0 - an.size0.0 / 2, mouse.1 - an.size0.1 / 2);
+                    blit_clipped(f, &an.cells[0].0, &an.cells[0].1, x, y, clip);
+                }
                 Some(Held::Animal(animal)) => {
                     let (id, dx, dy) = rest_of(*animal).unwrap_or_else(|| {
                         let id = ANIMALS[*animal][0];
@@ -539,6 +657,13 @@ impl Stickers {
         f.blit_masked(&a.image(&pic(0x02db)), &a.image(&pic(0x02dd)), u.0, u.1);
         f.blit_masked(&a.image(&pic(0x02df)), &a.image(&pic(0x02e1)), d.0, d.1);
     }
+}
+
+/// Um quadro da animação: imagem de `ARTIST.PIC` (id, x, y, centrado na base)
+/// ou imagem de biblioteca com máscara.
+enum Frame3 {
+    Pic(u16, i32, i32, bool),
+    Lib(Rc<Image>, Rc<Image>, i32, i32),
 }
 
 /// Repouso gravado do bicho (id, deslocamento a partir do clique).

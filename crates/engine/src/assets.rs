@@ -304,6 +304,56 @@ impl Assets {
             .unwrap_or_default()
     }
 
+    /// Animações de uma biblioteca `.ANI`: para cada chunk `ATAG` (em ordem de
+    /// número), os bytes do roteiro e os `ImageRef` dos `PKBM` aninhados, em ordem.
+    pub fn animations(&self, name: &str) -> Vec<(u16, Vec<u8>, Vec<ImageRef>)> {
+        let wanted = name.to_lowercase();
+        let Some((file, lib)) = self
+            .libraries
+            .iter()
+            .find(|(k, _)| k.to_lowercase() == wanted)
+        else {
+            return Vec::new();
+        };
+        let Ok(f) = chnk::parse(&lib.data) else {
+            return Vec::new();
+        };
+        // mesma ordem de `collect_library`: chunks e partes em ordem, aninhados por dentro
+        let mut next_image = 0usize;
+        let mut out = Vec::new();
+        for c in &f.chunks {
+            for p in &c.parts {
+                if chnk::is_chnk(p.data) {
+                    let Ok(inner) = chnk::parse(p.data) else {
+                        continue;
+                    };
+                    let mut script = None;
+                    let mut images = Vec::new();
+                    for ic in &inner.chunks {
+                        for ip in &ic.parts {
+                            if pkbm::is_pkbm(ip.data) {
+                                images.push(ImageRef::Library {
+                                    file: file.clone(),
+                                    index: next_image,
+                                });
+                                next_image += 1;
+                            } else if &ic.tag.0 == b"ATAG" && script.is_none() {
+                                script = Some(ip.data.to_vec());
+                            }
+                        }
+                    }
+                    if let Some(sc) = script {
+                        out.push((c.id, sc, images));
+                    }
+                } else if pkbm::is_pkbm(p.data) {
+                    next_image += 1;
+                }
+            }
+        }
+        out.sort_by_key(|(id, _, _)| *id);
+        out
+    }
+
     /// Conteúdo bruto de uma biblioteca de `SHARED/STUFF` (nome sem distinguir maiúsculas).
     pub fn library_bytes(&self, name: &str) -> Option<&[u8]> {
         let wanted = name.to_lowercase();

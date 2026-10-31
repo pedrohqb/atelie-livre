@@ -286,3 +286,66 @@ fn words_font_16pt_renders_oi_wider_than_10px() {
     let span = cols.iter().max().unwrap() - cols.iter().min().unwrap() + 1;
     assert!(span > 10, "glifos ocupam {span} colunas");
 }
+
+#[test]
+fn ani_animations_have_scripts_and_images() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let anims = a.animations("A-MAG100.ANI");
+    assert_eq!(anims.len(), 16);
+    for (id, script, images) in &anims {
+        let s = formats::atag::parse(script).unwrap_or_else(|e| panic!("ATAG {id}: {e}"));
+        assert!(!s.steps.is_empty(), "ATAG {id}");
+        assert!(images.len() >= 2, "ATAG {id}");
+        // cada célula aponta para uma imagem existente, com máscara do mesmo tamanho
+        for c in &s.cells {
+            let img = a.image(&images[c.image as usize]);
+            let mask = a.image(&images[c.mask as usize]);
+            assert_eq!(
+                (img.width, img.height),
+                (mask.width, mask.height),
+                "ATAG {id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ani_script_reproduces_recorded_swordfish() {
+    // gravação do original: peixe-espada (bicho 1) clicado em (330,280); aos
+    // 10 quadros de 1/15 s aparece 0x755b em (-62,-70) do clique; aos 13, 0x7563 em (103,-27)
+    use engine::scene::{Input, MouseButton, Scene};
+    use engine::scenes::Paint;
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let mut p = Paint::new(None, &a);
+    let c = |x, y| Input::Click {
+        button: MouseButton::Left,
+        x,
+        y,
+    };
+    p.update(&[c(129, 30), c(40, 80), c(54, 152)], 0.0, &a);
+    p.update(&[c(330, 280)], 0.0, &a);
+    let mut f = engine::Frame::new(640, 480);
+    // passo 1 do roteiro (200 a 400 ms): 0x755b com canto em (330-62, 280-70)
+    p.update(&[], 0.3, &a);
+    p.draw(&mut f, &a);
+    let img = a.image(&ImageRef::Pic(Program::Artist, 0x755b));
+    let mask = a.image(&ImageRef::Pic(Program::Artist, 0x755b + 6));
+    let (x0, y0) = (330 - 62, 280 - 70);
+    let mut ok = 0;
+    let mut n = 0;
+    for y in 0..img.height {
+        for x in 0..img.width {
+            let i = ((y * img.width + x) * 4) as usize;
+            if mask.rgba[i] < 128 {
+                n += 1;
+                let px = f.pixel(x0 as u32 + x, y0 as u32 + y);
+                if px[..3] == img.rgba[i..i + 3] {
+                    ok += 1;
+                }
+            }
+        }
+    }
+    assert!(ok as f32 / n as f32 > 0.97, "{ok}/{n}");
+}
