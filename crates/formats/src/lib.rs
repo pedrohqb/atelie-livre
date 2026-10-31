@@ -7,6 +7,7 @@
 
 pub mod cp1252;
 pub mod error;
+pub mod glob;
 pub mod macres;
 pub mod ne;
 pub mod palette;

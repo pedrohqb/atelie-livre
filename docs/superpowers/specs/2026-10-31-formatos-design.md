@@ -60,7 +60,9 @@ Versão analisada: Windows 3.1, português, 1995 (pasta `MSKIDS` instalada).
   256 cores (id 0x8008), no formato `LOGPALETTE` do Windows (versão 0x300).
 - `ARTIST.PIC` / `WRITER.PIC`: assinatura `GLOBGLOBGLOB`, dois `u16` (1, 1),
   contagem `u16`, seguida de entradas de 6 bytes (`u16` id, `u32` offset),
-  tudo little-endian. 2.469 entradas no Fine Artist, 2.312 no Creative Writer.
+  tudo little-endian. 2.469 entradas no Fine Artist, 2.312 no Creative Writer;
+  a última de cada índice é um marcador de fim (só zeros), então são 2.468 e
+  2.311 imagens.
   Cada entrada começa com `00 01 00 00 'PKBM'` e cabeçalho em **big-endian**
   (largura, altura e profundidade visíveis; profundidades 1 e 4 observadas).
 - `ARTIST.SND` / `WRITER.SND`: DLLs NE só de recursos; tipo `SND` (131 no
@@ -200,7 +202,7 @@ Testes:
   truncadas e tamanhos declarados absurdos (devem dar `FormatError`).
 - Integração com os arquivos reais, só quando a variável `ATELIE_DATA` aponta
   para uma pasta `MSKIDS`; sem ela, os testes são pulados com aviso.
-  Conferem contagens conhecidas (2.469 e 2.312 entradas GLOB; 131 sons no
+  Conferem contagens conhecidas (2.468 e 2.311 imagens GLOB; 131 sons no
   Fine Artist; tipos e quantidades de recursos listados na seção 3).
 
 Critérios de sucesso do subprojeto:
