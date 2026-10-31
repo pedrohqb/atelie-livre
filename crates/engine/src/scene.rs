@@ -30,9 +30,27 @@ pub enum Key {
 /// Entrada já em coordenadas lógicas (640×480).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Input {
-    MouseMove { x: i32, y: i32 },
-    Click { button: MouseButton, x: i32, y: i32 },
-    Key { key: Key, ctrl: bool, alt: bool },
+    MouseMove {
+        x: i32,
+        y: i32,
+    },
+    /// Botão apertado.
+    Click {
+        button: MouseButton,
+        x: i32,
+        y: i32,
+    },
+    /// Botão solto.
+    MouseUp {
+        button: MouseButton,
+        x: i32,
+        y: i32,
+    },
+    Key {
+        key: Key,
+        ctrl: bool,
+        alt: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +75,10 @@ pub enum Effect {
 pub trait Scene {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect>;
     fn draw(&self, frame: &mut Frame, assets: &Assets);
+    /// Chamado antes de a cena ser trocada ou descartada e ao fechar o programa.
+    fn leave(&mut self) -> Vec<Effect> {
+        Vec::new()
+    }
 }
 
 /// Mão apontando (`CURSOR` 0x0001 de `ARTIST.EXE`).

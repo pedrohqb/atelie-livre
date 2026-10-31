@@ -269,6 +269,21 @@ impl Assets {
         })
     }
 
+    /// Paletas de 16 e 256 cores do programa.
+    pub fn palettes(&self, p: Program) -> &Palettes {
+        &self.palettes[p.idx()]
+    }
+
+    /// Padrões 8×8 do `PAT#` 0x80 do executável; vazio se faltar.
+    pub fn patterns(&self, p: Program) -> Vec<[u8; 8]> {
+        self.exe[p.idx()]
+            .as_deref()
+            .and_then(|d| ne::parse(d).ok())
+            .and_then(|f| f.find("PAT#", 0x80).map(|r| r.data.to_vec()))
+            .and_then(|d| formats::macres::parse_pattern_list(&d).ok())
+            .unwrap_or_default()
+    }
+
     pub fn catalog(&self) -> &[Source] {
         &self.catalog
     }
@@ -471,6 +486,16 @@ mod tests {
             Assets::open(dir.path()).err().unwrap(),
             AssetsError::NotInstallation(_)
         ));
+    }
+
+    #[test]
+    fn patterns_without_exe_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("WRITER.EXE"), b"MZ lixo").unwrap();
+        let a = Assets::open(dir.path()).unwrap();
+        assert!(a.patterns(Program::Artist).is_empty());
+        assert!(a.patterns(Program::Writer).is_empty());
+        assert_eq!(a.palettes(Program::Artist).pal256.len(), 256);
     }
 
     #[test]

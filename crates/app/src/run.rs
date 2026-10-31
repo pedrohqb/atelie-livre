@@ -51,6 +51,24 @@ fn map_key(k: Keycode) -> Key {
     }
 }
 
+fn map_button(b: SdlButton) -> Option<MouseButton> {
+    match b {
+        SdlButton::Left => Some(MouseButton::Left),
+        SdlButton::Right => Some(MouseButton::Right),
+        SdlButton::Middle => Some(MouseButton::Middle),
+        _ => None,
+    }
+}
+
+/// Efeitos de `leave()`: só os `Log` fazem sentido na saída.
+fn print_logs(effects: Vec<Effect>) {
+    for e in effects {
+        if let Effect::Log(s) = e {
+            println!("{s}");
+        }
+    }
+}
+
 /// Cursor original ampliado pelo fator; cursor do sistema se faltar.
 fn make_cursor(assets: &Assets, c: CursorRef, factor: u32) -> Option<Cursor> {
     let Some((img, (hx, hy))) = assets.cursor(&c) else {
@@ -187,14 +205,19 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                 Event::MouseButtonDown {
                     mouse_btn, x, y, ..
                 } => {
-                    let button = match mouse_btn {
-                        SdlButton::Left => Some(MouseButton::Left),
-                        SdlButton::Right => Some(MouseButton::Right),
-                        SdlButton::Middle => Some(MouseButton::Middle),
-                        _ => None,
-                    };
-                    if let (Some(button), Some((x, y))) = (button, logical_point(x, y)) {
+                    if let (Some(button), Some((x, y))) =
+                        (map_button(mouse_btn), logical_point(x, y))
+                    {
                         inputs.push(Input::Click { button, x, y });
+                    }
+                }
+                Event::MouseButtonUp {
+                    mouse_btn, x, y, ..
+                } => {
+                    if let (Some(button), Some((x, y))) =
+                        (map_button(mouse_btn), logical_point(x, y))
+                    {
+                        inputs.push(Input::MouseUp { button, x, y });
                     }
                 }
                 Event::Window {
@@ -220,11 +243,14 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     cursor_factor = 0;
                 }
                 Effect::ChangeScene(id) => {
-                    *stack.last_mut().expect("cena") = make_scene(id, &cfg);
+                    let top = stack.last_mut().expect("cena");
+                    print_logs(top.leave());
+                    *top = make_scene(id, &cfg);
                 }
                 Effect::Back => {
                     if stack.len() > 1 {
-                        stack.pop();
+                        let mut top = stack.pop().expect("cena");
+                        print_logs(top.leave());
                     }
                 }
                 Effect::Log(s) => println!("{s}"),
@@ -261,6 +287,9 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         if let Some(rest) = FRAME_TIME.checked_sub(start.elapsed()) {
             std::thread::sleep(rest);
         }
+    }
+    while let Some(mut scene) = stack.pop() {
+        print_logs(scene.leave());
     }
     drop(cursor);
     0

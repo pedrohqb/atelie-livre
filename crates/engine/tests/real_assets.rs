@@ -141,3 +141,13 @@ fn street_grays_match_original() {
     assert_eq!(count([140, 140, 140]), 54885);
     assert_eq!(count([190, 190, 190]), 18784);
 }
+
+#[test]
+fn patterns_from_real_exe_has_43() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let p = a.patterns(Program::Artist);
+    assert_eq!(p.len(), 43);
+    assert_eq!(p[0], [0; 8]);
+    assert_eq!(p[3], [0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa]);
+}

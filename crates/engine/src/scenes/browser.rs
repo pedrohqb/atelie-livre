@@ -178,7 +178,7 @@ impl Scene for Browser {
                         fx.push(Effect::Log(format!("{name} x={ix} y={iy}")));
                     }
                 }
-                Input::Click { .. } => {}
+                Input::Click { .. } | Input::MouseUp { .. } => {}
             }
         }
         fx
