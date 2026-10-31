@@ -39,6 +39,7 @@ fn inside(r: Rect, x: i32, y: i32) -> bool {
 }
 
 /// Uma categoria: nome e sons (nome, referência).
+#[derive(Debug, Clone)]
 pub struct Category {
     pub name: String,
     pub sounds: Vec<(String, SoundRef)>,

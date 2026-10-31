@@ -52,7 +52,7 @@ impl ProjectKind {
 pub enum Project {
     Comics(comics::Comics),
     Button(button::Button),
-    Flipbook(flipbook::Flipbook),
+    Flipbook(Box<flipbook::Flipbook>),
 }
 
 impl Project {
@@ -61,7 +61,7 @@ impl Project {
             ProjectKind::Comics => Project::Comics(comics::Comics::default()),
             ProjectKind::Button => Project::Button(button::Button::new(false)),
             ProjectKind::Sticker => Project::Button(button::Button::new(true)),
-            ProjectKind::Flipbook => Project::Flipbook(flipbook::Flipbook::default()),
+            ProjectKind::Flipbook => Project::Flipbook(Box::default()),
         }
     }
 

@@ -23,6 +23,7 @@ pub enum Key {
     Enter,
     Escape,
     Backspace,
+    Delete,
     F12,
     Q,
     Other,

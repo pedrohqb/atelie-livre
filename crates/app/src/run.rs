@@ -80,6 +80,7 @@ fn map_key(k: Keycode) -> Key {
         Keycode::Return | Keycode::KpEnter => Key::Enter,
         Keycode::Escape => Key::Escape,
         Keycode::Backspace => Key::Backspace,
+        Keycode::Delete => Key::Delete,
         Keycode::F12 => Key::F12,
         Keycode::Q => Key::Q,
         _ => Key::Other,

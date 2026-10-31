@@ -10,6 +10,7 @@ pub mod chnk;
 pub mod cp1252;
 pub mod error;
 pub mod fnt;
+pub mod gif;
 pub mod glob;
 pub mod macres;
 pub mod mag;
