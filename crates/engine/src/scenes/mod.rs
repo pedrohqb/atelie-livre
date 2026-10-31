@@ -1,10 +1,12 @@
-//! Cenas do subprojeto 2a.
+//! Cenas do Ateliê Livre.
 
 pub mod browser;
+pub mod paint;
 pub mod splash;
 pub mod street;
 
 pub use browser::Browser;
+pub use paint::Paint;
 pub use splash::Splash;
 pub use street::Street;
 

@@ -1,13 +1,15 @@
-//! Rua de Imaginópolis (ainda sem áreas clicáveis).
+//! Rua de Imaginópolis: a porta do prédio leva à pintura.
 
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
-use crate::scene::{Effect, Input, KidCommon, Scene};
+use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 
 #[cfg(test)]
-use crate::scene::{DEFAULT_CURSOR, MouseButton};
+use crate::scene::DEFAULT_CURSOR;
 
 pub const BACKGROUND: u16 = 0x6d01;
+/// Porta do prédio (x, y, largura, altura), medida no original.
+pub const DOOR: (i32, i32, i32, i32) = (296, 300, 88, 120);
 
 pub struct Street {
     common: KidCommon,
@@ -23,7 +25,15 @@ impl Street {
 
 impl Scene for Street {
     fn update(&mut self, input: &[Input], _dt: f32, _assets: &Assets) -> Vec<Effect> {
-        self.common.update(input)
+        let mut fx = self.common.update(input);
+        let door = input.iter().any(|i| {
+            matches!(*i, Input::Click { button: MouseButton::Left, x, y }
+                if x >= DOOR.0 && y >= DOOR.1 && x < DOOR.0 + DOOR.2 && y < DOOR.1 + DOOR.3)
+        });
+        if door {
+            fx.push(Effect::ChangeScene(SceneId::Paint));
+        }
+        fx
     }
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
@@ -41,6 +51,22 @@ impl Scene for Street {
 mod tests {
     use super::*;
     use crate::scenes::testutil::empty_assets;
+
+    #[test]
+    fn street_door_opens_paint() {
+        let (_d, a) = empty_assets();
+        let mut s = Street::new(None);
+        let fx = s.update(
+            &[Input::Click {
+                button: MouseButton::Left,
+                x: 338,
+                y: 370,
+            }],
+            0.0,
+            &a,
+        );
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+    }
 
     #[test]
     fn street_click_plays_sound_and_stays() {

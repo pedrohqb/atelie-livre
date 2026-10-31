@@ -49,7 +49,8 @@ impl Frame {
         }
     }
 
-    fn put(&mut self, x: i32, y: i32, rgb: [u8; 3]) {
+    /// Um pixel, recortado nas bordas.
+    pub fn put(&mut self, x: i32, y: i32, rgb: [u8; 3]) {
         if x >= 0 && y >= 0 && (x as u32) < self.width && (y as u32) < self.height {
             let i = ((y as u32 * self.width + x as u32) * 4) as usize;
             self.pixels[i..i + 4].copy_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
@@ -68,6 +69,40 @@ impl Frame {
                 let src = &img.rgba[si..si + 4];
                 if src[3] != 0 {
                     self.put(dx, dy, [src[0], src[1], src[2]]);
+                }
+            }
+        }
+    }
+
+    /// Retângulo cheio, recortado nas bordas.
+    pub fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, rgb: [u8; 3]) {
+        for yy in y.max(0)..(y + h).min(self.height as i32) {
+            for xx in x.max(0)..(x + w).min(self.width as i32) {
+                self.put(xx, yy, rgb);
+            }
+        }
+    }
+
+    /// Contorno de `t` pixels por dentro do retângulo.
+    pub fn frame_rect(&mut self, x: i32, y: i32, w: i32, h: i32, t: i32, rgb: [u8; 3]) {
+        self.rect(x, y, w, t, rgb);
+        self.rect(x, y + h - t, w, t, rgb);
+        self.rect(x, y, t, h, rgb);
+        self.rect(x + w - t, y, t, h, rgb);
+    }
+
+    /// Copia `img` só onde `mask` (mesmo tamanho) é escura; sem máscara compatível, `blit`.
+    pub fn blit_masked(&mut self, img: &Image, mask: &Image, x: i32, y: i32) {
+        if (mask.width, mask.height) != (img.width, img.height) {
+            return self.blit(img, x, y);
+        }
+        for dy in 0..img.height {
+            for dx in 0..img.width {
+                let i = ((dy * img.width + dx) * 4) as usize;
+                let m = &mask.rgba[i..i + 3];
+                if (m[0] as u32 + m[1] as u32 + m[2] as u32) < 384 {
+                    let p = &img.rgba[i..i + 3];
+                    self.put(x + dx as i32, y + dy as i32, [p[0], p[1], p[2]]);
                 }
             }
         }
@@ -96,6 +131,37 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rect_and_frame_rect_clip() {
+        let mut f = Frame::new(4, 4);
+        f.fill([0, 0, 0]);
+        f.rect(-2, -2, 4, 4, [9, 9, 9]);
+        assert_eq!(f.pixel(1, 1), [9, 9, 9, 255]);
+        assert_eq!(f.pixel(2, 2), [0, 0, 0, 255]);
+        f.frame_rect(0, 0, 4, 4, 1, [5, 5, 5]);
+        assert_eq!(f.pixel(3, 0), [5, 5, 5, 255]);
+        assert_eq!(f.pixel(2, 2), [0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn blit_masked_copies_only_dark_mask() {
+        let mut f = Frame::new(2, 1);
+        f.fill([0, 0, 0]);
+        let img = Image {
+            width: 2,
+            height: 1,
+            rgba: vec![1, 2, 3, 255, 4, 5, 6, 255],
+        };
+        let mask = Image {
+            width: 2,
+            height: 1,
+            rgba: vec![0, 0, 0, 255, 255, 255, 255, 255],
+        };
+        f.blit_masked(&img, &mask, 0, 0);
+        assert_eq!(f.pixel(0, 0), [1, 2, 3, 255]);
+        assert_eq!(f.pixel(1, 0), [0, 0, 0, 255]);
+    }
 
     fn solid(w: u32, h: u32, rgba: [u8; 4]) -> Image {
         Image {

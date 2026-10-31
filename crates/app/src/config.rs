@@ -59,6 +59,22 @@ pub fn config_path_from(xdg: Option<PathBuf>, home: Option<PathBuf>) -> PathBuf 
     base.join("atelie-livre").join("config.toml")
 }
 
+/// Pasta dos desenhos: `$XDG_DATA_HOME/atelie-livre/desenhos`, senão
+/// `~/.local/share/atelie-livre/desenhos`; `None` sem nenhum dos dois.
+pub fn drawings_dir_from(xdg_data: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
+    let base = xdg_data.or_else(|| home.map(|h| h.join(".local").join("share")))?;
+    Some(base.join("atelie-livre").join("desenhos"))
+}
+
+pub fn drawings_dir() -> Option<PathBuf> {
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    drawings_dir_from(env("XDG_DATA_HOME"), env("HOME"))
+}
+
 pub fn config_path() -> PathBuf {
     let env = |k: &str| {
         std::env::var_os(k)
@@ -253,6 +269,27 @@ mod tests {
             expand_home(PathBuf::from("~/x"), None),
             PathBuf::from("~/x")
         );
+    }
+
+    #[test]
+    fn drawings_dir_prefers_xdg() {
+        assert_eq!(
+            drawings_dir_from(Some("/x".into()), Some("/h".into())),
+            Some(PathBuf::from("/x/atelie-livre/desenhos"))
+        );
+    }
+
+    #[test]
+    fn drawings_dir_falls_back_to_home() {
+        assert_eq!(
+            drawings_dir_from(None, Some("/h".into())),
+            Some(PathBuf::from("/h/.local/share/atelie-livre/desenhos"))
+        );
+    }
+
+    #[test]
+    fn drawings_dir_none_without_both() {
+        assert_eq!(drawings_dir_from(None, None), None);
     }
 
     #[test]

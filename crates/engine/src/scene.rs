@@ -57,6 +57,7 @@ pub enum Input {
 pub enum SceneId {
     Splash,
     Street,
+    Paint,
     Browser,
 }
 
