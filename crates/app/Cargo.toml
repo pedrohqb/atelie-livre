@@ -1,0 +1,18 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "Ateliê Livre: programa para crianças"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "atelie-livre"
+path = "src/main.rs"
+
+[dependencies]
+engine = { path = "../engine" }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
