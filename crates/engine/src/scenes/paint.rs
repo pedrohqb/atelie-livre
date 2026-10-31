@@ -15,6 +15,7 @@ use crate::paint::{
     CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, balloon_pixels, effect_shape,
     line_points, page_shapes, text_pixels, text_size,
 };
+use crate::rng::XorShift;
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use formats::fnt::Font;
 use formats::palette::Rgb;
@@ -222,30 +223,6 @@ fn pattern_rect(k: usize) -> (i32, i32, i32, i32) {
 
 fn canvas_rect() -> (i32, i32, i32, i32) {
     (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32)
-}
-
-/// Gerador pseudoaleatório pequeno e determinístico (xorshift32) para os sprays.
-#[derive(Debug, Clone)]
-struct XorShift(u32);
-
-impl XorShift {
-    fn new(seed: u32) -> XorShift {
-        XorShift(seed.max(1))
-    }
-
-    fn next(&mut self) -> u32 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        x
-    }
-
-    /// Inteiro em `-r..=r`.
-    fn offset(&mut self, r: i32) -> i32 {
-        (self.next() % (2 * r as u32 + 1)) as i32 - r
-    }
 }
 
 /// O que está sendo arrastado no quadro, em coordenadas do quadro.
