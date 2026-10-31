@@ -205,6 +205,8 @@ pub struct Paint {
     /// Forma escolhida: (página, botão).
     brush: (u8, usize),
     bucket_option: usize,
+    /// Forma correspondente a `brush`, guardada para não recriar a cada movimento.
+    shape: Option<Shape>,
     stroke: Option<Stroke>,
     changed: bool,
 }
@@ -222,7 +224,7 @@ impl Paint {
             .as_ref()
             .and_then(|d| load_png(&d.join(LAST_NAME), &pal))
             .unwrap_or_else(|| Canvas::new(CANVAS_W, CANVAS_H));
-        Paint {
+        let mut p = Paint {
             common: KidCommon::new(None),
             drawings,
             pal,
@@ -236,9 +238,20 @@ impl Paint {
             page: 1,
             brush: (1, 0),
             bucket_option: 0,
+            shape: None,
             stroke: None,
             changed: false,
-        }
+        };
+        p.set_brush(1, 0);
+        p
+    }
+
+    fn set_brush(&mut self, page: u8, k: usize) {
+        self.brush = (page, k);
+        self.shape = match page {
+            2 => self.stamps.get(k).cloned(),
+            p => page_shapes(p).into_iter().nth(k),
+        };
     }
 
     pub fn tool(&self) -> Tool {
@@ -274,13 +287,6 @@ impl Paint {
         }
     }
 
-    fn shape(&self) -> Option<Shape> {
-        match self.brush.0 {
-            2 => self.stamps.get(self.brush.1).cloned(),
-            p => page_shapes(p).into_iter().nth(self.brush.1),
-        }
-    }
-
     fn option_count(&self) -> usize {
         match self.tool {
             Tool::Brush => 12,
@@ -294,10 +300,12 @@ impl Paint {
     }
 
     fn start_stroke(&mut self, cx: i32, cy: i32) {
-        let Some(shape) = self.shape() else { return };
+        let Some(shape) = self.shape.as_ref() else {
+            return;
+        };
         self.history.record(&self.canvas);
         let ink = self.ink();
-        self.canvas.stamp(&shape, cx, cy, &ink);
+        self.canvas.stamp(shape, cx, cy, &ink);
         self.changed = true;
         self.stroke = Some(Stroke {
             last: (cx, cy),
@@ -306,7 +314,9 @@ impl Paint {
     }
 
     fn extend_stroke(&mut self, cx: i32, cy: i32) {
-        let Some(shape) = self.shape() else { return };
+        let Some(shape) = self.shape.as_ref() else {
+            return;
+        };
         let Some(st) = self.stroke.as_mut() else {
             return;
         };
@@ -323,7 +333,7 @@ impl Paint {
                 }
                 st.last_stamp = p;
             }
-            self.canvas.stamp(&shape, p.0, p.1, &ink);
+            self.canvas.stamp(shape, p.0, p.1, &ink);
         }
         st.last = (cx, cy);
     }
@@ -335,10 +345,13 @@ impl Paint {
             match self.tool {
                 Tool::Brush => self.start_stroke(cx, cy),
                 Tool::Bucket => {
-                    self.history.record(&self.canvas);
+                    let before = self.canvas.px.clone();
                     let ink = self.ink();
                     self.canvas.fill(cx, cy, &ink);
-                    self.changed = true;
+                    if self.canvas.px != before {
+                        self.history.record_previous(before);
+                        self.changed = true;
+                    }
                 }
                 Tool::Vacuum => {}
             }
@@ -390,7 +403,7 @@ impl Paint {
         let x0 = self.options_x0();
         if let Some(k) = (0..self.option_count()).find(|&k| inside(option_rect(x0, k), x, y)) {
             match self.tool {
-                Tool::Brush if matches!(self.page, 1 | 2 | 4) => self.brush = (self.page, k),
+                Tool::Brush if matches!(self.page, 1 | 2 | 4) => self.set_brush(self.page, k),
                 Tool::Brush => fx.push(Effect::Log(format!(
                     "página {} do pincel: ainda não disponível",
                     self.page
@@ -657,7 +670,9 @@ impl Scene for Paint {
     fn leave(&mut self) -> Vec<Effect> {
         self.stroke = None;
         let Some(dir) = &self.drawings else {
-            return Vec::new();
+            return vec![Effect::Log(
+                "sem pasta de desenhos (HOME e XDG_DATA_HOME vazios): desenho não guardado".into(),
+            )];
         };
         let msg = match save_drawing(dir, &self.canvas, &self.pal, self.changed, now_secs()) {
             Ok(()) => format!("desenho guardado em {}", dir.display()),
@@ -786,6 +801,25 @@ mod tests {
         assert_eq!(p.tool(), Tool::Bucket);
         p.update(&[click(300, 300)], 0.0, &a);
         assert_eq!(painted(&p), (CANVAS_W * CANVAS_H) as usize);
+    }
+
+    #[test]
+    fn bucket_on_same_color_changes_nothing() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(13, 113)], 0.0, &a); // branco
+        p.update(&[click(70, 30), click(300, 300)], 0.0, &a);
+        p.leave();
+        // só ultimo.png: nada mudou, nenhuma cópia com data
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn leave_without_dir_logs() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        assert!(matches!(&p.leave()[..], [Effect::Log(s)] if s.contains("não guardado")));
     }
 
     #[test]

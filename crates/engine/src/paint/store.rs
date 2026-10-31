@@ -17,13 +17,20 @@ pub fn save_png(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
             .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
         rgb.extend_from_slice(&[p.r, p.g, p.b]);
     }
-    let file = io::BufWriter::new(std::fs::File::create(path)?);
-    let mut enc = png::Encoder::new(file, c.w, c.h);
-    enc.set_color(png::ColorType::Rgb);
-    enc.set_depth(png::BitDepth::Eight);
-    enc.write_header()
-        .and_then(|mut w| w.write_image_data(&rgb))
-        .map_err(io::Error::other)
+    // grava num temporário e renomeia: uma queda no meio não estraga o arquivo anterior
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    {
+        let file = io::BufWriter::new(std::fs::File::create(&tmp)?);
+        let mut enc = png::Encoder::new(file, c.w, c.h);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().map_err(io::Error::other)?;
+        w.write_image_data(&rgb).map_err(io::Error::other)?;
+        w.finish().map_err(io::Error::other)?;
+    }
+    std::fs::rename(&tmp, path)
 }
 
 fn nearest(pal: &[Rgb], r: u8, g: u8, b: u8) -> u8 {
@@ -47,6 +54,11 @@ pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
     let mut dec = png::Decoder::new(io::BufReader::new(file));
     dec.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = dec.read_info().ok()?;
+    // conferir o tamanho antes de alocar: um cabeçalho forjado pediria gigabytes
+    let (w, h) = (reader.info().width, reader.info().height);
+    if (w, h) != (CANVAS_W, CANVAS_H) {
+        return None;
+    }
     let mut buf = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).ok()?;
     if (info.width, info.height) != (CANVAS_W, CANVAS_H) {
@@ -150,6 +162,32 @@ mod tests {
         std::fs::write(&p, b"\x89PNG lixo").unwrap();
         assert_eq!(load_png(&p, &pal()), None);
         assert_eq!(load_png(&dir.path().join("nao-existe.png"), &pal()), None);
+    }
+
+    #[test]
+    fn load_huge_header_is_none_without_allocating() {
+        // PNG de 60000×60000 com IDAT minúsculo: deve ser recusado antes de alocar a saída
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.png");
+        let file = std::fs::File::create(&p).unwrap();
+        let mut enc = png::Encoder::new(file, 60_000, 60_000);
+        enc.set_color(png::ColorType::Rgba);
+        let mut w = enc.write_header().unwrap();
+        // só o cabeçalho e um IDAT qualquer; a escrita incompleta é proposital
+        let _ = w.write_chunk(
+            png::chunk::IDAT,
+            &[0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01],
+        );
+        drop(w);
+        assert_eq!(load_png(&p, &pal()), None);
+    }
+
+    #[test]
+    fn save_leaves_no_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.png");
+        save_png(&Canvas::new(3, 3), &pal(), &p).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]

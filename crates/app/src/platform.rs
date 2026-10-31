@@ -13,6 +13,19 @@ pub fn logical_point(x: f32, y: f32) -> Option<(i32, i32)> {
     inside.then_some((x as i32, y as i32))
 }
 
+/// Como `logical_point`, mas leva pontos de fora para a borda mais próxima
+/// (soltar o botão ou mover fora do quadro não pode se perder). `NaN` → 0.
+pub fn clamped_point(x: f32, y: f32) -> (i32, i32) {
+    let c = |v: f32, max: u32| {
+        if v.is_nan() {
+            0
+        } else {
+            (v.max(0.0) as i32).min(max as i32 - 1)
+        }
+    };
+    (c(x, SCREEN_W), c(y, SCREEN_H))
+}
+
 /// Repetição de tecla (tecla segurada) só vale para as teclas de navegação.
 pub fn key_allowed(key: engine::scene::Key, repeat: bool) -> bool {
     use engine::scene::Key::*;
@@ -47,6 +60,14 @@ mod tests {
         assert_eq!(integer_scale(1920, 1080), 2);
         assert_eq!(integer_scale(2560, 1440), 3);
         assert_eq!(integer_scale(0, 0), 1);
+    }
+
+    #[test]
+    fn clamped_point_moves_outside_points_to_edge() {
+        assert_eq!(clamped_point(-50.0, 10.0), (0, 10));
+        assert_eq!(clamped_point(9000.0, 9000.0), (639, 479));
+        assert_eq!(clamped_point(f32::NAN, 479.5), (0, 479));
+        assert_eq!(clamped_point(100.7, 200.2), (100, 200));
     }
 
     #[test]

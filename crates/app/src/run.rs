@@ -2,7 +2,7 @@
 
 use crate::audio::Mixer;
 use crate::config::{Args, Config, Scale, drawings_dir};
-use crate::platform::{integer_scale, key_allowed, logical_point, scale_cursor};
+use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::{Browser, Paint, Splash, Street};
@@ -200,9 +200,8 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     }
                 }
                 Event::MouseMotion { x, y, .. } => {
-                    if let Some((x, y)) = logical_point(x, y) {
-                        inputs.push(Input::MouseMove { x, y });
-                    }
+                    let (x, y) = clamped_point(x, y);
+                    inputs.push(Input::MouseMove { x, y });
                 }
                 Event::MouseButtonDown {
                     mouse_btn, x, y, ..
@@ -216,9 +215,9 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                 Event::MouseButtonUp {
                     mouse_btn, x, y, ..
                 } => {
-                    if let (Some(button), Some((x, y))) =
-                        (map_button(mouse_btn), logical_point(x, y))
-                    {
+                    // soltar fora do quadro (ou da janela) também termina o traço
+                    if let Some(button) = map_button(mouse_btn) {
+                        let (x, y) = clamped_point(x, y);
                         inputs.push(Input::MouseUp { button, x, y });
                     }
                 }

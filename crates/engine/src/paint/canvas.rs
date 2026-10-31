@@ -157,6 +157,11 @@ impl History {
         self.saved = Some(c.px.clone());
     }
 
+    /// Guarda um estado anterior já copiado (quando só se sabe depois se a ação mudou algo).
+    pub fn record_previous(&mut self, px: Vec<u8>) {
+        self.saved = Some(px);
+    }
+
     /// Troca o quadro pelo guardado (desfaz ou refaz). Falso se não há nada guardado.
     pub fn toggle(&mut self, c: &mut Canvas) -> bool {
         match &mut self.saved {
