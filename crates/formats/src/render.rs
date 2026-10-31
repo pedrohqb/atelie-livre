@@ -26,7 +26,8 @@ impl Palettes {
     ///
     /// As imagens de 4 bits vieram do Mac, onde o índice 0 é branco e o 15 é preto;
     /// a `LOGPALETTE` de 16 cores do Windows tem o preto no índice 1. A paleta de
-    /// 16 é reordenada para a ordem do Mac: 0→0, 1..14→2..15, 15→1.
+    /// 16 é reordenada para a ordem do Mac: 0→0, 1..14→2..15, 15→1, e os
+    /// cinzas 12 e 13 trocam de lugar (conferido contra o original no Wine).
     pub fn from_exe(exe: Option<&[u8]>) -> Palettes {
         let f = exe.and_then(|d| ne::parse(d).ok());
         let read = |id: u16| -> Option<Vec<Rgb>> {
@@ -37,6 +38,8 @@ impl Palettes {
                 let mut mac = vec![p[0]];
                 mac.extend_from_slice(&p[2..16]);
                 mac.push(p[1]);
+                // cinza claro e médio trocados (Mac: 12 claro, 13 médio, 14 escuro)
+                mac.swap(12, 13);
                 mac
             }
             Some(p) => p,
@@ -138,7 +141,7 @@ mod tests {
         let order: Vec<u8> = p.pal16.iter().map(|c| c.r).collect();
         assert_eq!(
             order,
-            [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1]
+            [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 13, 15, 1]
         );
     }
 

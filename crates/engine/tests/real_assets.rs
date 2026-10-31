@@ -129,3 +129,15 @@ fn sign_in_sky_matches_original_colors() {
     let top = counts.into_iter().max_by_key(|(_, n)| *n).unwrap().0;
     assert_eq!(top, [136, 136, 230]);
 }
+
+#[test]
+fn street_grays_match_original() {
+    // na captura da rua (0x6d01) no original, o cinza médio (140) cobre 54885 pixels
+    // e o claro (190) 18784; trocados, a calçada sai clara demais
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let img = a.image(&ImageRef::Pic(Program::Artist, 0x6d01));
+    let count = |c: [u8; 3]| img.rgba.chunks(4).filter(|p| p[..3] == c).count();
+    assert_eq!(count([140, 140, 140]), 54885);
+    assert_eq!(count([190, 190, 190]), 18784);
+}

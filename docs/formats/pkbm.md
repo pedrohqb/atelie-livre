@@ -82,9 +82,11 @@ nelas, as 16 primeiras cores da paleta de 256 coincidem com a de 16.
 cores tem o branco no índice 0 e o preto no 15. A `LOGPALETTE` de 16 cores do
 Windows tem o branco no 0 e o preto no 1. Por isso o índice `i` de uma imagem de
 4 bits corresponde à entrada `LOGPALETTE[i + 1]` para `i` de 1 a 14, o índice 0 à
-entrada 0 e o 15 à entrada 1. Confirmado comparando a tela de entrada (0x4139)
-com o Fine Artist original rodando no Wine: com essa ordem, o céu sai lilás
-(136, 136, 230), como no original.
+entrada 0 e o 15 à entrada 1. Há uma exceção: os índices 12 e 13 trocam de
+lugar, de modo que 12 é o cinza claro (190), 13 o médio (140) e 14 o escuro
+(100), como na tabela do Mac. Confirmado comparando com o Fine Artist original
+rodando no Wine: com essa ordem o céu da tela de entrada (0x4139) sai lilás
+(136, 136, 230) e a rua (0x6d01) sai idêntica ao original, pixel a pixel.
 
 ## Máscaras
 
