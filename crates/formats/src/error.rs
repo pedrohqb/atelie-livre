@@ -4,6 +4,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Ne,
+    Atag,
     Palette,
     MacRes,
     WinRes,
@@ -17,6 +18,7 @@ impl fmt::Display for Format {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Format::Ne => "ne",
+            Format::Atag => "atag",
             Format::Palette => "palette",
             Format::MacRes => "macres",
             Format::WinRes => "winres",

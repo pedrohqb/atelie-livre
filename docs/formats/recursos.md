@@ -34,9 +34,9 @@ numérico"). Ex.: o `STR#` gravado como 0x8206 é o id 0x206.
 `ARTIST.SND`: 131 recursos `SND` e um `SNDRANGE`. `WRITER.SND`: 122 `SND` e um
 `SNDRANGE`. Ver `sons.md`.
 
-Os tipos `WHAT`, `ATAG`, `SCRD`, `SWND`, `DSPC`, `BTNW`, `TMEN`, `CSCH`,
-`SSHD`, `TDRL`, `SMNM`, `PATS` e `ACUR` ainda não foram interpretados; a
-ferramenta os extrai em forma bruta.
+Os `ATAG` são roteiros de animação (ver `atag.md`). Os tipos `WHAT`, `SCRD`,
+`SWND`, `DSPC`, `BTNW`, `TMEN`, `CSCH`, `SSHD`, `TDRL`, `SMNM`, `PATS` e
+`ACUR` ainda não foram interpretados; a ferramenta os extrai em forma bruta.
 
 ## LOGPALETTE
 
