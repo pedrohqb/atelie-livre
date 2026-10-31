@@ -2,7 +2,7 @@
 
 use crate::audio::Mixer;
 use crate::config::{Args, Config, Scale};
-use crate::platform::{integer_scale, logical_point, scale_cursor};
+use crate::platform::{integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::{Browser, Splash, Street};
@@ -161,22 +161,22 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                 Event::KeyDown {
                     keycode: Some(k),
                     keymod,
-                    repeat: false,
+                    repeat,
                     ..
                 } => {
                     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
                     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
+                    let key = map_key(k);
+                    if !key_allowed(key, repeat) {
+                        continue;
+                    }
                     if alt && matches!(k, Keycode::Return | Keycode::KpEnter) {
                         fullscreen = !fullscreen;
                         let _ = canvas.window_mut().set_fullscreen(fullscreen);
                     } else if k == Keycode::F12 && cfg.dev && stack.len() == 1 {
                         stack.push(make_scene(SceneId::Browser, &cfg));
                     } else {
-                        inputs.push(Input::Key {
-                            key: map_key(k),
-                            ctrl,
-                            alt,
-                        });
+                        inputs.push(Input::Key { key, ctrl, alt });
                     }
                 }
                 Event::MouseMotion { x, y, .. } => {
@@ -232,7 +232,8 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
             }
         }
 
-        let (w, h) = canvas.window().size_in_pixels();
+        // cursores coloridos da SDL3 são medidos em pontos, não em pixels (telas HiDPI)
+        let (w, h) = canvas.window().size();
         let factor = integer_scale(w, h);
         if let Some(c) = cursor_ref
             && factor != cursor_factor

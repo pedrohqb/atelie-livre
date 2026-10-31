@@ -139,6 +139,15 @@ fn parse_sound(v: &toml::Value) -> Option<SoundRef> {
     Some(SoundRef::Snd(program, id))
 }
 
+/// Troca um `~` inicial pela pasta pessoal (o arquivo de configuração não passa pelo shell).
+pub fn expand_home(path: PathBuf, home: Option<PathBuf>) -> PathBuf {
+    let Some(home) = home else { return path };
+    match path.strip_prefix("~") {
+        Ok(rest) if path.starts_with("~") => home.join(rest),
+        _ => path,
+    }
+}
+
 /// Argumentos têm prioridade sobre o arquivo.
 pub fn effective(mut cfg: Config, args: &Args) -> Config {
     if let Some(d) = &args.data {
@@ -219,6 +228,31 @@ mod tests {
         assert_eq!(c.data_dir, Some(PathBuf::from("/x")));
         let none = Args::parse_from(["atelie-livre"]);
         assert_eq!(effective(Config::default(), &none), Config::default());
+    }
+
+    #[test]
+    fn expand_home_handles_tilde() {
+        let home = Some(PathBuf::from("/home/p"));
+        assert_eq!(
+            expand_home(PathBuf::from("~/MSKIDS"), home.clone()),
+            PathBuf::from("/home/p/MSKIDS")
+        );
+        assert_eq!(
+            expand_home(PathBuf::from("~"), home.clone()),
+            PathBuf::from("/home/p")
+        );
+        assert_eq!(
+            expand_home(PathBuf::from("/abs/~x"), home.clone()),
+            PathBuf::from("/abs/~x")
+        );
+        assert_eq!(
+            expand_home(PathBuf::from("~outro/x"), home),
+            PathBuf::from("~outro/x")
+        );
+        assert_eq!(
+            expand_home(PathBuf::from("~/x"), None),
+            PathBuf::from("~/x")
+        );
     }
 
     #[test]

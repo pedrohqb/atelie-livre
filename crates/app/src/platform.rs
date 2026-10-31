@@ -13,6 +13,12 @@ pub fn logical_point(x: f32, y: f32) -> Option<(i32, i32)> {
     inside.then_some((x as i32, y as i32))
 }
 
+/// Repetição de tecla (tecla segurada) só vale para as teclas de navegação.
+pub fn key_allowed(key: engine::scene::Key, repeat: bool) -> bool {
+    use engine::scene::Key::*;
+    !repeat || matches!(key, Up | Down | Left | Right | PageUp | PageDown)
+}
+
 /// Amplia um cursor pelo vizinho mais próximo.
 pub fn scale_cursor(img: &Image, factor: u32) -> Image {
     let f = factor.max(1);
@@ -51,6 +57,33 @@ mod tests {
         assert_eq!(logical_point(f32::NAN, 10.0), None);
         assert_eq!(logical_point(639.9, 479.9), Some((639, 479)));
         assert_eq!(logical_point(0.0, 0.0), Some((0, 0)));
+    }
+
+    #[test]
+    fn repeat_allowed_only_for_navigation_keys() {
+        use engine::scene::Key;
+        for k in [
+            Key::Up,
+            Key::Down,
+            Key::Left,
+            Key::Right,
+            Key::PageUp,
+            Key::PageDown,
+        ] {
+            assert!(key_allowed(k, true), "{k:?}");
+        }
+        for k in [
+            Key::Enter,
+            Key::Escape,
+            Key::F12,
+            Key::Q,
+            Key::Home,
+            Key::End,
+            Key::Other,
+        ] {
+            assert!(!key_allowed(k, true), "{k:?}");
+            assert!(key_allowed(k, false));
+        }
     }
 
     #[test]
