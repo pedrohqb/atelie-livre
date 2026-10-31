@@ -2,6 +2,7 @@
 
 pub mod canvas;
 pub mod shape;
+pub mod store;
 
 pub use canvas::{BLACK, CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, WHITE, line_points};
 pub use shape::{Cell, Shape, page_shapes};
