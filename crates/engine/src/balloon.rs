@@ -1,0 +1,209 @@
+//! Balões de fala do McZee e da Maggie: caixa amarela pontilhada com borda
+//! preta de 2 pixels, texto na "Pablo Graphos" e opções clicáveis com uma
+//! bolinha preta na frente (aparência medida no original).
+
+use crate::Frame;
+use crate::assets::Assets;
+use formats::fnt::Font;
+use std::rc::Rc;
+
+const YELLOW: [u8; 3] = [255, 238, 76];
+const WHITE: [u8; 3] = [255, 255, 255];
+const BLACK: [u8; 3] = [0, 0, 0];
+const PAD: i32 = 8;
+const LINE_GAP: i32 = 2;
+const BULLET: i32 = 14;
+
+pub struct Balloon {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub text: String,
+    pub options: Vec<String>,
+}
+
+/// Quebra o texto em linhas que cabem em `width` pixels.
+pub fn wrap(font: &Font, text: &str, width: u32) -> Vec<String> {
+    let mut lines = Vec::new();
+    for para in text.split('\n') {
+        let mut line = String::new();
+        for word in para.split_whitespace() {
+            let cand = if line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{line} {word}")
+            };
+            if font.width(&cand) <= width || line.is_empty() {
+                line = cand;
+            } else {
+                lines.push(std::mem::replace(&mut line, word.to_string()));
+            }
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+impl Balloon {
+    fn font(a: &Assets) -> Option<Rc<Font>> {
+        a.font(8)
+    }
+
+    fn line_h(font: Option<&Font>) -> i32 {
+        font.map_or(10, |f| f.height as i32 + LINE_GAP)
+    }
+
+    /// Altura total; `None` de fonte usa a 8×8.
+    fn layout(&self, font: Option<&Font>) -> (Vec<String>, i32) {
+        let inner = (self.w - 2 * PAD) as u32;
+        let lines = match font {
+            Some(f) => wrap(f, &self.text, inner),
+            None => self.text.split('\n').map(str::to_string).collect(),
+        };
+        let lh = Self::line_h(font);
+        let mut h = 2 * PAD + lines.len() as i32 * lh;
+        if !self.options.is_empty() {
+            h += 4 + self.options.len() as i32 * (lh + 4);
+        }
+        (lines, h)
+    }
+
+    pub fn height(&self, a: &Assets) -> i32 {
+        self.layout(Self::font(a).as_deref()).1
+    }
+
+    /// Retângulo (x, y, w, h) da opção `k`.
+    pub fn option_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
+        let font = Self::font(a);
+        let (lines, _) = self.layout(font.as_deref());
+        let lh = Self::line_h(font.as_deref());
+        let y0 = self.y + PAD + lines.len() as i32 * lh + 4;
+        (
+            self.x + PAD,
+            y0 + k as i32 * (lh + 4) - 2,
+            self.w - 2 * PAD,
+            lh + 4,
+        )
+    }
+
+    /// Índice da opção clicada em (x, y), se houver.
+    pub fn hit(&self, a: &Assets, x: i32, y: i32) -> Option<usize> {
+        (0..self.options.len()).find(|&k| {
+            let r = self.option_rect(a, k);
+            x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
+        })
+    }
+
+    pub fn contains(&self, a: &Assets, x: i32, y: i32) -> bool {
+        let h = self.height(a);
+        x >= self.x && y >= self.y && x < self.x + self.w && y < self.y + h
+    }
+
+    pub fn draw(&self, f: &mut Frame, a: &Assets) {
+        let font = Self::font(a);
+        let (lines, h) = self.layout(font.as_deref());
+        let lh = Self::line_h(font.as_deref());
+        // fundo pontilhado: amarelo nas posições (x + y) ímpares de 1 em 3
+        f.rect(self.x, self.y, self.w, h, BLACK);
+        for y in self.y + 2..self.y + h - 2 {
+            for x in self.x + 2..self.x + self.w - 2 {
+                let c = if (x + 2 * y) % 3 == 0 { YELLOW } else { WHITE };
+                f.put(x, y, c);
+            }
+        }
+        // cantos arredondados (tira um pixel de cada canto)
+        for (cx, cy) in [
+            (self.x, self.y),
+            (self.x + self.w - 1, self.y),
+            (self.x, self.y + h - 1),
+            (self.x + self.w - 1, self.y + h - 1),
+        ] {
+            f.put(cx, cy, WHITE);
+        }
+        let mut ty = self.y + PAD;
+        for line in &lines {
+            match &font {
+                Some(fo) => {
+                    f.text_font(fo, self.x + PAD, ty, line, BLACK);
+                }
+                None => f.text(self.x + PAD, ty, line, BLACK),
+            }
+            ty += lh;
+        }
+        for (k, opt) in self.options.iter().enumerate() {
+            let r = self.option_rect(a, k);
+            // bolinha preta com brilho branco
+            let (bx, by) = (r.0, r.1 + 2 + (lh - 10) / 2);
+            for dy in 0..10 {
+                for dx in 0..10 {
+                    let (ex, ey) = (dx as f32 - 4.5, dy as f32 - 4.5);
+                    if ex * ex + ey * ey <= 22.0 {
+                        f.put(bx + dx, by + dy, BLACK);
+                    }
+                }
+            }
+            f.put(bx + 6, by + 3, WHITE);
+            f.put(bx + 5, by + 3, WHITE);
+            f.put(bx + 6, by + 2, WHITE);
+            f.put(bx + 6, by + 4, WHITE);
+            f.put(bx + 7, by + 3, WHITE);
+            match &font {
+                Some(fo) => {
+                    f.text_font(fo, r.0 + BULLET + 4, r.1 + 2, opt, BLACK);
+                }
+                None => f.text(r.0 + BULLET + 4, r.1 + 2, opt, BLACK),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_breaks_on_width() {
+        // fonte sintética: cada glifo tem 3 px (ver formats::fnt tests)
+        let mut d = vec![0u8; 0x76 + 3 * 4];
+        d[0..2].copy_from_slice(&0x200u16.to_le_bytes());
+        d[0x4a..0x4c].copy_from_slice(&2u16.to_le_bytes());
+        d[0x58..0x5a].copy_from_slice(&2u16.to_le_bytes());
+        d[0x5f] = 0x20;
+        d[0x60] = 0x21;
+        let bits = d.len() as u16;
+        for i in 0..3 {
+            d[0x76 + 4 * i..0x78 + 4 * i].copy_from_slice(&3u16.to_le_bytes());
+            d[0x78 + 4 * i..0x7a + 4 * i].copy_from_slice(&bits.to_le_bytes());
+        }
+        d.extend_from_slice(&[0, 0]);
+        let f = formats::fnt::parse(&d).unwrap();
+        // "aa aa aa" = 8 glifos de 3 px = 24; largura 15 → quebra em duas linhas
+        let lines = wrap(&f, "aa aa aa", 15);
+        assert_eq!(lines, vec!["aa aa", "aa"]);
+        assert_eq!(wrap(&f, "x\ny", 100), vec!["x", "y"]);
+    }
+
+    #[test]
+    fn options_are_hit_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("ARTIST.EXE"), b"MZ").unwrap();
+        let a = Assets::open(dir.path()).unwrap();
+        let b = Balloon {
+            x: 100,
+            y: 50,
+            w: 200,
+            text: "Oi".into(),
+            options: vec!["um".into(), "dois".into()],
+        };
+        let r0 = b.option_rect(&a, 0);
+        let r1 = b.option_rect(&a, 1);
+        assert!(r1.1 > r0.1);
+        assert_eq!(b.hit(&a, r0.0 + 5, r0.1 + 2), Some(0));
+        assert_eq!(b.hit(&a, r1.0 + 5, r1.1 + 2), Some(1));
+        assert_eq!(b.hit(&a, 0, 0), None);
+        assert!(b.contains(&a, 150, 60));
+        let mut f = Frame::new(640, 480);
+        b.draw(&mut f, &a);
+        assert_eq!(f.pixel(100, 60)[..3], [0, 0, 0]);
+    }
+}
