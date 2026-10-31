@@ -62,6 +62,14 @@ seção 4. Resumo:
   globo…); 3: efeitos (bolhas, zigue-zague, explosão, rachaduras, teia,
   espiral, trilho, estrada, onda, filme, água, grama); 4: caligrafia; 5:
   formas (reta, eixos, curvas, retângulo, círculo, triângulo, polígono).
+- **Adesivos**: rolos na faixa (7 por página); um rolo abre a tira de filme
+  vertical sobre a borda esquerda do quadro (x 33..74, y 58..466): no topo o
+  rolo, depois 9 casas de 28×32 em `(40, 103 + 39·k)` e as setas `02db` e
+  `02df` em y 452. As miniaturas do rolo de bichos são `7743` e `77ec`…`77fa`;
+  os quadros dos bichos ficam de `753b` a `773b` (grupos de 8 ids: cor, traço
+  em `N+5`, máscara em `N+6`). O adesivo colocado se anima com deslocamento
+  (o pássaro sai andando e volta); os roteiros ainda não foram achados — veja
+  a spec [2c](../superpowers/specs/2026-10-31-adesivos-design.md).
 - **Lata de tinta**: faixa com 10 opções (`1590`, `1591`, `1593` … `15a1`) e,
   à esquerda, uma amostra da tinta atual.
 - **Aspirador**: 8 opções (`1557`, `1559`, `1567`, `1561`, `155f`, `155b`,

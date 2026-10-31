@@ -169,3 +169,30 @@ fn paint_frame_matches_original_colors() {
     assert_eq!(f.pixel(530, 80), [140, 140, 140, 255]); // faixa de opções
     assert_eq!(f.pixel(637, 300), [255, 140, 50, 255]); // moldura laranja
 }
+
+#[test]
+fn sticker_frames_have_masks_and_thumbnails() {
+    use engine::scenes::paint::{ANIMALS, THUMBS};
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    for frames in ANIMALS {
+        for &id in frames {
+            let img = a.image(&ImageRef::Pic(Program::Artist, id));
+            let mask = a.image(&ImageRef::Pic(Program::Artist, id + 6));
+            assert_eq!(
+                (img.width, img.height),
+                (mask.width, mask.height),
+                "{id:#x}"
+            );
+            // a placeholder é um quadriculado magenta: um quadro real não tem magenta puro
+            assert!(
+                !img.rgba.chunks(4).any(|p| p[..3] == [255, 0, 255]),
+                "{id:#x}"
+            );
+        }
+    }
+    for id in THUMBS {
+        let t = a.image(&ImageRef::Pic(Program::Artist, id));
+        assert!(t.width <= 30 && t.height <= 30, "{id:#x}");
+    }
+}

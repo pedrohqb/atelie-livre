@@ -19,8 +19,12 @@ que você já possui.
 - Subprojeto 2b (tela de pintura) concluído: na rua, clique na porta do
   prédio para pintar com o pincel (formas redondas, quadradas, carimbos e
   traços de caligrafia), a lata de tinta, as 38 cores e os padrões do
-  original; o ovo desfaz e refaz, e o aspirador limpa o quadro. Adesivos,
-  palavras, sons e as demais ferramentas ainda não funcionam.
+  original; o ovo desfaz e refaz, e o aspirador limpa o quadro.
+- Subprojeto 2c (adesivos, primeira versão): o rolo de bichos do original
+  (16 adesivos animados: cobra, peixe-espada, tartaruga, pássaro, canguru,
+  baleia, dragão...). Escolha o rolo, depois o bicho na tira de filme, e
+  clique no quadro: ele se anima e fica colado no desenho. Palavras, sons e
+  as demais ferramentas ainda não funcionam.
 
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
