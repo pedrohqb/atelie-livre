@@ -1,6 +1,7 @@
 //! Cenas do Ateliê Livre.
 
 pub mod browser;
+pub mod gallery;
 pub mod paint;
 pub mod room;
 pub mod rooms_data;
@@ -10,6 +11,7 @@ pub mod stickers;
 pub mod street;
 
 pub use browser::Browser;
+pub use gallery::Gallery;
 pub use paint::Paint;
 pub use room::{Floor, Room};
 pub use splash::Splash;

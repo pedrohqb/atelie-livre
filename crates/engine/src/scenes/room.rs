@@ -66,14 +66,14 @@ impl Floor {
                 h((98, 38, 90, 18), Action::Floor(Floor::Tricks)),
                 h((98, 58, 90, 18), Action::Floor(Floor::Projects)),
                 h((98, 78, 90, 18), Action::Floor(Floor::Studio)),
-                h((98, 98, 90, 18), Action::Soon("Galeria")),
+                h((98, 98, 90, 18), Action::Go(SceneId::Gallery)),
                 h((210, 130, 260, 270), Action::Floor(Floor::Studio)),
                 h((146, 290, 48, 20), Action::Quit),
-                h((95, 316, 95, 52), Action::Soon("Galeria")),
+                h((95, 316, 95, 52), Action::Go(SceneId::Gallery)),
             ],
             Floor::Studio => vec![
                 h((110, 176, 170, 100), Action::Go(SceneId::Paint)),
-                h((264, 63, 190, 145), Action::Soon("quadro da estante")),
+                h((264, 63, 190, 145), Action::Go(SceneId::Gallery)),
                 h((575, 0, 24, 395), Action::Floor(Floor::Projects)),
                 h((474, 250, 46, 20), Action::Quit),
             ],
@@ -255,10 +255,7 @@ mod tests {
         let fx = r.update(&[click(496, 260)], 0.0, &a);
         assert!(fx.contains(&Effect::Quit));
         let fx = r.update(&[click(350, 100)], 0.0, &a);
-        assert!(
-            fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("não disponível")))
-        );
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Gallery)));
     }
 
     #[test]

@@ -30,7 +30,9 @@ que você já possui.
 - Subprojeto 2e (prédio): a porta da rua leva ao saguão; o quadro de andares
   e o poste levam ao Ateliê de Pintura (clique no cavalete para pintar), à
   Oficina de Projetos e aos Truques de Desenho, ainda sem as atividades
-  dessas salas, sem o McZee e a Maggie.
+  dessas salas, sem o McZee e a Maggie. O quadro na estante do Ateliê (e a
+  Galeria do saguão) abre a galeria dos desenhos guardados; clique num deles
+  para continuar pintando.
 
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).

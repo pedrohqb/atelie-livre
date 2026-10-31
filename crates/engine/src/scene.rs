@@ -62,6 +62,8 @@ pub enum SceneId {
     /// Ateliê de Pintura (andar 2), ao sair da pintura.
     Studio,
     Paint,
+    /// Galeria de desenhos guardados.
+    Gallery,
     Browser,
 }
 
