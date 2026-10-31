@@ -71,6 +71,16 @@ Versão analisada: Windows 3.1, português, 1995 (pasta `MSKIDS` instalada).
   blocos com etiquetas de quatro letras (`CTBL`, `FLOR`, `FLAG`, `WIZA`,
   `FWLS`...). Parece antecessor do formato `CHN2` do 3D Movie Maker
   (Kauai, `CHUNK.CPP`), mas o layout do índice é diferente.
+- Bibliotecas em `SHARED/STUFF` também são `CHNK`: clip-art (`.ART`), molduras
+  (`.BOR`), animações (`.ANI`), "checks" (`.CHK`) e bibliotecas de som
+  (`MAG100.SND`, `MAX100.SND` — não confundir com as DLLs NE homônimas).
+  Criadores observados: `ICCC`, `SPLT`, `CHKE`. Seus blocos carregam imagens
+  `PKBM` (ex.: 128 em `MAG100.ART`, 512 em `A-MAG100.ANI`) e sons RIFF (50 em
+  `MAG100.SND`). `W-MAG100.CHK` tem a versão gravada em big-endian
+  (`00 04 00 04`), indício de arquivo escrito no Mac: o leitor `CHNK` precisa
+  aceitar as duas ordens de bytes.
+- `PABLO.FON`: fonte bitmap do Windows (NE); seus recursos são extraídos em
+  forma bruta pelo leitor NE, sem interpretação neste subprojeto.
 - `SPELL.DCT` / `THES.DCT`: dicionários licenciados (INSO / Houghton Mifflin);
   fora do escopo, serão substituídos por Hunspell no subprojeto 4.
 - Disquetes de instalação: compressão KWAJ método 3. Fora do escopo — o
@@ -86,8 +96,11 @@ Versão analisada: Windows 3.1, português, 1995 (pasta `MSKIDS` instalada).
    correta.
 3. Sons: recursos `SND` para WAV PCM de 16 bits (decodificação do ADPCM da
    Microsoft).
-4. Documentos `CHNK`: cabeçalho, índice, árvore de blocos e extração bruta de
-   cada bloco.
+4. Arquivos `CHNK` (documentos, `MSKIDS.INF` e bibliotecas de `SHARED/STUFF`),
+   identificados pela assinatura e não pela extensão: cabeçalho nas duas ordens
+   de bytes, índice, árvore de blocos e extração bruta de cada bloco. Blocos
+   cujo conteúdo seja `PKBM` ou RIFF são também decodificados para PNG/WAV com
+   os decodificadores dos itens 2 e 3.
 5. Recursos de comportamento: decodificação de `STR#`, `STR`, `PAT#`;
    extração bruta com hexdump dos demais.
 6. `docs/formats/`: documentação aberta de cada formato, atualizada a cada
@@ -200,8 +213,10 @@ Critérios de sucesso do subprojeto:
    rodando no Wine.
 3. Todos os sons são extraídos como WAV tocáveis, com duração coerente com o
    cabeçalho do original.
-4. O índice `CHNK` de todos os documentos de exemplo é lido com offsets e
-   tamanhos consistentes com o tamanho do arquivo.
+4. O índice `CHNK` de todos os documentos de exemplo, de `MSKIDS.INF` e das 14
+   bibliotecas `CHNK` de `SHARED/STUFF` é lido com offsets e tamanhos
+   consistentes com o tamanho do arquivo, e as imagens e sons embutidos nas
+   bibliotecas são extraídos.
 5. `docs/formats/` descreve GLOB, PKBM, SND, CHNK e os recursos decodificados
    em nível suficiente para outra pessoa reimplementar o leitor.
 6. `cargo test`, `cargo clippy -- -D warnings` e `cargo fmt --check` passam.
