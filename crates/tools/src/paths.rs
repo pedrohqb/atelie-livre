@@ -26,7 +26,8 @@ pub fn find_ci(root: &Path, rel: &str) -> Option<PathBuf> {
     Some(cur)
 }
 
-/// Todos os arquivos sob `dir`, recursivamente, em ordem.
+/// Todos os arquivos sob `dir`, recursivamente, em ordem. Links simbólicos para
+/// diretórios não são seguidos (evita laços); links para arquivos são incluídos.
 pub fn walk_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -35,7 +36,11 @@ pub fn walk_files(dir: &Path) -> Vec<PathBuf> {
     let mut entries: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     entries.sort();
     for p in entries {
-        if p.is_dir() {
+        let is_link = std::fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_symlink());
+        if is_link && p.is_dir() {
+            continue;
+        }
+        if !is_link && p.is_dir() {
             out.extend(walk_files(&p));
         } else {
             out.push(p);
@@ -95,6 +100,15 @@ mod tests {
         std::fs::write(dir.path().join("b/a"), b"").unwrap();
         let files = walk_files(&dir.path().join("b"));
         assert_eq!(files, [dir.path().join("b/a"), dir.path().join("b/c/z")]);
+    }
+
+    #[test]
+    fn walk_does_not_follow_directory_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("a")).unwrap();
+        std::fs::write(dir.path().join("a/f"), b"").unwrap();
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("a/loop")).unwrap();
+        assert_eq!(walk_files(dir.path()), [dir.path().join("a/f")]);
     }
 
     #[test]

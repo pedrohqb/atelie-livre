@@ -182,17 +182,22 @@ pub fn encode_pcm16(pcm: &Pcm) -> Vec<u8> {
     let align = pcm.channels as u32 * 2;
     let mut v = Vec::with_capacity(44 + data_len);
     v.extend_from_slice(b"RIFF");
-    v.extend_from_slice(&(36 + data_len as u32).to_le_bytes());
+    v.extend_from_slice(
+        &u32::try_from(data_len)
+            .unwrap_or(u32::MAX)
+            .saturating_add(36)
+            .to_le_bytes(),
+    );
     v.extend_from_slice(b"WAVEfmt ");
     v.extend_from_slice(&16u32.to_le_bytes());
     v.extend_from_slice(&1u16.to_le_bytes());
     v.extend_from_slice(&pcm.channels.to_le_bytes());
     v.extend_from_slice(&pcm.sample_rate.to_le_bytes());
-    v.extend_from_slice(&(pcm.sample_rate * align).to_le_bytes());
+    v.extend_from_slice(&pcm.sample_rate.saturating_mul(align).to_le_bytes());
     v.extend_from_slice(&(align as u16).to_le_bytes());
     v.extend_from_slice(&16u16.to_le_bytes());
     v.extend_from_slice(b"data");
-    v.extend_from_slice(&(data_len as u32).to_le_bytes());
+    v.extend_from_slice(&u32::try_from(data_len).unwrap_or(u32::MAX).to_le_bytes());
     for s in &pcm.samples {
         v.extend_from_slice(&s.to_le_bytes());
     }
@@ -398,6 +403,20 @@ mod tests {
             decode(&wav).unwrap_err().kind,
             ErrorKind::Unsupported(_)
         ));
+    }
+
+    #[test]
+    fn encode_huge_rate_does_not_overflow() {
+        let p = Pcm {
+            sample_rate: u32::MAX,
+            channels: 2,
+            samples: vec![0],
+        };
+        let bytes = encode_pcm16(&p);
+        assert_eq!(
+            u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+            u32::MAX
+        );
     }
 
     #[test]

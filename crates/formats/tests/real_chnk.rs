@@ -96,3 +96,36 @@ fn names_are_decoded() {
     let f = chnk::parse(&d).unwrap();
     assert_eq!(f.chunks[0].name.as_deref(), Some("Braquissauro"));
 }
+
+#[test]
+fn document_ctbl_matches_thumbnail_palette() {
+    use formats::palette::parse_ctbl;
+    let Some(dir) = support::data_dir() else {
+        return;
+    };
+    let mut checked = 0;
+    for p in support_files(&dir.join("SHARED/USERS/MAGGIE")) {
+        let d = std::fs::read(&p).unwrap();
+        let f = chnk::parse(&d).unwrap();
+        let part = |tag: &[u8; 4]| {
+            f.chunks
+                .iter()
+                .find(|c| &c.tag.0 == tag)
+                .map(|c| c.parts[0].data)
+        };
+        let (Some(ctbl), Some(thumb)) = (part(b"CTBL"), part(b"THMB")) else {
+            continue;
+        };
+        let thumb_pal = pkbm::decode(thumb).unwrap().palette.unwrap();
+        assert_eq!(parse_ctbl(ctbl).unwrap(), thumb_pal, "{}", p.display());
+        checked += 1;
+    }
+    assert_eq!(checked, 18);
+}
+
+fn support_files(dir: &Path) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    chnk_files(dir, &mut v);
+    v.sort();
+    v
+}

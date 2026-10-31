@@ -65,13 +65,18 @@ ignorado.
 
 ## Cores
 
-| Profundidade | Paleta |
+| Profundidade | Paleta, em ordem de preferência |
 |---|---|
 | 1 bit | 0 = branco, 1 = preto |
-| 4 bits | `LOGPALETTE` 4 (16 cores) do executável |
-| 8 bits | paleta embutida, se houver; senão `LOGPALETTE` 8 (256 cores) do executável |
+| 4 bits | `CTBL` de 16 cores do próprio arquivo `CHNK` (animações); senão `LOGPALETTE` 4 do executável |
+| 8 bits | paleta embutida na imagem; senão `CTBL` de 256 cores do próprio arquivo `CHNK` (desenhos salvos); senão `LOGPALETTE` 8 do executável |
 
-As 16 primeiras cores da paleta de 256 coincidem com a de 16.
+Os desenhos salvos (`.MAG`, `.PTM`) guardam a paleta da pintura no chunk
+`CTBL` (ver `chnk.md`); ela é idêntica à paleta embutida na miniatura (`THMB`)
+do mesmo documento e diferente da `LOGPALETTE` do executável. A animação
+`A-MAG100.ANI` também traz uma `CTBL` própria, de 16 cores, usada pelas suas
+imagens de 4 bits. As imagens dos `.PIC` usam as `LOGPALETTE` do executável;
+nelas, as 16 primeiras cores da paleta de 256 coincidem com a de 16.
 
 ## Máscaras
 

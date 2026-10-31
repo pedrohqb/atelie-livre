@@ -32,6 +32,42 @@ pub fn parse_logpalette(data: &[u8]) -> Result<Vec<Rgb>> {
         .collect())
 }
 
+/// Chunk `CTBL` dos arquivos CHNK: `u16` marca de ordem (1), `u16`, 4 bytes,
+/// `u16` contagem, contagem × { u16 r, u16 g, u16 b } (cor = byte alto).
+pub fn parse_ctbl(data: &[u8]) -> Result<Vec<Rgb>> {
+    let mut r = Reader::new(data, Format::Palette);
+    let big = match r.bytes(2)? {
+        [0, 1] => true,
+        [1, 0] => false,
+        _ => {
+            return Err(
+                Reader::new(data, Format::Palette).error(ErrorKind::BadMagic {
+                    expected: "CTBL byte order mark",
+                }),
+            );
+        }
+    };
+    let rd16 = |r: &mut Reader| if big { r.u16_be() } else { r.u16_le() };
+    r.seek(8)?;
+    let count = rd16(&mut r)? as usize;
+    if count.saturating_mul(6) > r.remaining() {
+        return Err(r.error(ErrorKind::UnexpectedEof {
+            wanted: count * 6,
+            available: r.remaining(),
+        }));
+    }
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        let (cr, cg, cb) = (rd16(&mut r)?, rd16(&mut r)?, rd16(&mut r)?);
+        out.push(Rgb {
+            r: (cr >> 8) as u8,
+            g: (cg >> 8) as u8,
+            b: (cb >> 8) as u8,
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,6 +87,55 @@ mod tests {
                 Rgb { r: 1, g: 2, b: 3 }
             ]
         );
+    }
+
+    fn ctbl(big: bool, colors: &[(u16, u16, u16)]) -> Vec<u8> {
+        let p16 = |v: u16| {
+            if big {
+                v.to_be_bytes()
+            } else {
+                v.to_le_bytes()
+            }
+        };
+        let mut v = Vec::new();
+        v.extend_from_slice(&p16(1));
+        v.extend_from_slice(&p16(6));
+        v.extend_from_slice(b"CTBL");
+        v.extend_from_slice(&p16(colors.len() as u16));
+        for &(r, g, b) in colors {
+            v.extend_from_slice(&p16(r));
+            v.extend_from_slice(&p16(g));
+            v.extend_from_slice(&p16(b));
+        }
+        v
+    }
+
+    #[test]
+    fn ctbl_both_byte_orders() {
+        let colors = [(0xff00, 0x8000, 0x0010), (0, 0xffff, 0x4000)];
+        let want = [
+            Rgb {
+                r: 255,
+                g: 128,
+                b: 0,
+            },
+            Rgb {
+                r: 0,
+                g: 255,
+                b: 64,
+            },
+        ];
+        assert_eq!(parse_ctbl(&ctbl(false, &colors)).unwrap(), want);
+        assert_eq!(parse_ctbl(&ctbl(true, &colors)).unwrap(), want);
+    }
+
+    #[test]
+    fn ctbl_rejects_bad_mark_and_short_data() {
+        let mut d = ctbl(false, &[(1, 2, 3)]);
+        d[0] = 7;
+        assert!(parse_ctbl(&d).is_err());
+        let d = ctbl(false, &[(1, 2, 3)]);
+        assert!(parse_ctbl(&d[..d.len() - 1]).is_err());
     }
 
     #[test]

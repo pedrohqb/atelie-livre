@@ -1,7 +1,8 @@
 # CHNK — documentos e bibliotecas
 
 Formato "chunky" dos documentos salvos (`.MAG`, `.PTM` do Fine Artist; `.MAX`
-do Creative Writer), do arquivo de usuários `MSKIDS.INF` e das bibliotecas de
+do Creative Writer; os de exemplo ficam em `SHARED/USERS/` e os dos usuários
+em `USERS/`), do arquivo de usuários `MSKIDS.INF` e das bibliotecas de
 `SHARED/STUFF` (clip-art `.ART`, molduras `.BOR`, animações `.ANI`, "checks"
 `.CHK` e bibliotecas de som `MAG100.SND`/`MAX100.SND`). Validado nos 54
 arquivos `CHNK` da instalação, inclusive em 18 `CHNK` aninhados.
@@ -91,7 +92,12 @@ Exemplo (`2MAX100.BOR`, primeiro registro, 46 bytes):
   iniciado por `"META"`; ainda não interpretado.
 - `CHNK` aninhado: um arquivo completo dentro da parte, com seus próprios
   offsets relativos ao início da parte.
-- Demais etiquetas (`CTBL`, `SOBJ`, `COBJ`, `TEXT`, `FONT`, `FRAM`, ...): ainda
+- `CTBL`: paleta do arquivo. `u16` marca de ordem de bytes (1), `u16`,
+  4 bytes (etiqueta variável, sem uso aparente), `u16` contagem, depois
+  contagem × { `u16` r, `u16` g, `u16` b } com o byte alto como cor. Tem 256
+  cores nos desenhos salvos e 16 em `A-MAG100.ANI`; vale para as imagens
+  `PKBM` do arquivo que não trazem paleta própria (ver `pkbm.md`).
+- Demais etiquetas (`SOBJ`, `COBJ`, `TEXT`, `FONT`, `FRAM`, ...): ainda
   não interpretadas.
 
 | Arquivo | Registros | Imagens | Sons | `CHNK` aninhados |

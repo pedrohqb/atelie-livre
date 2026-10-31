@@ -79,6 +79,7 @@ impl Ctx<'_> {
 
 pub fn run(input: &Path, output: &Path) -> io::Result<Report> {
     std::fs::create_dir_all(output)?;
+    let out_canon = output.canonicalize()?;
     let mut ctx = Ctx {
         input,
         output,
@@ -88,7 +89,7 @@ pub fn run(input: &Path, output: &Path) -> io::Result<Report> {
     let found: Vec<Option<PathBuf>> = EXPECTED.iter().map(|rel| find_ci(input, rel)).collect();
     let artist_pal = Palettes::from_exe(found[0].as_ref());
     let writer_pal = Palettes::from_exe(found[1].as_ref());
-    let shared_pal = if found[0].is_some() || found[1].is_none() {
+    let other_pal = if found[0].is_some() || found[1].is_none() {
         &artist_pal
     } else {
         &writer_pal
@@ -104,12 +105,19 @@ pub fn run(input: &Path, output: &Path) -> io::Result<Report> {
         } else {
             ("WRITER", &writer_pal)
         };
-        process_file(&mut ctx, path, Some(prefix), pal)?;
+        process_file(&mut ctx, path, Some(prefix), pal);
     }
-    if let Some(shared) = find_ci(input, "SHARED") {
-        for path in walk_files(&shared) {
-            process_file(&mut ctx, &path, None, shared_pal)?;
+    // Todo o resto da árvore é identificado pela assinatura (SHARED/, USERS/, ...),
+    // exceto os arquivos já tratados acima e a própria pasta de saída.
+    for path in walk_files(input) {
+        let inside_output = path
+            .parent()
+            .and_then(|p| p.canonicalize().ok())
+            .is_some_and(|p| p.starts_with(&out_canon));
+        if inside_output || found.iter().flatten().any(|f| f == &path) {
+            continue;
         }
+        process_file(&mut ctx, &path, None, other_pal);
     }
 
     std::fs::write(output.join("index.html"), html::render(&ctx.sections))?;
@@ -118,30 +126,56 @@ pub fn run(input: &Path, output: &Path) -> io::Result<Report> {
     Ok(ctx.report)
 }
 
-/// `prefix` é `ARTIST`/`WRITER` para os arquivos principais; `None` para os de `SHARED/`.
-fn process_file(
-    ctx: &mut Ctx,
-    path: &Path,
-    prefix: Option<&str>,
-    pal: &Palettes,
-) -> io::Result<()> {
+/// Processa um arquivo; erros de leitura e de gravação viram falhas no relatório.
+/// `prefix` é `ARTIST`/`WRITER` para os arquivos principais e `None` para os demais.
+fn process_file(ctx: &mut Ctx, path: &Path, prefix: Option<&str>, pal: &Palettes) {
     let rel = relative(ctx.input, path);
-    let data = std::fs::read(path)?;
-    let kind = detect(&data);
     let mut t = Tally {
         path: &rel,
         ok: 0,
         failed: 0,
     };
-    let kind_name = match kind {
-        FileKind::Unknown if prefix.is_none() => return Ok(()),
+    let kind_name = match std::fs::read(path) {
+        Err(e) => {
+            ctx.fail(&mut t, "file".into(), format!("leitura: {e}"));
+            "unreadable"
+        }
+        Ok(data) => match process_data(ctx, &mut t, &data, prefix, pal) {
+            Ok(None) => return,
+            Ok(Some(kind)) => kind,
+            Err(e) => {
+                ctx.fail(&mut t, "file".into(), format!("gravação: {e}"));
+                "error"
+            }
+        },
+    };
+    let summary = FileSummary {
+        path: rel.clone(),
+        kind: kind_name,
+        items_ok: t.ok,
+        items_failed: t.failed,
+    };
+    ctx.report.processed.push(summary);
+}
+
+/// Devolve o tipo do arquivo, ou `None` para um arquivo não reconhecido fora dos esperados.
+fn process_data(
+    ctx: &mut Ctx,
+    t: &mut Tally,
+    data: &[u8],
+    prefix: Option<&str>,
+    pal: &Palettes,
+) -> io::Result<Option<&'static str>> {
+    let rel = t.path.to_string();
+    let kind_name = match detect(data) {
+        FileKind::Unknown if prefix.is_none() => return Ok(None),
         FileKind::Unknown => {
-            ctx.fail(&mut t, "file".into(), "formato não reconhecido".into());
+            ctx.fail(t, "file".into(), "formato não reconhecido".into());
             "unknown"
         }
         FileKind::Ne => {
             let sounds = prefix.map(|p| ctx.output.join(p).join("sounds"));
-            extract_ne(ctx, &mut t, &data, sounds.as_deref())?;
+            extract_ne(ctx, t, data, sounds.as_deref())?;
             "ne"
         }
         FileKind::Glob => {
@@ -149,7 +183,7 @@ fn process_file(
                 Some(p) => ctx.output.join(p).join("bitmaps"),
                 None => ctx.output.join("documents").join(&rel),
             };
-            extract_glob(ctx, &mut t, &data, &dir, pal)?;
+            extract_glob(ctx, t, data, &dir, pal)?;
             "glob"
         }
         FileKind::Chnk => {
@@ -158,21 +192,21 @@ fn process_file(
                 title: rel.clone(),
                 ..Default::default()
             };
-            match chnk::parse(&data) {
+            match chnk::parse(data) {
                 Ok(f) => {
-                    let tree = extract_chnk(ctx, &mut t, &mut section, &f, &base, pal)?;
+                    let tree = extract_chnk(ctx, t, &mut section, &f, data.len(), &base, pal, 0)?;
                     std::fs::create_dir_all(base.parent().expect("has parent"))?;
                     let json = serde_json::to_string_pretty(&tree).expect("json");
                     std::fs::write(with_suffix(&base, ".json"), json + "\n")?;
                 }
-                Err(e) => ctx.fail(&mut t, "file".into(), e.to_string()),
+                Err(e) => ctx.fail(t, "file".into(), e.to_string()),
             }
             ctx.sections.push(section);
             "chnk"
         }
         FileKind::RiffWave => {
             let out = with_suffix(&ctx.output.join("documents").join(&rel), ".wav");
-            match wave::decode(&data) {
+            match wave::decode(data) {
                 Ok(pcm) => {
                     write_file(&out, &wave::encode_pcm16(&pcm))?;
                     t.ok += 1;
@@ -183,19 +217,12 @@ fn process_file(
                         ..Default::default()
                     });
                 }
-                Err(e) => ctx.fail(&mut t, "file".into(), e.to_string()),
+                Err(e) => ctx.fail(t, "file".into(), e.to_string()),
             }
             "wave"
         }
     };
-    let summary = FileSummary {
-        path: rel.clone(),
-        kind: kind_name,
-        items_ok: t.ok,
-        items_failed: t.failed,
-    };
-    ctx.report.processed.push(summary);
-    Ok(())
+    Ok(Some(kind_name))
 }
 
 fn extract_ne(ctx: &mut Ctx, t: &mut Tally, data: &[u8], sounds: Option<&Path>) -> io::Result<()> {
@@ -335,15 +362,47 @@ fn extract_glob(
     Ok(())
 }
 
+/// Profundidade máxima de CHNK aninhados (os dados reais têm 1 nível).
+const MAX_NESTING: usize = 8;
+
+/// Paleta de um arquivo CHNK: a `CTBL` do próprio arquivo substitui a de 16 ou a de
+/// 256 cores do executável, conforme o número de cores dela.
+fn chnk_palettes(f: &chnk::ChunkFile<'_>, base: &Palettes) -> Palettes {
+    let ctbl = f
+        .chunks
+        .iter()
+        .flat_map(|c| &c.parts)
+        .find(|p| p.tag.0 == *b"CTBL")
+        .and_then(|p| palette::parse_ctbl(p.data).ok());
+    match ctbl {
+        Some(c) if c.len() == 16 => Palettes {
+            pal16: c,
+            pal256: base.pal256.clone(),
+        },
+        Some(c) if c.len() == 256 => Palettes {
+            pal16: base.pal16.clone(),
+            pal256: c,
+        },
+        _ => Palettes {
+            pal16: base.pal16.clone(),
+            pal256: base.pal256.clone(),
+        },
+    }
+}
+
 /// Grava as partes de um CHNK (recursivamente) e devolve a árvore para o JSON.
+#[allow(clippy::too_many_arguments)]
 fn extract_chnk(
     ctx: &mut Ctx,
     t: &mut Tally,
     section: &mut Section,
     f: &chnk::ChunkFile<'_>,
+    file_len: usize,
     base: &Path,
     pal: &Palettes,
+    depth: usize,
 ) -> io::Result<Value> {
+    let pal = &chnk_palettes(f, pal);
     let mut chunks = Vec::new();
     for c in &f.chunks {
         let mut parts = Vec::new();
@@ -363,13 +422,26 @@ fn extract_chnk(
                 .clone()
                 .unwrap_or_else(|| format!("{} {}", c.tag, c.id));
             if chnk::is_chnk(p.data) {
-                match chnk::parse(p.data) {
-                    Ok(inner) => {
-                        part["nested"] =
-                            extract_chnk(ctx, t, section, &inner, &base.join(&stem), pal)?;
-                        t.ok += 1;
+                if depth + 1 >= MAX_NESTING || p.data.len() >= file_len {
+                    ctx.fail(t, item, "CHNK aninhado não é menor que o arquivo que o contém, ou aninhamento profundo demais".into());
+                } else {
+                    match chnk::parse(p.data) {
+                        Ok(inner) => {
+                            let dir = base.join(&stem);
+                            part["nested"] = extract_chnk(
+                                ctx,
+                                t,
+                                section,
+                                &inner,
+                                p.data.len(),
+                                &dir,
+                                pal,
+                                depth + 1,
+                            )?;
+                            t.ok += 1;
+                        }
+                        Err(e) => ctx.fail(t, item, e.to_string()),
                     }
-                    Err(e) => ctx.fail(t, item, e.to_string()),
                 }
             } else if pkbm::is_pkbm(p.data) {
                 match pkbm::decode(p.data) {

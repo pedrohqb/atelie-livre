@@ -33,7 +33,8 @@ target/release/atelie-tools extract caminho/MSKIDS saida
 O `extract` gera `saida/index.html`, uma folha de contato com todas as imagens
 e os sons, e `saida/report.json`, com o que foi processado, o que falhou e o
 que não foi encontrado. Os nomes dos arquivos podem estar em qualquer
-combinação de maiúsculas e minúsculas. Códigos de saída: 0 sucesso, 1 houve
+combinação de maiúsculas e minúsculas, e os documentos são reconhecidos pelo
+conteúdo, não pela extensão, em qualquer subpasta (inclusive `USERS/`). Códigos de saída: 0 sucesso, 1 houve
 falhas, 2 a pasta não parece uma instalação compatível.
 
 ## Desenvolvimento

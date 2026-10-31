@@ -148,25 +148,157 @@ fn partial_install_reports_missing() {
 
 #[test]
 fn user_document_with_odd_name_detected() {
+    // documentos de usuários novos ficam em USERS/, irmã de SHARED/
     let Some(data) = data_dir() else { return };
     let src = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(src.path().join("USERS/JOAO")).unwrap();
     std::fs::create_dir_all(src.path().join("SHARED/USERS/X")).unwrap();
+    let sample = data.join("SHARED/USERS/MAGGIE/SAMP1.MAG");
+    std::fs::copy(&sample, src.path().join("USERS/JOAO/MEU DESENHO.MAG")).unwrap();
+    std::fs::copy(&sample, src.path().join("SHARED/USERS/X/meu desenho")).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    assert_eq!(extract(src.path(), out.path()), 0);
+    let r = report(out.path());
+    for path in ["USERS/JOAO/MEU DESENHO.MAG", "SHARED/USERS/X/meu desenho"] {
+        let doc = r["processed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["path"] == path)
+            .unwrap();
+        assert_eq!(doc["kind"], "chnk");
+        assert!(doc["items_ok"].as_u64().unwrap() > 0);
+    }
+}
+
+#[test]
+fn painting_layers_use_the_document_palette() {
+    use formats::{chnk, palette, pkbm};
+    let Some(data) = data_dir() else { return };
+    let src = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(src.path().join("SHARED")).unwrap();
+    std::fs::copy(data.join("ARTIST.EXE"), src.path().join("ARTIST.EXE")).unwrap();
     std::fs::copy(
-        data.join("SHARED/USERS/MAGGIE/SAMP1.MAG"),
-        src.path().join("SHARED/USERS/X/meu desenho"),
+        data.join("SHARED/USERS/MAGGIE/SAMP2.MAG"),
+        src.path().join("SHARED/SAMP2.MAG"),
     )
     .unwrap();
     let out = tempfile::tempdir().unwrap();
     assert_eq!(extract(src.path(), out.path()), 0);
-    let r = report(out.path());
-    let doc = r["processed"]
-        .as_array()
-        .unwrap()
+    let doc = std::fs::read(src.path().join("SHARED/SAMP2.MAG")).unwrap();
+    let f = chnk::parse(&doc).unwrap();
+    let ctbl_part = f.chunks.iter().find(|c| c.tag.0 == *b"CTBL").unwrap().parts[0].data;
+    let ctbl = palette::parse_ctbl(ctbl_part).unwrap();
+    let layer = f
+        .chunks
         .iter()
-        .find(|f| f["path"] == "SHARED/USERS/X/meu desenho")
+        .find(|c| c.tag.0 == *b"PKBM" && c.id == 0)
         .unwrap();
-    assert_eq!(doc["kind"], "chnk");
-    assert!(doc["items_ok"].as_u64().unwrap() > 0);
+    let bitmap = pkbm::decode(layer.parts[0].data).unwrap();
+    assert_eq!(bitmap.depth, 8);
+    let png_path = out
+        .path()
+        .join("documents/SHARED/SAMP2.MAG/PKBM-0-0-PKBM.png");
+    let mut reader = png::Decoder::new(std::fs::File::open(png_path).unwrap())
+        .read_info()
+        .unwrap();
+    let mut buf = vec![0; reader.output_buffer_size()];
+    reader.next_frame(&mut buf).unwrap();
+    for (i, &idx) in bitmap.pixels.iter().enumerate() {
+        let c = ctbl[idx as usize];
+        assert_eq!(&buf[i * 4..i * 4 + 3], &[c.r, c.g, c.b], "pixel {i}");
+    }
+}
+
+#[test]
+fn unreadable_file_is_reported_and_extraction_continues() {
+    let Some(data) = data_dir() else { return };
+    let src = tempfile::tempdir().unwrap();
+    std::fs::copy(data.join("ARTIST.EXE"), src.path().join("ARTIST.EXE")).unwrap();
+    std::fs::create_dir_all(src.path().join("SHARED")).unwrap();
+    std::os::unix::fs::symlink("/nao/existe", src.path().join("SHARED/quebrado")).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    assert_eq!(extract(src.path(), out.path()), 1);
+    let r = report(out.path());
+    assert!(
+        r["failures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["path"] == "SHARED/quebrado")
+    );
+    assert!(
+        out.path()
+            .join("resources/ARTIST.EXE/WHAT/0201.bin")
+            .exists()
+    );
+}
+
+/// CHNK de 56 bytes cuja única parte (aninhada) é o próprio arquivo.
+fn self_nested_chnk() -> Vec<u8> {
+    let mut v = Vec::new();
+    v.extend_from_slice(b"CHNKTEST");
+    v.extend_from_slice(&[4, 0, 4, 0, 1, 0, 0, 3]);
+    v.extend_from_slice(&24u32.to_le_bytes());
+    v.extend_from_slice(&56u32.to_le_bytes());
+    v.extend_from_slice(&[0x00, 0x02, 1, 0, 0xff, 0xff, 0xff, 0xff]);
+    v.extend_from_slice(&[24, 0]);
+    v.extend_from_slice(b"ATAG");
+    v.extend_from_slice(&[0, 0, 1, 0, 4, 0]);
+    v.extend_from_slice(b"ATAG");
+    v.extend_from_slice(&0u32.to_le_bytes());
+    v.extend_from_slice(&56u32.to_le_bytes());
+    assert_eq!(v.len(), 56);
+    v
+}
+
+fn walk_depth(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .map(|e| 1 + walk_depth(&e.path()))
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+}
+
+#[test]
+fn self_nested_chnk_is_reported_not_recursed() {
+    let src = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(src.path().join("SHARED")).unwrap();
+    std::fs::write(src.path().join("SHARED/laco.chk"), self_nested_chnk()).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    assert_eq!(extract(src.path(), out.path()), 1);
+    let r = report(out.path());
+    assert!(
+        r["failures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["path"] == "SHARED/laco.chk")
+    );
+    let depth = walk_depth(&out.path().join("documents"));
+    assert!(depth < 10, "profundidade {depth}");
+}
+
+#[test]
+fn output_inside_input_is_not_reprocessed() {
+    let Some(data) = data_dir() else { return };
+    let src = tempfile::tempdir().unwrap();
+    std::fs::copy(data.join("ARTIST.EXE"), src.path().join("ARTIST.EXE")).unwrap();
+    std::fs::create_dir_all(src.path().join("ARTIST")).unwrap();
+    std::fs::copy(
+        data.join("ARTIST/ARTIST.SND"),
+        src.path().join("ARTIST/ARTIST.SND"),
+    )
+    .unwrap();
+    let out = src.path().join("saida");
+    assert_eq!(extract(src.path(), &out), 0);
+    let first = std::fs::read(out.join("report.json")).unwrap();
+    assert_eq!(extract(src.path(), &out), 0);
+    assert_eq!(std::fs::read(out.join("report.json")).unwrap(), first);
 }
 
 #[test]

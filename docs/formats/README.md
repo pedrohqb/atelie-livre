@@ -21,8 +21,8 @@ leitores sem consultar o código original.
 | `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` | `glob.md`, `pkbm.md` |
 | `ARTIST/ARTIST.SND`, `WRITER/WRITER.SND` | DLL NE com sons WAV | `sons.md` |
 | `SHARED/MSKIDS.INF` | `CHNK` (usuários) | `chnk.md` |
-| `SHARED/USERS/*/*.MAG`, `*.PTM` | `CHNK` (desenhos do Fine Artist) | `chnk.md` |
-| `SHARED/USERS/*/*.MAX` | `CHNK` (documentos do Creative Writer) | `chnk.md` |
+| `SHARED/USERS/*/*.MAG`, `*.PTM` (exemplos) e `USERS/*/` (usuários) | `CHNK` (desenhos do Fine Artist) | `chnk.md` |
+| `SHARED/USERS/*/*.MAX` (exemplos) e `USERS/*/` (usuários) | `CHNK` (documentos do Creative Writer) | `chnk.md` |
 | `SHARED/STUFF/*.ART`, `*.BOR`, `*.ANI`, `*.CHK` | `CHNK` (clip-art, molduras, animações, checks) | `chnk.md` |
 | `SHARED/STUFF/MAG100.SND`, `MAX100.SND` | `CHNK` com sons WAV | `chnk.md`, `sons.md` |
 | `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | não interpretada |
