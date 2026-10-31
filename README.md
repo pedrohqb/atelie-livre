@@ -19,7 +19,8 @@ que você já possui.
 - Subprojeto 2b (tela de pintura) concluído: na rua, clique na porta do
   prédio para pintar com o pincel (formas redondas, quadradas, carimbos e
   traços de caligrafia), a lata de tinta, as 38 cores e os padrões do
-  original; o ovo desfaz e refaz, e o aspirador limpa o quadro.
+  original; o ovo desfaz e refaz, e o aspirador aspira tinta (recorta), copia, cola,
+  apaga áreas e cores e joga tudo fora.
 - Subprojetos 2c e 2d (adesivos): os 29 rolos do original, 7 por página —
   o rolo de bichos animados (cobra, peixe-espada, tartaruga, pássaro...,
   com os movimentos gravados do original) e os 28 rolos de clip-art

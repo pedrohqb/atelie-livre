@@ -5,6 +5,7 @@
 use super::stickers::Stickers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
+use crate::paint::stamp::Stamp;
 use crate::paint::store::{LAST_NAME, load_png, save_drawing};
 use crate::paint::{
     CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, line_points, page_shapes,
@@ -192,8 +193,45 @@ struct Stroke {
     last_stamp: (i32, i32),
 }
 
+/// Opções do aspirador, na ordem dos botões do original.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VacuumMode {
+    /// Aspira tinta: arrasta um retângulo, que vai para a "área de transferência".
+    Cut,
+    /// Aspira adesivos (ainda não disponível).
+    Stickers,
+    /// Cola o que foi aspirado ou copiado, centrado no clique.
+    Paste,
+    /// Aspira-área: apaga a região contínua da cor clicada.
+    Area,
+    /// Aspira-cópias: copia um retângulo arrastado.
+    Copy,
+    /// Aspira-cores: apaga só a cor ativa dentro do retângulo arrastado.
+    Color,
+    /// Remove-sons (ainda não disponível).
+    Sounds,
+    /// Jogar tudo fora: limpa o quadro.
+    All,
+}
+
+const VACUUM_MODES: [VacuumMode; 8] = [
+    VacuumMode::Cut,
+    VacuumMode::Stickers,
+    VacuumMode::Paste,
+    VacuumMode::Area,
+    VacuumMode::Copy,
+    VacuumMode::Color,
+    VacuumMode::Sounds,
+    VacuumMode::All,
+];
+
 pub struct Paint {
     common: KidCommon,
+    vacuum: VacuumMode,
+    /// Canto inicial de um arrasto do aspirador (coordenadas do quadro).
+    vacuum_anchor: Option<(i32, i32)>,
+    /// Trecho aspirado ou copiado.
+    clipboard: Option<Stamp>,
     drawings: Option<PathBuf>,
     pal: Vec<Rgb>,
     patterns: Vec<[u8; 8]>,
@@ -247,6 +285,9 @@ impl Paint {
             changed: false,
             stickers: Stickers::new(assets),
             mouse: (0, 0),
+            vacuum: VacuumMode::Cut,
+            vacuum_anchor: None,
+            clipboard: None,
         };
         p.set_brush(1, 0);
         p
@@ -385,7 +426,8 @@ impl Paint {
                         self.changed = true;
                     }
                 }
-                Tool::Vacuum | Tool::Stickers => {}
+                Tool::Vacuum => self.vacuum_press(cx, cy),
+                Tool::Stickers => {}
             }
             return;
         }
@@ -445,15 +487,112 @@ impl Paint {
                 ))),
                 Tool::Bucket => self.bucket_option = k,
                 Tool::Stickers => {}
-                Tool::Vacuum if k == 0 => {
+                Tool::Vacuum => {
+                    self.vacuum = VACUUM_MODES[k];
+                    if matches!(self.vacuum, VacuumMode::Stickers | VacuumMode::Sounds) {
+                        fx.push(Effect::Log("aspirador: opção ainda não disponível".into()));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn vacuum_mode(&self) -> VacuumMode {
+        self.vacuum
+    }
+
+    pub fn has_clipboard(&self) -> bool {
+        self.clipboard.is_some()
+    }
+
+    /// Retângulo (x0, y0, w, h) entre a âncora e o ponto, dentro do quadro.
+    fn drag_rect(&self, cx: i32, cy: i32) -> Option<(i32, i32, i32, i32)> {
+        let (ax, ay) = self.vacuum_anchor?;
+        let x0 = ax.min(cx).max(0);
+        let y0 = ay.min(cy).max(0);
+        let x1 = (ax.max(cx) + 1).min(self.canvas.w as i32);
+        let y1 = (ay.max(cy) + 1).min(self.canvas.h as i32);
+        (x1 > x0 && y1 > y0).then_some((x0, y0, x1 - x0, y1 - y0))
+    }
+
+    fn copy_rect(&self, r: (i32, i32, i32, i32)) -> Stamp {
+        let (x0, y0, w, h) = r;
+        let px = (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .map(|(x, y)| self.canvas.get(x0 + x, y0 + y))
+            .collect();
+        Stamp {
+            w: w as u32,
+            h: h as u32,
+            px,
+        }
+    }
+
+    fn vacuum_press(&mut self, cx: i32, cy: i32) {
+        match self.vacuum {
+            VacuumMode::Cut | VacuumMode::Copy | VacuumMode::Color => {
+                self.vacuum_anchor = Some((cx, cy));
+            }
+            VacuumMode::Paste => {
+                if let Some(s) = &self.clipboard {
                     self.history.record(&self.canvas);
-                    self.canvas.clear();
+                    let (w, h) = (s.w as i32, s.h as i32);
+                    self.canvas.paste(s, cx - w / 2, cy - h / 2);
                     self.changed = true;
                 }
-                Tool::Vacuum => fx.push(Effect::Log(
-                    "aspirador: só a opção de limpar está disponível".into(),
-                )),
             }
+            VacuumMode::Area => {
+                let before = self.canvas.px.clone();
+                self.canvas.fill(cx, cy, &Ink::solid(crate::paint::WHITE));
+                if self.canvas.px != before {
+                    self.history.record_previous(before);
+                    self.changed = true;
+                }
+            }
+            VacuumMode::All => {
+                self.history.record(&self.canvas);
+                self.canvas.clear();
+                self.changed = true;
+            }
+            VacuumMode::Stickers | VacuumMode::Sounds => {}
+        }
+    }
+
+    fn vacuum_release(&mut self, cx: i32, cy: i32) {
+        let Some(r) = self.drag_rect(cx, cy) else {
+            self.vacuum_anchor = None;
+            return;
+        };
+        self.vacuum_anchor = None;
+        let (x0, y0, w, h) = r;
+        match self.vacuum {
+            VacuumMode::Copy => self.clipboard = Some(self.copy_rect(r)),
+            VacuumMode::Cut => {
+                self.clipboard = Some(self.copy_rect(r));
+                self.history.record(&self.canvas);
+                for y in y0..y0 + h {
+                    for x in x0..x0 + w {
+                        self.canvas.plot(x, y, &Ink::solid(crate::paint::WHITE));
+                    }
+                }
+                self.changed = true;
+            }
+            VacuumMode::Color => {
+                let color = COLORS[self.color];
+                let before = self.canvas.px.clone();
+                for y in y0..y0 + h {
+                    for x in x0..x0 + w {
+                        if self.canvas.get(x, y) == Some(color) {
+                            self.canvas.plot(x, y, &Ink::solid(crate::paint::WHITE));
+                        }
+                    }
+                }
+                if self.canvas.px != before {
+                    self.history.record_previous(before);
+                    self.changed = true;
+                }
+            }
+            _ => {}
         }
     }
 
@@ -639,7 +778,7 @@ impl Paint {
                     let r = option_rect(25, k);
                     f.blit(&a.image(&pic(*id)), r.0, r.1);
                 }
-                None
+                VACUUM_MODES.iter().position(|m| *m == self.vacuum)
             }
         };
         if let Some(k) = selected {
@@ -709,6 +848,9 @@ impl Scene for Paint {
                 } => {
                     self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
                     self.stroke = None;
+                    if self.vacuum_anchor.is_some() {
+                        self.vacuum_release(x - ORIGIN.0, y - ORIGIN.1);
+                    }
                 }
                 _ => {}
             }
@@ -728,6 +870,13 @@ impl Scene for Paint {
         self.draw_options(frame, assets);
         self.draw_columns(frame);
         self.draw_canvas(frame);
+        // retângulo elástico do aspirador
+        if self.vacuum_anchor.is_some()
+            && let Some((x0, y0, w, h)) =
+                self.drag_rect(self.mouse.0 - ORIGIN.0, self.mouse.1 - ORIGIN.1)
+        {
+            frame.frame_rect(ORIGIN.0 + x0, ORIGIN.1 + y0, w, h, 1, BLACK);
+        }
         self.stickers
             .draw_overlay(frame, assets, &self.pal, self.mouse);
     }
@@ -902,18 +1051,69 @@ mod tests {
     }
 
     #[test]
-    fn vacuum_option_one_clears() {
+    fn vacuum_all_clears_and_egg_restores() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
         p.update(&[click(100, 200), up(100, 200)], 0.0, &a);
         p.update(&[click(320, 30)], 0.0, &a);
         assert_eq!(p.tool(), Tool::Vacuum);
+        p.update(&[click(300, 79)], 0.0, &a);
+        assert_eq!(p.vacuum_mode(), VacuumMode::All);
         p.update(&[click(300, 300)], 0.0, &a);
-        assert_eq!(painted(&p), 208);
-        p.update(&[click(40, 75)], 0.0, &a);
         assert_eq!(painted(&p), 0);
         p.update(&[click(270, 30)], 0.0, &a);
         assert_eq!(painted(&p), 208);
+    }
+
+    #[test]
+    fn vacuum_cut_and_paste() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(100, 200), up(100, 200)], 0.0, &a);
+        p.update(&[click(320, 30), click(40, 79)], 0.0, &a);
+        assert_eq!(p.vacuum_mode(), VacuumMode::Cut);
+        // arrasta um retângulo em volta do carimbo (centro 100,200; raio 8)
+        p.update(
+            &[
+                click(80, 180),
+                Input::MouseMove { x: 120, y: 220 },
+                up(120, 220),
+            ],
+            0.0,
+            &a,
+        );
+        assert_eq!(painted(&p), 0);
+        assert!(p.has_clipboard());
+        p.update(&[click(40 + 37 * 2 + 16, 79), click(400, 300)], 0.0, &a);
+        assert_eq!(p.vacuum_mode(), VacuumMode::Paste);
+        assert_eq!(painted(&p), 208);
+        assert_eq!(p.canvas().get(400 - 23, 300 - 109), Some(1));
+    }
+
+    #[test]
+    fn vacuum_area_and_color() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(100, 200), up(100, 200)], 0.0, &a);
+        p.update(
+            &[click(13, 113 + 9 * 8), click(300, 200), up(300, 200)],
+            0.0,
+            &a,
+        );
+        p.update(
+            &[click(320, 30), click(40 + 37 * 3 + 16, 79), click(100, 200)],
+            0.0,
+            &a,
+        );
+        assert_eq!(p.vacuum_mode(), VacuumMode::Area);
+        assert_eq!(painted(&p), 208);
+        // aspira-cores com a cor ativa (índice 8 da coluna) num retângulo que cobre tudo
+        p.update(
+            &[click(40 + 37 * 5 + 16, 79), click(30, 120), up(600, 450)],
+            0.0,
+            &a,
+        );
+        assert_eq!(painted(&p), 0);
     }
 
     #[test]
