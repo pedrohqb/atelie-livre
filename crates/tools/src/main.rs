@@ -1,7 +1,11 @@
 #![forbid(unsafe_code)]
 
 mod detect;
+mod extract;
+mod html;
 mod info;
+mod paths;
+mod report;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -47,9 +51,28 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Command::Extract { .. } => {
-            eprintln!("extract: não implementado");
-            ExitCode::from(2)
-        }
+        Command::Extract { input, output } => match extract::run(&input, &output) {
+            Ok(report) => {
+                let code = report.exit_code();
+                eprintln!(
+                    "{} arquivo(s) processado(s), {} falha(s), {} ausente(s); relatório em {}",
+                    report.processed.len(),
+                    report.failures.len(),
+                    report.missing.len(),
+                    output.join("report.json").display()
+                );
+                if code == 2 {
+                    eprintln!(
+                        "{}: a pasta não parece uma instalação compatível",
+                        input.display()
+                    );
+                }
+                ExitCode::from(code)
+            }
+            Err(e) => {
+                eprintln!("erro de E/S: {e}");
+                ExitCode::from(1)
+            }
+        },
     }
 }

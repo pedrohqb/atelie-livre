@@ -7,3 +7,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/pedrohqb/atelie-livre"
+
+# dependências (png, compressão) otimizadas também em debug, para os testes com dados reais
+[profile.dev.package."*"]
+opt-level = 2
