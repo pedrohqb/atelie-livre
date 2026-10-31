@@ -12,6 +12,7 @@ leitores sem consultar o código original.
 | [`pkbm.md`](pkbm.md) | Imagens `PKBM` (1, 4 e 8 bits, PackBits, paleta embutida) |
 | [`sons.md`](sons.md) | Sons WAV com ADPCM da Microsoft e as DLLs `.SND` |
 | [`chnk.md`](chnk.md) | Arquivos `CHNK`: documentos salvos e bibliotecas |
+| [`atag.md`](atag.md) | Roteiros de animação `ATAG` (recursos dos executáveis e adesivos animados) |
 
 ## Mapa dos arquivos
 
@@ -31,7 +32,7 @@ leitores sem consultar o código original.
 
 ## Ainda não interpretado
 
-Os recursos de comportamento dos executáveis (`WHAT`, `ATAG`, `SCRD`, `SWND`,
+Os recursos de comportamento dos executáveis (`WHAT`, `SCRD`, `SWND`,
 `DSPC`, `BTNW`, `TMEN`, `CSCH`, `SSHD`, `TDRL`, `SMNM`, `PATS`, `ACUR`), o
 conteúdo dos chunks dos documentos (`CTBL`, `SOBJ`, `COBJ`, `TEXT`, `FONT`,
 `FRAM`, ...) e os metarquivos `META` do clip-art. A ferramenta `atelie-tools

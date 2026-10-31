@@ -67,7 +67,7 @@ Um chunk pode ter várias partes com etiquetas próprias. Exemplos:
 | `BDR ` (moldura) | `WBDR` (descrição) + `PKBM` (imagem) | `.BOR` |
 | `PICT` (clip-art) | `META` (metarquivo WMF do Windows) + `PKBM` (prévia) | `.ART` |
 | `SND ` | `PCM ` (arquivo RIFF/WAVE) | `MAG100.SND` |
-| `ATAG` (animação) | `ATAG` = arquivo `CHNK` aninhado, flags 4 | `.ANI` |
+| `ATAG` (animação) | `ATAG` = arquivo `CHNK` aninhado, flags 4, com uma parte `ATAG` (roteiro, ver `atag.md`) e os `PKBM` dos quadros | `.ANI` |
 | `CARO`, `CSRO` | lista de números de outros chunks (carrossel) | bibliotecas |
 | `PKBM`, `THMB` | `PKBM` | documentos |
 
