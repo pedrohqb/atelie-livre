@@ -593,7 +593,14 @@ fn script_images(s: &Script, frame: usize, sx: i32, sy: i32) -> Option<Vec<(u16,
 }
 
 /// Copia as colunas `cols` de `img` (onde a máscara é escura) para `(x, y)`.
-fn blit_part(f: &mut Frame, img: &Image, mask: &Image, x: i32, y: i32, cols: (u32, u32)) {
+pub(crate) fn blit_part(
+    f: &mut Frame,
+    img: &Image,
+    mask: &Image,
+    x: i32,
+    y: i32,
+    cols: (u32, u32),
+) {
     if (mask.width, mask.height) != (img.width, img.height) {
         return;
     }
@@ -613,7 +620,7 @@ fn blit_part(f: &mut Frame, img: &Image, mask: &Image, x: i32, y: i32, cols: (u3
 }
 
 /// `blit_masked` recortado a um retângulo da tela.
-pub fn blit_clipped(f: &mut Frame, img: &Image, mask: &Image, x: i32, y: i32, clip: Rect) {
+pub(crate) fn blit_clipped(f: &mut Frame, img: &Image, mask: &Image, x: i32, y: i32, clip: Rect) {
     let masked = (mask.width, mask.height) == (img.width, img.height);
     for dy in 0..img.height as i32 {
         for dx in 0..img.width as i32 {

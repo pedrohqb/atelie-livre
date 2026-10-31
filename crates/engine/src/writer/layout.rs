@@ -505,7 +505,7 @@ mod tests {
         let l = Layout::build(&j, &fb(), 100, 1000);
         // "a b c" (80 px) na primeira linha, esticada a 100; "d" na última, sem esticar
         assert_eq!(l.lines.len(), 2);
-        let last = l.lines[0].boxes.iter().filter(|b| !b.space).last().unwrap();
+        let last = l.lines[0].boxes.iter().rfind(|b| !b.space).unwrap();
         assert_eq!(last.x + last.w, 100);
         assert_eq!(l.lines[1].boxes[0].x, 0);
     }

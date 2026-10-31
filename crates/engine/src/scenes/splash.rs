@@ -1,4 +1,5 @@
-//! Abertura: tela de título do Fine Artist; clique ou 5 s levam à rua.
+//! Abertura: tela de título do Fine Artist (clique ou 5 s levam à rua) ou do
+//! Creative Writer (leva ao Escritório).
 
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
@@ -8,20 +9,39 @@ use crate::{Frame, SCREEN_H, SCREEN_W};
 use crate::scene::DEFAULT_CURSOR;
 
 pub const TITLE: u16 = 0x6ca7;
+/// Tela de título do Creative Writer (`WRITER.PIC`, 640×480).
+pub const WRITER_TITLE: u16 = 0x6737;
 const TIMEOUT: f32 = 5.0;
 
 pub struct Splash {
     common: KidCommon,
     elapsed: f32,
     done: bool,
+    program: Program,
+    title: u16,
+    next: SceneId,
 }
 
 impl Splash {
+    /// Abertura do Fine Artist.
     pub fn new(click: Option<SoundRef>) -> Splash {
         Splash {
             common: KidCommon::new(click),
             elapsed: 0.0,
             done: false,
+            program: Program::Artist,
+            title: TITLE,
+            next: SceneId::Street,
+        }
+    }
+
+    /// Abertura do Creative Writer: vai direto ao Escritório.
+    pub fn writer(click: Option<SoundRef>) -> Splash {
+        Splash {
+            program: Program::Writer,
+            title: WRITER_TITLE,
+            next: SceneId::Writer,
+            ..Splash::new(click)
         }
     }
 }
@@ -41,14 +61,14 @@ impl Scene for Splash {
         });
         if !self.done && (clicked || self.elapsed >= TIMEOUT) {
             self.done = true;
-            fx.push(Effect::ChangeScene(SceneId::Street));
+            fx.push(Effect::ChangeScene(self.next));
         }
         fx
     }
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         frame.fill([0, 0, 0]);
-        let img = assets.image(&ImageRef::Pic(Program::Artist, TITLE));
+        let img = assets.image(&ImageRef::Pic(self.program, self.title));
         frame.blit(
             &img,
             (SCREEN_W as i32 - img.width as i32) / 2,
@@ -124,6 +144,16 @@ mod tests {
                 .update(&[click()], 0.0, &a)
                 .iter()
                 .any(|e| matches!(e, Effect::PlaySound(_)))
+        );
+    }
+
+    #[test]
+    fn writer_splash_goes_to_writer() {
+        let (_d, a) = empty_assets();
+        let mut s = Splash::writer(None);
+        assert!(
+            s.update(&[click()], 0.016, &a)
+                .contains(&Effect::ChangeScene(SceneId::Writer))
         );
     }
 
