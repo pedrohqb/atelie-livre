@@ -12,8 +12,8 @@ use crate::paint::geom::{
 use crate::paint::stamp::Stamp;
 use crate::paint::store::{LAST_NAME, load_png, save_drawing};
 use crate::paint::{
-    CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, balloon_pixels, line_points,
-    page_shapes, text_pixels, text_size,
+    CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, balloon_pixels, effect_shape,
+    line_points, page_shapes, text_pixels, text_size,
 };
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use formats::fnt::Font;
@@ -45,6 +45,8 @@ const ARROW_DOWN: (i32, i32, i32, i32) = (504, 90, 16, 14);
 const STAMPS: [u16; 12] = [
     0x164b, 0x16a9, 0x16ab, 0x16ad, 0x16af, 0x16b1, 0x16b3, 0x16b5, 0x16b7, 0x16b9, 0x16bb, 0x16bd,
 ];
+/// Carimbos de 21×21 dos efeitos 6 a 11 da página 3 (trilho, estrada, onda, filme, água, grama).
+const EFFECT_STAMPS: [u16; 6] = [0x11a3, 0x11b9, 0x16bf, 0x16d6, 0x16e1, 0x16f1];
 /// Botões das páginas 2, 3, 5 e 6 do pincel.
 const PAGE2_BUTTONS: [u16; 12] = [
     0x17e5, 0x17e7, 0x17e9, 0x1814, 0x1817, 0x1819, 0x181b, 0x181d, 0x181f, 0x1821, 0x1823, 0x1825,
@@ -355,6 +357,8 @@ pub struct Paint {
     pal: Vec<Rgb>,
     patterns: Vec<[u8; 8]>,
     stamps: Vec<Shape>,
+    /// Carimbos dos efeitos 6 a 11 da página 3.
+    effect_stamps: Vec<Shape>,
     canvas: Canvas,
     history: History,
     tool: Tool,
@@ -396,6 +400,10 @@ impl Paint {
             pal,
             patterns,
             stamps,
+            effect_stamps: EFFECT_STAMPS
+                .iter()
+                .map(|&id| Shape::from_stamp(&assets.image(&pic(id))))
+                .collect(),
             canvas,
             history: History::default(),
             tool: Tool::Brush,
@@ -424,6 +432,8 @@ impl Paint {
         self.brush = (page, k);
         self.shape = match page {
             2 => self.stamps.get(k).cloned(),
+            3 if k < 6 => Some(effect_shape(k)),
+            3 => self.effect_stamps.get(k - 6).cloned(),
             5 | 6 => None,
             p => page_shapes(p).into_iter().nth(k),
         };
@@ -589,7 +599,7 @@ impl Paint {
 
     fn extend_stroke(&mut self, cx: i32, cy: i32) {
         let ink = self.ink();
-        let spaced = self.brush.0 == 2;
+        let spaced = matches!(self.brush.0, 2 | 3);
         match self.stroke.as_mut() {
             Some(Stroke::Brush { last, last_stamp }) => {
                 let Some(shape) = self.shape.as_ref() else {
@@ -765,11 +775,7 @@ impl Paint {
         let x0 = self.options_x0();
         if let Some(k) = (0..self.option_count()).find(|&k| inside(option_rect(x0, k), x, y)) {
             match self.tool {
-                Tool::Brush if self.page != 3 => self.set_brush(self.page, k),
-                Tool::Brush => fx.push(Effect::Log(format!(
-                    "página {} do pincel: ainda não disponível",
-                    self.page
-                ))),
+                Tool::Brush => self.set_brush(self.page, k),
                 Tool::Bucket => self.bucket_option = k,
                 Tool::Words => self.words_option = k,
                 Tool::Stickers => {}
@@ -1820,13 +1826,14 @@ mod tests {
         assert_eq!(p.brush(), (5, 7));
         pick(&mut p, &a, 6, 11);
         assert_eq!(p.brush(), (6, 11));
-        // página 3 continua inerte
-        let before = p.brush();
+        // página 3: efeitos (bolha = anel espaçado)
         p.update(&[click(510, 62), click(510, 62), click(510, 62)], 0.0, &a);
         assert_eq!(p.page(), 3);
-        let fx = p.update(&[click(35, 70)], 0.0, &a);
-        assert!(fx.iter().any(|e| matches!(e, Effect::Log(_))));
-        assert_eq!(p.brush(), before);
+        p.update(&[click(35, 70)], 0.0, &a);
+        assert_eq!(p.brush(), (3, 0));
+        p.update(&[click(200, 300), up(200, 300)], 0.0, &a);
+        assert!(painted(&p) > 20);
+        assert_eq!(p.canvas().get(200 - 23, 300 - 109), Some(0));
     }
 
     #[test]

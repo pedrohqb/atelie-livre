@@ -135,6 +135,120 @@ impl Shape {
     }
 }
 
+/// Efeitos procedurais da página 3 (bolhas, zigue-zague, explosão, rachaduras,
+/// teia, espiral), aproximações do original, como carimbos espaçados.
+pub fn effect_shape(k: usize) -> Shape {
+    let n = 33u32;
+    let c = 16i32;
+    let mut grid = vec![false; (n * n) as usize];
+    let mut put = |x: i32, y: i32| {
+        if x >= 0 && y >= 0 && (x as u32) < n && (y as u32) < n {
+            grid[(y as u32 * n + x as u32) as usize] = true;
+        }
+    };
+    let mut circle = |r: i32| {
+        let mut x = r;
+        let mut y = 0;
+        let mut err = 1 - r;
+        while x >= y {
+            for (dx, dy) in [
+                (x, y),
+                (y, x),
+                (-y, x),
+                (-x, y),
+                (-x, -y),
+                (-y, -x),
+                (y, -x),
+                (x, -y),
+            ] {
+                put(c + dx, c + dy);
+            }
+            y += 1;
+            if err < 0 {
+                err += 2 * y + 1;
+            } else {
+                x -= 1;
+                err += 2 * (y - x) + 1;
+            }
+        }
+    };
+    let line = |grid: &mut Vec<bool>, a: (i32, i32), b: (i32, i32)| {
+        for (x, y) in super::canvas::line_points(a, b) {
+            if x >= 0 && y >= 0 && (x as u32) < n && (y as u32) < n {
+                grid[(y as u32 * n + x as u32) as usize] = true;
+            }
+        }
+    };
+    match k {
+        0 => circle(11),
+        1 => {
+            // zigue-zague: dente de serra entre as alturas 8 e 24
+            let pts: Vec<(i32, i32)> = (0..5)
+                .map(|i| (i * 8, if i % 2 == 0 { 8 } else { 24 }))
+                .collect();
+            for w in pts.windows(2) {
+                line(&mut grid, w[0], w[1]);
+            }
+        }
+        2 => {
+            // explosão: 8 raios a partir do centro
+            for (dx, dy) in [
+                (14, 0),
+                (10, 10),
+                (0, 14),
+                (-10, 10),
+                (-14, 0),
+                (-10, -10),
+                (0, -14),
+                (10, -10),
+            ] {
+                line(&mut grid, (c, c), (c + dx, c + dy));
+            }
+        }
+        3 => {
+            // rachaduras: três linhas tortas
+            line(&mut grid, (c, c), (c - 9, c - 14));
+            line(&mut grid, (c - 9, c - 14), (c - 16, c - 10));
+            line(&mut grid, (c, c), (c + 14, c + 6));
+            line(&mut grid, (c + 14, c + 6), (c + 16, c + 14));
+            line(&mut grid, (c, c), (c - 5, c + 15));
+        }
+        4 => {
+            // teia: hexágonos concêntricos e raios
+            for r in [6, 11, 16] {
+                let hexa: Vec<(i32, i32)> = (0..6)
+                    .map(|i| {
+                        let a = i as f32 * std::f32::consts::FRAC_PI_3;
+                        (
+                            c + (r as f32 * a.cos()).round() as i32,
+                            c + (r as f32 * a.sin()).round() as i32,
+                        )
+                    })
+                    .collect();
+                for i in 0..6 {
+                    line(&mut grid, hexa[i], hexa[(i + 1) % 6]);
+                    if r == 16 {
+                        line(&mut grid, (c, c), hexa[i]);
+                    }
+                }
+            }
+        }
+        _ => {
+            for r in [4, 8, 12, 16] {
+                circle(r);
+            }
+        }
+    }
+    Shape {
+        w: n,
+        h: n,
+        cells: grid
+            .into_iter()
+            .map(|b| if b { Cell::Ink } else { Cell::Clear })
+            .collect(),
+    }
+}
+
 /// Formas das páginas 1 e 4 do pincel, na ordem dos botões do original.
 /// Outras páginas não são geométricas: vazio.
 pub fn page_shapes(page: u8) -> Vec<Shape> {
@@ -213,6 +327,17 @@ mod tests {
         assert_eq!(page_shapes(1).len(), 12);
         assert_eq!(page_shapes(4).len(), 12);
         assert!(page_shapes(2).is_empty());
+    }
+
+    #[test]
+    fn effects_have_ink_and_fit() {
+        for k in 0..6 {
+            let s = effect_shape(k);
+            assert_eq!((s.w, s.h), (33, 33));
+            assert!(s.count_ink() > 20, "efeito {k}");
+        }
+        // a bolha é um anel: o centro fica vazio
+        assert_eq!(effect_shape(0).cells[16 * 33 + 16], Cell::Clear);
     }
 
     #[test]
