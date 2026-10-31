@@ -2,6 +2,7 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+use super::sounds::{SPOTS_NAME, Sounds};
 use super::stickers::Stickers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
@@ -96,6 +97,7 @@ pub enum Tool {
     Bucket,
     Stickers,
     Words,
+    Sounds,
     Vacuum,
 }
 
@@ -147,7 +149,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 34,
         normal: (0x1029, 0x102b),
         active: (0x102d, 0x102f),
-        action: Action::Unavailable("sons"),
+        action: Action::Select(Tool::Sounds),
     },
     ToolDef {
         x: 211,
@@ -378,6 +380,7 @@ pub struct Paint {
     stroke: Option<Stroke>,
     changed: bool,
     stickers: Stickers,
+    sounds: Sounds,
     mouse: (i32, i32),
 }
 
@@ -419,13 +422,21 @@ impl Paint {
             stroke: None,
             changed: false,
             stickers: Stickers::new(assets),
+            sounds: Sounds::new(assets),
             mouse: (0, 0),
             vacuum: VacuumMode::Cut,
             vacuum_anchor: None,
             clipboard: None,
         };
         p.set_brush(1, 0);
+        if let Some(d) = &p.drawings {
+            p.sounds.load_spots(&d.join(SPOTS_NAME));
+        }
         p
+    }
+
+    pub fn sounds(&self) -> &Sounds {
+        &self.sounds
     }
 
     fn set_brush(&mut self, page: u8, k: usize) {
@@ -545,7 +556,7 @@ impl Paint {
 
     fn option_count(&self) -> usize {
         match self.tool {
-            Tool::Stickers => 0,
+            Tool::Stickers | Tool::Sounds => 0,
             Tool::Brush => 12,
             Tool::Bucket => BUCKET_BUTTONS.len(),
             Tool::Words => WORDS_BUTTONS.len(),
@@ -707,6 +718,17 @@ impl Paint {
                 None => self.stickers.reset(),
             }
         }
+        if self.tool == Tool::Sounds {
+            match self.sounds.click(x, y) {
+                Some(Some(snd)) => {
+                    fx.push(Effect::PlaySound(snd));
+                    self.changed = true;
+                    return;
+                }
+                Some(None) => return,
+                None => self.sounds.reset(),
+            }
+        }
         if inside(canvas_rect(), x, y) {
             let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
             match self.tool {
@@ -722,7 +744,7 @@ impl Paint {
                     }
                 }
                 Tool::Vacuum => self.vacuum_press(cx, cy),
-                Tool::Stickers => {}
+                Tool::Stickers | Tool::Sounds => {}
             }
             return;
         }
@@ -738,6 +760,7 @@ impl Paint {
                 Action::Select(tool) => {
                     self.tool = tool;
                     self.stickers.reset();
+                    self.sounds.reset();
                 }
                 Action::Undo => {
                     if self.history.toggle(&mut self.canvas) {
@@ -778,7 +801,7 @@ impl Paint {
                 Tool::Brush => self.set_brush(self.page, k),
                 Tool::Bucket => self.bucket_option = k,
                 Tool::Words => self.words_option = k,
-                Tool::Stickers => {}
+                Tool::Stickers | Tool::Sounds => {}
                 Tool::Vacuum => {
                     self.vacuum = VACUUM_MODES[k];
                     if matches!(self.vacuum, VacuumMode::Stickers | VacuumMode::Sounds) {
@@ -1065,6 +1088,10 @@ impl Paint {
                 self.stickers.draw_strip(f, a);
                 None
             }
+            Tool::Sounds => {
+                self.sounds.draw_strip(f, a);
+                None
+            }
             Tool::Words => {
                 for (k, id) in WORDS_BUTTONS.iter().enumerate() {
                     let r = option_rect(25, k);
@@ -1212,6 +1239,7 @@ impl Scene for Paint {
             w.blink = (w.blink + dt) % CARET_PERIOD;
         }
         self.spray_tick();
+        self.sounds.update(dt);
         if self
             .stickers
             .update(dt, &mut self.canvas, &mut self.history)
@@ -1238,6 +1266,9 @@ impl Scene for Paint {
         self.draw_preview(frame);
         self.stickers
             .draw_overlay(frame, assets, &self.pal, self.mouse);
+        if self.tool == Tool::Sounds {
+            self.sounds.draw_overlay(frame, assets);
+        }
     }
 
     fn leave(&mut self) -> Vec<Effect> {
@@ -1249,6 +1280,9 @@ impl Scene for Paint {
                 "sem pasta de desenhos (HOME e XDG_DATA_HOME vazios): desenho não guardado".into(),
             )];
         };
+        if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
+            return vec![Effect::Log(format!("sons: {e}"))];
+        }
         let msg = match save_drawing(dir, &self.canvas, &self.pal, self.changed, now_secs()) {
             Ok(()) => format!("desenho guardado em {}", dir.display()),
             Err(e) => e,
@@ -1481,12 +1515,28 @@ mod tests {
     fn inactive_tool_logs() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
-        let fx = p.update(&[click(170, 30)], 0.0, &a);
+        let fx = p.update(&[click(378, 30)], 0.0, &a);
         assert!(
             fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("sons")))
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("transformadores")))
         );
         assert_eq!(p.tool(), Tool::Brush);
+    }
+
+    #[test]
+    fn sounds_tool_without_library_is_harmless() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(170, 30)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Sounds);
+        assert_eq!(p.sounds().categories(), 0);
+        let fx = p.update(&[click(300, 300)], 0.0, &a);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        p.leave();
+        assert!(!dir.path().join(SPOTS_NAME).exists());
     }
 
     fn text(s: &str) -> Input {

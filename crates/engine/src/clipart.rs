@@ -38,7 +38,8 @@ fn tag_is(t: &formats::tag::Tag, s: &[u8; 4]) -> bool {
 }
 
 /// Lista de um `CARO`: `u16` contagem, etiqueta `PICT`, `u16` ids (little-endian).
-fn parse_caro(d: &[u8]) -> Vec<u16> {
+/// Lista de um `CARO`/`CSRO`: `u16` contagem, etiqueta, `u16` ids (little-endian).
+pub fn parse_list(d: &[u8]) -> Vec<u16> {
     let Some(n) = d
         .get(0..2)
         .map(|b| u16::from_le_bytes([b[0], b[1]]) as usize)
@@ -84,7 +85,7 @@ pub fn load_rolls(assets: &Assets) -> Vec<ClipRoll> {
                 .iter()
                 .find(|p| tag_is(&p.tag, b"PKBM"))
                 .and_then(|p| image(p.data));
-            let items = parse_caro(list.data)
+            let items = parse_list(list.data)
                 .into_iter()
                 .filter_map(|id| picts.get(&id))
                 .map(|(preview, meta)| ClipItem {
@@ -113,11 +114,11 @@ mod tests {
     #[test]
     fn caro_list_layout() {
         let d = [3, 0, b'P', b'I', b'C', b'T', 5, 0, 6, 0, 7, 0];
-        assert_eq!(parse_caro(&d), vec![5, 6, 7]);
+        assert_eq!(parse_list(&d), vec![5, 6, 7]);
         // contagem maior que os dados: só o que existe
         let d = [9, 0, b'P', b'I', b'C', b'T', 1, 0];
-        assert_eq!(parse_caro(&d), vec![1]);
-        assert!(parse_caro(&[1]).is_empty());
+        assert_eq!(parse_list(&d), vec![1]);
+        assert!(parse_list(&[1]).is_empty());
     }
 
     #[test]

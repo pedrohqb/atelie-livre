@@ -349,3 +349,26 @@ fn ani_script_reproduces_recorded_swordfish() {
     }
     assert!(ok as f32 / n as f32 > 0.97, "{ok}/{n}");
 }
+
+#[test]
+fn sounds_tool_lists_mag100_categories() {
+    use engine::scene::{Effect, Input, MouseButton, Scene};
+    use engine::scenes::Paint;
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let mut p = Paint::new(None, &a);
+    let c = |x, y| Input::Click {
+        button: MouseButton::Left,
+        x,
+        y,
+    };
+    p.update(&[c(170, 30)], 0.0, &a);
+    assert_eq!(p.sounds().categories(), 4); // Agudo, Dinossauro, AnimalDeFazenda, Maluco
+    p.update(&[c(20, 70)], 0.0, &a); // primeira categoria abre a lista
+    assert!(p.sounds().list_open());
+    p.update(&[c(100, 112 + 2 + 15 + 3)], 0.0, &a); // primeiro som
+    assert!(p.sounds().chosen().is_some());
+    let fx = p.update(&[c(300, 300)], 0.0, &a);
+    assert!(fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
+    assert_eq!(p.sounds().spots.len(), 1);
+}

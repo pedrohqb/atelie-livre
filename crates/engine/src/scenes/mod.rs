@@ -5,6 +5,7 @@ pub mod gallery;
 pub mod paint;
 pub mod room;
 pub mod rooms_data;
+pub mod sounds;
 pub mod splash;
 pub mod sticker_scripts;
 pub mod stickers;
