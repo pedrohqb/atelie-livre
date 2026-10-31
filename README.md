@@ -24,8 +24,12 @@ que você já possui.
   o rolo de bichos animados (cobra, peixe-espada, tartaruga, pássaro...,
   com os movimentos gravados do original) e os 28 rolos de clip-art
   (passatempos, bichos, dinossauros, fadas, comida, zodíaco chinês...).
-  Escolha o rolo, o adesivo na tira de filme e clique no quadro. Palavras,
-  sons e as demais ferramentas ainda não funcionam.
+  Escolha o rolo, o adesivo na tira de filme e clique no quadro. Sons e as
+  demais ferramentas ainda não funcionam.
+- Palavras (primeira versão): com a ferramenta Palavra, clique no quadro e
+  digite; Enter (ou um clique em outro lugar) grava o texto na cor atual, na
+  fonte "Pablo Graphos" de 16 pontos, simples ou dentro de um balão de fala;
+  o ovo desfaz o texto inteiro.
 - Subprojeto 2e (prédio): a porta da rua leva ao saguão; o quadro de andares
   e o poste levam ao Ateliê de Pintura (clique no cavalete para pintar), à
   Oficina de Projetos e aos Truques de Desenho, ainda sem as atividades

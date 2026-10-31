@@ -109,9 +109,26 @@ no repositório.
 A troca de página do pincel (setas) circula 1→2→3→4→5→1 (abaixo) e ao
 contrário (acima).
 
+## 4a. Ferramenta Palavra (acrescentado depois do 2b)
+
+Primeira versão, sem medir o original: a faixa tem dois botões em
+`option_rect(25, 0..2)` com as imagens `1797` (texto simples) e `1799` (balão
+"Oi!"). Clique no quadro fixa o canto superior esquerdo da linha e abre a
+edição; o texto digitado chega como `Input::Text` (só caracteres com código
+Windows-1252), Backspace apaga, Enter grava; qualquer outro clique também grava
+(e, se for no quadro, começa outra linha); trocar de ferramenta e sair gravam.
+Enquanto edita, o texto aparece sobre o quadro com um cursor que pisca a cada
+0,5 s. A gravação usa a cor atual sólida (padrão ignorado), a "Pablo Graphos"
+de 16 pontos (8 pontos ou a 8×8 reserva se faltar), é uma única ação de
+desfazer e não pinta nada se o texto estiver vazio. O balão é o retângulo do
+texto com 6 px de folga, branco com contorno preto de 1 px e um rabicho de 7 px
+apontando para baixo e para a esquerda. Aproximações: a posição do texto em
+relação ao clique, o formato do balão e a faixa de opções (sem a imagem de
+fundo da faixa) não foram conferidos no original.
+
 ## 5. Fora do escopo
 
-Adesivos, sons, palavras, transformadores, super-ferramentas, impressão,
+Adesivos, sons, transformadores, super-ferramentas, impressão,
 efeitos da página 3, formas da página 5, opções 2+ do aspirador e da lata,
 balões e falas do McZee, sons das ferramentas, galeria de desenhos, fluxo
 completo de navegação e o Creative Writer.
