@@ -57,6 +57,10 @@ pub enum Input {
 pub enum SceneId {
     Splash,
     Street,
+    /// Prédio: saguão e andares.
+    Building,
+    /// Ateliê de Pintura (andar 2), ao sair da pintura.
+    Studio,
     Paint,
     Browser,
 }

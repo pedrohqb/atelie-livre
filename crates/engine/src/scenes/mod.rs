@@ -2,6 +2,8 @@
 
 pub mod browser;
 pub mod paint;
+pub mod room;
+pub mod rooms_data;
 pub mod splash;
 pub mod sticker_scripts;
 pub mod stickers;
@@ -9,6 +11,7 @@ pub mod street;
 
 pub use browser::Browser;
 pub use paint::Paint;
+pub use room::{Floor, Room};
 pub use splash::Splash;
 pub use street::Street;
 

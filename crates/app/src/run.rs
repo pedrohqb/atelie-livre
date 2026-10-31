@@ -5,7 +5,7 @@ use crate::config::{Args, Config, Scale, drawings_dir};
 use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
-use engine::scenes::{Browser, Paint, Splash, Street};
+use engine::scenes::{Browser, Floor, Paint, Room, Splash, Street};
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
 use sdl3::keyboard::{Keycode, Mod};
@@ -28,6 +28,8 @@ fn fail(msg: &str) -> i32 {
 fn make_scene(id: SceneId, cfg: &Config, assets: &Assets) -> Box<dyn Scene> {
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets)),
+        SceneId::Building => Box::new(Room::new(Floor::Lobby, cfg.click_sound.clone())),
+        SceneId::Studio => Box::new(Room::new(Floor::Studio, cfg.click_sound.clone())),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
         SceneId::Browser => Box::new(Browser::new()),

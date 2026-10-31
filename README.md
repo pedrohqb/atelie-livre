@@ -26,6 +26,10 @@ que você já possui.
   (passatempos, bichos, dinossauros, fadas, comida, zodíaco chinês...).
   Escolha o rolo, o adesivo na tira de filme e clique no quadro. Palavras,
   sons e as demais ferramentas ainda não funcionam.
+- Subprojeto 2e (prédio): a porta da rua leva ao saguão; o quadro de andares
+  e o poste levam ao Ateliê de Pintura (clique no cavalete para pintar), à
+  Oficina de Projetos e aos Truques de Desenho, ainda sem as atividades
+  dessas salas, sem o McZee e a Maggie.
 
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).

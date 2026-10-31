@@ -1,4 +1,4 @@
-//! Rua de Imaginópolis: a porta do prédio leva à pintura.
+//! Rua de Imaginópolis: a porta do prédio leva ao saguão.
 
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
@@ -31,7 +31,7 @@ impl Scene for Street {
                 if x >= DOOR.0 && y >= DOOR.1 && x < DOOR.0 + DOOR.2 && y < DOOR.1 + DOOR.3)
         });
         if door {
-            fx.push(Effect::ChangeScene(SceneId::Paint));
+            fx.push(Effect::ChangeScene(SceneId::Building));
         }
         fx
     }
@@ -53,7 +53,7 @@ mod tests {
     use crate::scenes::testutil::empty_assets;
 
     #[test]
-    fn street_door_opens_paint() {
+    fn street_door_opens_building() {
         let (_d, a) = empty_assets();
         let mut s = Street::new(None);
         let fx = s.update(
@@ -65,7 +65,7 @@ mod tests {
             0.0,
             &a,
         );
-        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Building)));
     }
 
     #[test]

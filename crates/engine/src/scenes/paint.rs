@@ -390,7 +390,7 @@ impl Paint {
             return;
         }
         if inside(EXIT, x, y) {
-            fx.push(Effect::ChangeScene(SceneId::Street));
+            fx.push(Effect::ChangeScene(SceneId::Studio));
             return;
         }
         if let Some(t) = TOOLS
@@ -777,11 +777,11 @@ mod tests {
     }
 
     #[test]
-    fn exit_door_goes_to_street() {
+    fn exit_door_goes_to_studio() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
         let fx = p.update(&[click(600, 60)], 0.0, &a);
-        assert!(fx.contains(&Effect::ChangeScene(SceneId::Street)));
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Studio)));
     }
 
     #[test]
