@@ -105,6 +105,8 @@ pub enum Tool {
 enum Action {
     Select(Tool),
     Undo,
+    /// Imprimir: exporta o quadro em PNG e manda para a impressora (`lp`), se houver.
+    Print,
     Unavailable(&'static str),
 }
 
@@ -197,7 +199,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 42,
         normal: (0x104d, 0x104f),
         active: (0x106d, 0x106f),
-        action: Action::Unavailable("imprimir"),
+        action: Action::Print,
     },
 ];
 
@@ -433,6 +435,34 @@ impl Paint {
             p.sounds.load_spots(&d.join(SPOTS_NAME));
         }
         p
+    }
+
+    /// Grava `impressao-AAAAMMDD-HHMMSS.png` na pasta de desenhos e tenta `lp`.
+    fn print(&self) -> Effect {
+        let Some(dir) = &self.drawings else {
+            return Effect::Log("imprimir: sem pasta de desenhos".into());
+        };
+        let name =
+            crate::paint::store::timestamp_name(now_secs()).replace("desenho-", "impressao-");
+        let path = dir.join(name);
+        if let Err(e) = crate::paint::store::save_png(&self.canvas, &self.pal, &path) {
+            return Effect::Log(format!(
+                "imprimir: não consegui gravar {}: {e}",
+                path.display()
+            ));
+        }
+        match std::process::Command::new("lp")
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => Effect::Log(format!("imprimindo {}", path.display())),
+            Err(_) => Effect::Log(format!(
+                "sem impressora (lp): o desenho ficou em {}",
+                path.display()
+            )),
+        }
     }
 
     pub fn sounds(&self) -> &Sounds {
@@ -767,6 +797,7 @@ impl Paint {
                         self.changed = true;
                     }
                 }
+                Action::Print => fx.push(self.print()),
                 Action::Unavailable(name) => fx.push(Effect::Log(format!(
                     "{name}: ferramenta ainda não disponível"
                 ))),
@@ -1520,6 +1551,25 @@ mod tests {
             fx.iter()
                 .any(|e| matches!(e, Effect::Log(s) if s.contains("transformadores")))
         );
+        assert_eq!(p.tool(), Tool::Brush);
+    }
+
+    #[test]
+    fn print_exports_png() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        let fx = p.update(&[click(479, 30)], 0.0, &a);
+        assert!(
+            fx.iter()
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("impressao-")))
+        );
+        assert!(std::fs::read_dir(dir.path()).unwrap().any(|e| {
+            e.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("impressao-")
+        }));
         assert_eq!(p.tool(), Tool::Brush);
     }
 
