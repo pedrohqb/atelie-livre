@@ -13,6 +13,8 @@ pub mod paths;
 pub mod rng;
 pub mod scene;
 pub mod scenes;
+pub mod text_balloon;
+pub mod users;
 pub mod writer;
 
 pub use formats::wave::Pcm;

@@ -24,26 +24,50 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
 
 ## Fluxo
 
-1. **Entrada** (fundo `4139`): "Sou eu", "Primeira vez", "Procurar".
-2. **Cadastro** ("Primeira vez"): nome e sobrenome (botões Volta / Para /
-   Segue, Segue em (302,222)), bicho favorito, escolha do disco ("Coloque
-   aqui"), apelido (Segue em (320,174)); "Não precisa, vamos direto para
-   Imaginópolis" em (82,151).
-3. **Imaginópolis** (`6cfd`, 641×480): a porta em (302,172) leva à rua.
-4. **Rua** (`6d01`): a porta do prédio, por volta de (338,355–385), leva ao
+1. **Entrada** (fundo `4139`; McZee de livro na mão `42f9` em (435,112)):
+   balão `WHAT 4400[1]` no alto à esquerda; quadro-negro verde em
+   (120,170)–(431,370) com a lista de usuários (caixa branca (130,179),
+   linhas de 18 px, setas `2db`/`2df` em (169,343) e (220,343)) e os botões
+   **Sou eu** (`473`, (280,215)), **Primeira vez** (`477`, (280,253)) e
+   **Procurar** (`47b`, (280,288)). "Sou eu" com um nome escolhido abre
+   `4400[2]` (Imaginópolis / mudar o cadastro / história do McZee / Ateliê
+   de Pintura); sem nome, o aviso `4402[3]`.
+   *No port:* a lista vem de `usuarios/` (ver README); "Procurar" só
+   registra um aviso (não há discos).
+2. **Cadastro** ("Primeira vez"): balões sucessivos em (112,78) com os
+   botões Volta (`40f`) / Para (`417`) / Segue (`413`), 31×14, centrados no
+   rodapé do balão: `4400[4]` nome e sobrenome (caixas de 144 px),
+   `4400[8]` bicho preferido (12 figuras `45b`, `45d`… em 4×3, bolinha
+   `409`/`40d`), `4400[5]` apelido. Avisos do `WHAT 4402`: `[1]` nome
+   vazio, `[2]` apelido inválido (mais de 8 caracteres, espaço ou
+   pontuação), `[0]` apelido repetido. Depois `4400[3]`: conte mais
+   (história) / direto para Imaginópolis / mudar o cadastro.
+   *No port:* a escolha do disco (`4400[6]`) não existe; o apelido é
+   sugerido a partir do nome.
+3. **História do McZee** (álbum `4201`, 495×314, em (72,160) sobre o fundo
+   da Entrada): uma página por balão do `WHAT 4200` (11), foto de 169×119 na
+   moldura da esquerda (`420b`, `4210`, `4211`, `4218`, `423b`, `4273`,
+   `4293`, `4299`, `42b3`, `42b9`, `42f3`) e legenda ou foto na da direita
+   (`424b`, `4219`, `4223`, `4241`, `426b`, `428b`, `42a1`, `4281`, `42cb`,
+   `42e1`). Segue, Enter ou um clique no balão passam a página; Para sai.
+4. **Imaginópolis** (`6cfd`, 641×480, alinhado à esquerda): a porta "Entre"
+   do Museu Mágico, por volta de (302,172), leva à rua; o McZee no
+   carrinho da montanha-russa (roteiro `ATAG` 0x2bc) atravessa de tempos em
+   tempos.
+5. **Rua** (`6d01`): a porta do prédio, por volta de (338,355–385), leva ao
    saguão (resposta com atraso).
-5. **Saguão** (parede `6a6b`): elevador; quadro de andares com Truques de
+6. **Saguão** (parede `6a6b`): elevador; quadro de andares com Truques de
    Desenho, Oficina de Projetos, Ateliê de Pintura e Saguão/Galeria (clique
    no nome); botões "Tchau" e "Galeria". McZee oferece: começar a desenhar
    por conta própria; fazer história em quadrinhos, botão, adesivo ou
    desenho animado; aprender truques de desenho; copiar, apagar ou limpar
    desenhos.
-6. **Ateliê de Pintura** (clique em "Ateliê de Pintura", (150,86) no
+7. **Ateliê de Pintura** (clique em "Ateliê de Pintura", (150,86) no
    saguão): Maggie pergunta "Pintar alguma coisa nova", "Trabalhar na minha
    última obra", "Trabalhar em um quadro mais antigo", "Outra coisa?". Com
    "Pintar alguma coisa nova", o cavalete mostra "Quadro Novo"; um duplo
    clique no quadro abre a tela de pintura.
-7. **Tela de pintura**: descrita abaixo.
+8. **Tela de pintura**: descrita abaixo.
 
 ## Tela de pintura
 

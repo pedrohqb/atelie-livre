@@ -2,8 +2,10 @@
 
 pub mod browser;
 pub mod chooser;
+pub mod entry;
 pub mod gags;
 pub mod gallery;
+pub mod imaginopolis;
 pub mod paint;
 pub mod projects;
 pub mod room;
@@ -12,6 +14,7 @@ pub mod sounds;
 pub mod splash;
 pub mod sticker_scripts;
 pub mod stickers;
+pub mod story;
 pub mod street;
 pub mod tricks_3d;
 pub mod tricks_basic;
@@ -20,10 +23,13 @@ pub mod writer;
 
 pub use browser::Browser;
 pub use chooser::Chooser;
+pub use entry::Entry;
 pub use gallery::Gallery;
+pub use imaginopolis::Imaginopolis;
 pub use paint::Paint;
 pub use room::{Floor, Room};
 pub use splash::Splash;
+pub use story::Story;
 pub use street::Street;
 pub use writer::Writer;
 
