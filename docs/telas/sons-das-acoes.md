@@ -132,6 +132,23 @@ despejo da lata, traços do pincel (laço com o som da forma), aspirador
 (laço nos modos de arrastar), adesivos (rolo, escolher, colocar), categorias
 de sons, Palavra (opção, começar, terminar) e guias das Super-ferramentas.
 
+## Animação dos ícones da barra
+
+Gravação do original (15 quadros/s) ao clicar em cada ferramenta: nenhum
+dos 162 roteiros `ATAG` usa as imagens da barra (`0x1000`–`0x10ff`,
+`0x1470`–`0x14f8`); a "animação" é troca de imagens. Por um quadro o ícone
+pisca a versão de 1 bit (a imagem logo antes da máscara) sobre o fundo aceso
+e passa à versão ativa. Só dois ícones fazem mais:
+
+- Ovo: o pintinho (`103d`) vira o ovo inteiro (`1041`, máscara `1043`) por
+  ~0,27 s e volta (o ovo não tem versão ativa).
+- Imprimir: a impressora vira a torradeira soltando fumaça (`106d`/`106f`)
+  enquanto imprime (no Ateliê Livre, 1 s).
+
+O Aspirador ativo é o saco cheio (`100f`/`1011`), não o ícone normal.
+`paint_sfx::State` guarda a animação; `draw_tools` desenha a imagem dela
+centrada no ícone.
+
 ## Para fazer
 
 1. Porta Saída: o original abre o aviso "Epa!" (`02fe` + `02d6`); o Ateliê

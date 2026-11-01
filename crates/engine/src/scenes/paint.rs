@@ -216,7 +216,7 @@ const TOOLS: [ToolDef; 10] = [
         y: 13,
         w: 45,
         normal: (0x100b, 0x100d),
-        active: (0x100b, 0x100d),
+        active: (0x100f, 0x1011),
         action: Action::Select(Tool::Vacuum),
     },
     ToolDef {
@@ -1402,6 +1402,7 @@ impl Paint {
             .find(|(_, t)| inside((t.x - 5, 5, t.w + 11, 50), x, y))
         {
             fx.push(sfx::play(sfx::TOOLS[i]));
+            self.sfx.tool_clicked(i);
             match t.action {
                 Action::Select(tool) => {
                     self.tool = tool;
@@ -1725,16 +1726,27 @@ impl Paint {
     }
 
     fn draw_tools(&self, f: &mut Frame, a: &Assets) {
-        for t in &TOOLS {
+        for (i, t) in TOOLS.iter().enumerate() {
             let active = t.action == Action::Select(self.tool);
-            let (img, mask) = if active { t.active } else { t.normal };
-            if active {
-                let w = a.image(&pic(img)).width as i32;
+            let (mut img, mut mask) = if active { t.active } else { t.normal };
+            let (mut x, mut y) = (t.x, t.y);
+            let anim = self.sfx.icon(i, t.normal.1);
+            if let Some(im) = anim {
+                // centrada no ícone normal
+                let (n, m) = (a.image(&pic(t.normal.0)), a.image(&pic(im.0)));
+                x += (n.width as i32 - m.width as i32) / 2;
+                y += (n.height as i32 - m.height as i32) / 2;
+                (img, mask) = im;
+            }
+            if active || anim.is_some() {
+                let w = a
+                    .image(&pic(if anim.is_some() { t.normal.0 } else { img }))
+                    .width as i32;
                 f.rect(t.x - 5, 5, w + 11, 51, LIGHT);
                 f.rect(t.x - 6, 5, 1, 50, BLACK);
                 f.rect(t.x + w + 6, 5, 1, 50, BLACK);
             }
-            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), t.x, t.y);
+            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), x, y);
         }
         f.blit_masked(&a.image(&pic(0x1055)), &a.image(&pic(0x1057)), 537, 49);
         // ícones da barra inferior
@@ -1958,6 +1970,7 @@ impl Scene for Paint {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
         self.wizard_t += dt;
+        self.sfx.update(dt);
         for i in input {
             match *i {
                 Input::Click {

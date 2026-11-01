@@ -171,6 +171,35 @@ fn paint_frame_matches_original_colors() {
 }
 
 #[test]
+fn paint_egg_icon_animates_after_click() {
+    use engine::scene::{Input, MouseButton, Scene};
+    use engine::scenes::Paint;
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let mut p = Paint::new(None, &a);
+    let egg = |p: &Paint| {
+        let mut f = engine::Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        (252..306)
+            .flat_map(|x| (5..56).map(move |y| (x, y)))
+            .map(|(x, y)| f.pixel(x, y))
+            .collect::<Vec<_>>()
+    };
+    let before = egg(&p);
+    let click = Input::Click {
+        button: MouseButton::Left,
+        x: 279,
+        y: 30,
+    };
+    p.update(&[click], 0.0, &a);
+    p.update(&[], 0.15, &a);
+    let during = egg(&p);
+    p.update(&[], 1.0, &a);
+    assert_ne!(during, before, "ovo inteiro no lugar do pintinho");
+    assert_eq!(egg(&p), before, "volta ao pintinho");
+}
+
+#[test]
 fn sticker_frames_have_masks_and_thumbnails() {
     use engine::scenes::stickers::{ANIMALS, THUMBS};
     let Some(d) = data_dir() else { return };

@@ -49,14 +49,67 @@ const EFFECTS: [u16; 12] = [
     0x0266, 0x0267, 0x0268, 0x0269, 0x0301, 0x026b, 0x026c, 0x026d, 0x02c6, 0x0255, 0x026e, 0x024f,
 ];
 
+/// Piscada do ícone clicado (versão de 1 bit), em segundos.
+const FLASH: f32 = 0.1;
+/// Ovo inteiro (cor, máscara), no lugar do pintinho logo depois do clique.
+const EGG_WHOLE: (u16, u16) = (0x1041, 0x1043);
+const EGG_TIME: f32 = 0.33;
+/// Torradeira soltando fumaça enquanto "imprime".
+const PRINT_ACTIVE: (u16, u16) = (0x106d, 0x106f);
+const PRINT_TIME: f32 = 1.0;
+/// Índices em `TOOLS`.
+const EGG: usize = 5;
+const PRINT: usize = 9;
+
 /// Estado dos sons e animações da tela de pintura.
 #[derive(Debug, Default)]
 pub struct State {
     /// Há um som em laço tocando (parar ao soltar o botão).
     pub looping: bool,
+    /// Ícone da barra animado depois do clique: índice em `TOOLS` e tempo decorrido.
+    anim: Option<(usize, f32)>,
 }
 
 impl State {
+    /// Clique no ícone `i` da barra: começa a animação dele.
+    pub fn tool_clicked(&mut self, i: usize) {
+        self.anim = Some((i, 0.0));
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        if let Some((i, t)) = self.anim.as_mut() {
+            *t += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
+            let end = match *i {
+                EGG => EGG_TIME,
+                PRINT => PRINT_TIME,
+                _ => FLASH,
+            };
+            if *t >= end {
+                self.anim = None;
+            }
+        }
+    }
+
+    /// Imagem (cor, máscara) a desenhar no lugar do ícone `i`, cuja máscara
+    /// normal é `mask`, enquanto ele anima; o fundo fica aceso.
+    ///
+    /// O original pisca a versão de 1 bit do ícone (a imagem antes da máscara)
+    /// por um quadro e passa à imagem ativa; o ovo mostra o ovo inteiro antes
+    /// de voltar ao pintinho e a impressora solta fumaça (ver
+    /// `docs/telas/sons-das-acoes.md`).
+    pub fn icon(&self, i: usize, mask: u16) -> Option<(u16, u16)> {
+        let (j, t) = self.anim?;
+        if j != i {
+            return None;
+        }
+        Some(match i {
+            _ if t < FLASH => (mask.wrapping_sub(1), mask),
+            EGG => EGG_WHOLE,
+            PRINT => PRINT_ACTIVE,
+            _ => return None,
+        })
+    }
+
     /// Começa o som em laço do traço (ou do aspirador, das guias).
     pub fn start_loop(&mut self, id: u16) -> Effect {
         self.looping = true;
@@ -164,6 +217,22 @@ mod tests {
         assert_eq!(stroke(5, 8), 0x022c);
         assert_eq!(stroke(5, 11), 0x022a);
         assert_eq!(stroke(6, 2), 0x0250);
+    }
+
+    #[test]
+    fn icon_animation_flashes_then_shows_egg() {
+        let mut s = State::default();
+        s.tool_clicked(1);
+        assert_eq!(s.icon(1, 0x1005), Some((0x1004, 0x1005)));
+        assert_eq!(s.icon(2, 0x1023), None);
+        s.update(0.2);
+        assert_eq!(s.icon(1, 0x1005), None);
+        s.tool_clicked(EGG);
+        s.update(0.15);
+        assert_eq!(s.icon(EGG, 0x103f), Some(EGG_WHOLE));
+        s.update(0.3);
+        assert_eq!(s.icon(EGG, 0x103f), None);
+        s.update(f32::NAN);
     }
 
     #[test]
