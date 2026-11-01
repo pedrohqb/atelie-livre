@@ -13,6 +13,8 @@ pub mod splash;
 pub mod sticker_scripts;
 pub mod stickers;
 pub mod street;
+pub mod tricks_basic;
+pub mod wizard;
 pub mod writer;
 
 pub use browser::Browser;
