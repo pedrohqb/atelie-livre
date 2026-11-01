@@ -294,6 +294,11 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         }
 
         let effects = stack.last_mut().expect("cena").update(&inputs, dt, &assets);
+        if let Some(m) = mixer.as_mut()
+            && let Err(e) = m.tick()
+        {
+            eprintln!("aviso: som em laço: {e}");
+        }
         for effect in effects {
             match effect {
                 Effect::PlaySound(r) => {
@@ -303,16 +308,35 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         eprintln!("aviso: som {r:?}: {e}");
                     }
                 }
+                Effect::PlayLoop(r) => {
+                    if let (Some(m), Some(pcm)) = (mixer.as_mut(), assets.sound(&r))
+                        && let Err(e) = m.play_loop(pcm)
+                    {
+                        eprintln!("aviso: som {r:?}: {e}");
+                    }
+                }
+                Effect::StopLoop => {
+                    if let Some(m) = mixer.as_mut() {
+                        m.stop_loop();
+                    }
+                }
                 Effect::SetCursor(c) => {
                     cursor_ref = Some(c);
                     cursor_factor = 0;
                 }
                 Effect::ChangeScene(id) => {
+                    // o laço é da cena que sai (traço interrompido)
+                    if let Some(m) = mixer.as_mut() {
+                        m.stop_loop();
+                    }
                     let top = stack.last_mut().expect("cena");
                     print_logs(top.leave());
                     *top = make_scene(id, &cfg, &user, &assets);
                 }
                 Effect::Back => {
+                    if let Some(m) = mixer.as_mut() {
+                        m.stop_loop();
+                    }
                     if stack.len() > 1 {
                         let mut top = stack.pop().expect("cena");
                         print_logs(top.leave());
