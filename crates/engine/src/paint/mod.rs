@@ -1,5 +1,6 @@
 //! Núcleo da pintura: quadro, tinta, formas, traço, preenchimento, histórico e arquivos.
 
+pub mod brush;
 pub mod canvas;
 pub mod geom;
 pub mod objects;
@@ -12,5 +13,5 @@ pub use canvas::{
     BLACK, CANVAS_H, CANVAS_W, COLORS, Canvas, History, Ink, ORIGIN, WHITE, line_points,
 };
 pub use objects::{Object, Objects, Source};
-pub use shape::{Cell, Shape, effect_shape, page_shapes};
+pub use shape::{Cell, Shape, page_shapes};
 pub use text::{balloon_pixels, text_pixels, text_size};
