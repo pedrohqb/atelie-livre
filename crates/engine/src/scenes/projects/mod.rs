@@ -73,23 +73,23 @@ pub enum ProjectKind {
 }
 
 impl ProjectKind {
-    /// Rótulo da barra inferior (textos das `STR#` do `ARTIST.EXE`).
+    /// Rótulo curto da caixa esquerda da barra inferior (no lugar de "Ateliê").
     pub fn label(self) -> &'static str {
+        match self {
+            ProjectKind::Comics => "Quadrinhos",
+            ProjectKind::Button => "Botão",
+            ProjectKind::Sticker => "Adesivo",
+            ProjectKind::Flipbook => "Animação",
+        }
+    }
+
+    /// Texto da caixa central da barra inferior (títulos das `STR#` do `ARTIST.EXE`).
+    pub fn new_name(self) -> &'static str {
         match self {
             ProjectKind::Comics => "Fazendo uma História em Quadrinhos",
             ProjectKind::Button => "Fazendo um Botão",
             ProjectKind::Sticker => "Fazendo um Adesivo",
             ProjectKind::Flipbook => "Fazendo um Desenho Animado",
-        }
-    }
-
-    /// Nome do quadro novo, no centro da barra inferior.
-    pub fn new_name(self) -> &'static str {
-        match self {
-            ProjectKind::Comics => "Quadrinhos Novos",
-            ProjectKind::Button => "Botão Novo",
-            ProjectKind::Sticker => "Adesivo Novo",
-            ProjectKind::Flipbook => "Desenho Animado Novo",
         }
     }
 
