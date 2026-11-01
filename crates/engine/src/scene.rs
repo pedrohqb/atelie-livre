@@ -76,6 +76,10 @@ pub enum SceneId {
     Paint,
     /// Andar dos Projetos, ao sair de um projeto.
     Projects,
+    /// Andar dos Truques de Desenho, ao sair de uma lição.
+    TricksFloor,
+    /// Uma lição dos Truques de Desenho na tela de pintura.
+    Tricks(crate::scenes::wizard::TrickKind),
     /// Um projeto da Oficina na tela de pintura.
     Project(crate::scenes::projects::ProjectKind),
     /// Galeria de desenhos guardados.

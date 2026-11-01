@@ -8,6 +8,7 @@
 use super::gags::{self, Character, GagPlayer};
 use super::projects::ProjectKind;
 use super::rooms_data::{self, Element};
+use super::wizard::TrickKind;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::paint::Canvas;
@@ -40,7 +41,6 @@ enum Action {
     Quit,
     /// Pergunta "Botão ou adesivo?" num segundo balão.
     AskButton,
-    Soon(&'static str),
 }
 
 struct Hotspot {
@@ -106,10 +106,35 @@ impl Floor {
             Floor::Tricks => vec![
                 h((539, 0, 24, 395), Action::Floor(Floor::Lobby)),
                 h((564, 114, 50, 20), Action::Quit),
-                h((330, 80, 190, 250), Action::Soon("truques de desenho 3D")),
-                h((150, 40, 150, 100), Action::Soon("truques básicos")),
+                h(
+                    (330, 80, 190, 250),
+                    Action::Go(SceneId::Tricks(TrickKind::ThreeD)),
+                ),
+                h(
+                    (150, 40, 150, 290),
+                    Action::Go(SceneId::Tricks(TrickKind::Basic)),
+                ),
             ],
         }
+    }
+}
+
+/// Obras-primas do McZee (cor, máscara) que aparecem na moldura do andar 4.
+const PAINTINGS: [(u16, u16); 8] = [
+    (0x6d37, 0x6d39),
+    (0x6d3b, 0x6d3d),
+    (0x6d3f, 0x6d45),
+    (0x6d47, 0x6d4d),
+    (0x6d4f, 0x6d51),
+    (0x6d53, 0x6d55),
+    (0x6d57, 0x6d59),
+    (0x6d5b, 0x6d5d),
+];
+const PAINTING_POS: (i32, i32) = (1, 4);
+
+impl Floor {
+    fn painting(self, rng: &mut XorShift) -> Option<(u16, u16)> {
+        (self == Floor::Tricks).then(|| PAINTINGS[rng.below(PAINTINGS.len())])
     }
 }
 
@@ -206,8 +231,8 @@ impl Floor {
             (Floor::Projects, 0) => Action::Go(SceneId::Project(ProjectKind::Comics)),
             (Floor::Projects, 1) => Action::AskButton,
             (Floor::Projects, 2) => Action::Go(SceneId::Project(ProjectKind::Flipbook)),
-            (Floor::Tricks, 0) => Action::Soon("truques básicos"),
-            (Floor::Tricks, 1) => Action::Soon("truques 3D"),
+            (Floor::Tricks, 0) => Action::Go(SceneId::Tricks(TrickKind::Basic)),
+            (Floor::Tricks, 1) => Action::Go(SceneId::Tricks(TrickKind::ThreeD)),
             _ => Action::Close,
         }
     }
@@ -265,6 +290,8 @@ pub struct Room {
     asking_button: bool,
     rng: XorShift,
     character: Option<Character>,
+    /// Obra-prima do McZee na moldura do andar dos Truques (sorteada).
+    painting: Option<(u16, u16)>,
     gags: GagPlayer,
     /// Apelido do usuário, o `@` dos balões.
     user: String,
@@ -294,6 +321,7 @@ impl Room {
             floor,
             quitting: false,
             asking_button: false,
+            painting: floor.painting(&mut rng),
             rng,
             character,
             gags,
@@ -362,10 +390,6 @@ impl Room {
                 }
                 fx.push(Effect::ChangeScene(SceneId::Paint));
             }
-            Action::Soon(what) => {
-                fx.push(Effect::Log(format!("{what}: ainda não disponível")));
-                self.balloon = None;
-            }
         }
     }
 
@@ -378,6 +402,7 @@ impl Room {
         self.hotspots = floor.hotspots();
         self.balloon = Some(floor.balloon(assets, &self.user));
         self.character = floor.character(&mut self.rng);
+        self.painting = floor.painting(&mut self.rng);
         self.gags = GagPlayer::with_rng(
             floor.gag_scripts(),
             GAG_FIRST,
@@ -476,6 +501,14 @@ impl Scene for Room {
             } else {
                 blit_white_transparent(frame, &img, e.x, e.y);
             }
+        }
+        if let Some((img, mask)) = self.painting {
+            frame.blit_masked(
+                &assets.image(&ImageRef::Pic(Program::Artist, img)),
+                &assets.image(&ImageRef::Pic(Program::Artist, mask)),
+                PAINTING_POS.0,
+                PAINTING_POS.1,
+            );
         }
         if let Some(c) = &self.character {
             c.draw(frame, assets);

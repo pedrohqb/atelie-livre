@@ -13,10 +13,10 @@ pub const TOOL_BRUSH: usize = 0;
 pub const TOOL_STICKERS: usize = 2;
 pub const TOOL_TRANSFORMERS: usize = 7;
 pub const TOOL_SUPERTOOLS: usize = 8;
-/// Botões da faixa das Super-ferramentas (ordem da spec de objetos).
-pub const OPT_VP: usize = 3;
-pub const OPT_VP_LINE: usize = 4;
-pub const OPT_VP_PUSH: usize = 6;
+/// Casas da faixa das Super-ferramentas (`supertools::BUTTONS[..].k`).
+pub const OPT_VP: usize = 5;
+pub const OPT_VP_LINE: usize = 6;
+pub const OPT_VP_PUSH: usize = 7;
 /// Botão "Linha" da página 5 do pincel.
 pub const OPT_LINE_BRUSH: usize = 0;
 /// "Grudar ou desgrudar" na página 2 dos Transformadores.
@@ -59,7 +59,7 @@ pub fn steps() -> Vec<Step> {
             Advance::Choice(vec![
                 (0, Goto::Step(1)),
                 (1, Goto::FreePaint),
-                (2, Goto::Scene(SceneId::Building)),
+                (2, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
         // 1: Intro do ateliê de treinamento
@@ -174,7 +174,7 @@ pub fn steps() -> Vec<Step> {
             Some(TABLE_SIDES),
             Advance::Choice(vec![
                 (0, Goto::Step(41)),
-                (1, Goto::Scene(SceneId::Building)),
+                (1, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
         // 41: olhe os lados prontos

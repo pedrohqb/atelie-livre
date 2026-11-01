@@ -32,10 +32,19 @@ que você já possui.
   o ovo desfaz o texto inteiro.
 - Subprojeto 2e (prédio): a porta da rua leva ao saguão; o quadro de andares
   e o poste levam ao Ateliê de Pintura (clique no cavalete para pintar), à
-  Oficina de Projetos e aos Truques de Desenho, ainda sem as atividades
-  dessas salas, sem o McZee e a Maggie. O quadro na estante do Ateliê (e a
-  Galeria do saguão) abre a galeria dos desenhos guardados; clique num deles
-  para continuar pintando.
+  Oficina de Projetos e aos Truques de Desenho, com o McZee (fantasia
+  sorteada) e a Maggie, as animações de passagem e os balões com os textos
+  originais (recurso `WHAT` do `ARTIST.EXE`).
+- Galeria (como no original): três molduras na parede com os desenhos e o
+  nome, a pasta no chão com todos os quadros, a impressora e a lixeira.
+  Arraste um quadro para outra moldura, para a impressora ou para a lixeira;
+  clique duplo abre o quadro na pintura. A parede fica em
+  `desenhos/galeria.txt`.
+- Truques de Desenho: no andar 4, o pedestal "Básico" e a estátua "3D" (ou
+  o balão da Maggie) abrem as lições na tela de pintura, com a "Área de
+  Desenho da Maggie", os balões do original passo a passo e os botões Volta
+  / Pára / Segue; o que a criança desenha numa lição vai para
+  `desenhos/truque-AAAAMMDD-HHMMSS.png`.
 - Oficina de Projetos (primeira versão): o balão da Maggie e as placas do
   andar abrem a **História em quadrinhos** (1 a 4 quadrinhos com molduras
   sobre o quadro; a pintura fica recortada ao quadrinho) e o **Botão ou

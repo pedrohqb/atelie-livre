@@ -12,6 +12,25 @@ use crate::assets::{Assets, ImageRef, Program};
 use crate::balloon::Balloon;
 use crate::scene::SceneId;
 
+/// Qual lição dos Truques de Desenho.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrickKind {
+    /// Truques básicos (o porco Chiquinho).
+    Basic,
+    /// Truques de 3-D (a mesa do café da manhã).
+    ThreeD,
+}
+
+impl TrickKind {
+    /// Texto da barra inferior (`STR# 3800`: "Estamos vendo os Truques Básicos").
+    pub fn label(self) -> &'static str {
+        match self {
+            TrickKind::Basic => "Estamos vendo os Truques Básicos",
+            TrickKind::ThreeD => "Estamos vendo os Truques de 3-D",
+        }
+    }
+}
+
 /// Retângulo (x, y, w, h) em coordenadas da tela.
 pub type Rect = (i32, i32, i32, i32);
 

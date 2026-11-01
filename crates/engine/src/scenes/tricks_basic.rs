@@ -9,17 +9,23 @@ const BLOCK: u16 = 0x3800;
 
 /// Índices em `TOOLS` da tela de pintura.
 pub const TOOL_SUPERTOOLS: usize = 8;
-/// Botões da faixa das Super-ferramentas.
+/// Casas da faixa das Super-ferramentas (`supertools::BUTTONS[..].k`).
 pub const OPT_NO_GRID: usize = 0;
-pub const OPT_BIG_GRID: usize = 1;
+pub const OPT_BIG_GRID: usize = 2;
 
 /// Figuras da Área de Desenho da Maggie.
-const PIG_FAINT: u16 = 0x3827;
-const PIG_OUTLINE: u16 = 0x382c;
-const PIG_GRID: u16 = 0x382d;
-const PIG_GRID_BLACK: u16 = 0x3830;
-const PIG_SILHOUETTE: u16 = 0x3831;
-const PIG_SHAPES: u16 = 0x3838;
+/// O Chiquinho inteiro.
+const PIG: u16 = 0x3827;
+/// Contorno azul: o espaço negativo traçado.
+const PIG_NEGATIVE: u16 = 0x3835;
+/// Só o contorno preto (o espaço positivo).
+const PIG_OUTLINE: u16 = 0x3838;
+/// Contorno com as formas de dentro apagadas.
+const PIG_SHAPES: u16 = 0x3830;
+/// Formas de dentro bem claras, para o quadro da criança.
+const PIG_FAINT: u16 = 0x3839;
+/// Chiquinho com o quadriculado verde (178×149).
+const PIG_GRID: u16 = 0x3859;
 
 fn step(k: usize, maggie: Option<u16>, advance: Advance) -> Step {
     Step {
@@ -40,7 +46,7 @@ pub fn steps() -> Vec<Step> {
             Advance::Choice(vec![
                 (0, Goto::Step(1)),
                 (1, Goto::FreePaint),
-                (2, Goto::Scene(SceneId::Building)),
+                (2, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
         // 1: Intro
@@ -50,14 +56,14 @@ pub fn steps() -> Vec<Step> {
         // 3: espaço negativo/positivo — clique no porco
         step(
             6,
-            Some(PIG_FAINT),
+            Some(PIG),
             Advance::Click(Target::PanelArea((40, 30, 240, 220))),
         ),
         // 4: trace o espaço negativo (a silhueta vai para o seu quadro)
         Step {
             record: (BLOCK, 7),
-            maggie: Some(PIG_OUTLINE),
-            your_area: Some(PIG_SILHOUETTE),
+            maggie: Some(PIG_NEGATIVE),
+            your_area: Some(PIG_FAINT),
             advance: Advance::PaintThenNext,
         },
         // 5: olhe as formas menores — clique no rosto (metade esquerda)
@@ -87,8 +93,8 @@ pub fn steps() -> Vec<Step> {
         // 13: eu contornei; preencha o resto
         Step {
             record: (BLOCK, 20),
-            maggie: Some(PIG_GRID_BLACK),
-            your_area: Some(PIG_SILHOUETTE),
+            maggie: Some(PIG_GRID),
+            your_area: Some(PIG_OUTLINE),
             advance: Advance::Maggie,
         },
         // 14: Sem quadriculado
@@ -105,7 +111,7 @@ pub fn steps() -> Vec<Step> {
             None,
             Advance::Choice(vec![
                 (0, Goto::Step(3)),
-                (1, Goto::Scene(SceneId::Building)),
+                (1, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
     ]
@@ -127,7 +133,7 @@ mod tests {
         assert_eq!(w.on_event(E::Next), O::Entered(2));
         assert_eq!(w.on_event(E::Next), O::Entered(3));
         assert_eq!(w.on_event(E::Panel(150, 150)), O::Entered(4));
-        assert_eq!(w.step().your_area, Some(0x3831));
+        assert_eq!(w.step().your_area, Some(0x3839));
         assert_eq!(w.on_event(E::Painted), O::Stay);
         assert_eq!(w.on_event(E::Next), O::Entered(5));
         assert_eq!(w.on_event(E::Panel(300, 100)), O::Stay);
@@ -146,7 +152,7 @@ mod tests {
         assert_eq!(w.on_event(E::McZee), O::Entered(14));
         assert_eq!(w.on_event(E::OptionButton(OPT_NO_GRID)), O::Entered(15));
         assert_eq!(w.on_event(E::Option(1)), O::Entered(16));
-        assert_eq!(w.on_event(E::Option(1)), O::Leave(SceneId::Building));
+        assert_eq!(w.on_event(E::Option(1)), O::Leave(SceneId::TricksFloor));
     }
 
     #[test]

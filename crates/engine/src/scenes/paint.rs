@@ -8,6 +8,10 @@ use super::sounds::{SPOTS_NAME, Sounds};
 use super::stickers::{Placed, Stickers};
 use super::supertools::{GUIDES_NAME, Guides, Notice, Supertools};
 use super::transformers::Transformers;
+use super::wizard::{
+    BTN_BACK, BTN_NEXT, BTN_STOP, MAGGIE_PANEL, Target, TrickKind, Wizard, WizardEvent,
+    WizardOutcome,
+};
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::help::HelpBalloon;
@@ -230,6 +234,9 @@ const TOOLS: [ToolDef; 10] = [
     },
 ];
 
+/// Botão do balão da lição: evento, posição e imagens (cor, mono).
+type WizardButton = (WizardEvent, (i32, i32), (u16, u16));
+
 fn inside(r: (i32, i32, i32, i32), x: i32, y: i32) -> bool {
     x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
 }
@@ -401,6 +408,11 @@ pub struct Paint {
     time: f32,
     /// Projeto da Oficina em andamento, se a tela foi aberta por ele.
     project: Option<Project>,
+    /// Lição dos Truques de Desenho em andamento.
+    wizard: Option<Wizard>,
+    trick: Option<TrickKind>,
+    /// Relógio para o pisca-pisca do alvo da lição.
+    wizard_t: f32,
 }
 
 impl Paint {
@@ -454,6 +466,9 @@ impl Paint {
             vacuum_object: None,
             clipboard: None,
             project: None,
+            wizard: None,
+            trick: None,
+            wizard_t: 0.0,
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
@@ -471,6 +486,10 @@ impl Paint {
 
     /// Abre o balão de ajuda do registro `index` do bloco `WHAT` (se existir).
     fn open_help(&mut self, block: u16, index: usize, assets: &Assets) {
+        // na lição quem fala é a Maggie
+        if self.wizard.is_some() {
+            return;
+        }
         let records = self
             .dialogs
             .entry(block)
@@ -620,6 +639,166 @@ impl Paint {
 
     /// Abre a tela como um projeto da Oficina: reabre o último trabalho desse
     /// tipo (`ultimo-<tipo>.png`), se houver, senão um quadro novo.
+    /// Abre a tela como uma lição dos Truques de Desenho: quadro novo e o
+    /// assistente da Maggie (spec `2026-10-31-truques-design.md`).
+    pub fn new_tricks(kind: TrickKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
+        let mut p = Paint::new(None, assets);
+        p.drawings = drawings;
+        p.help = None;
+        p.wizard = Some(match kind {
+            TrickKind::Basic => super::tricks_basic::wizard(),
+            TrickKind::ThreeD => super::tricks_3d::wizard(),
+        });
+        p.trick = Some(kind);
+        p
+    }
+
+    pub fn wizard(&self) -> Option<&Wizard> {
+        self.wizard.as_ref()
+    }
+
+    /// Botões Volta / Pára / Segue do balão da lição, com o evento de cada um.
+    fn wizard_buttons(&self, assets: &Assets) -> Vec<WizardButton> {
+        let Some(w) = &self.wizard else {
+            return Vec::new();
+        };
+        let b = w.balloon(assets, "");
+        let y = b.y + b.height(assets) + 4;
+        let mut out = Vec::new();
+        let mut x = b.x + 12;
+        if w.has_back() && !w.stopping() {
+            out.push((WizardEvent::Back, (x, y), BTN_BACK));
+            x += 41;
+        }
+        if !w.stopping() {
+            out.push((WizardEvent::Stop, (x, y), BTN_STOP));
+            x += 41;
+        }
+        if w.has_next() && !w.stopping() {
+            out.push((WizardEvent::Next, (x, y), BTN_NEXT));
+        }
+        out
+    }
+
+    /// Clique durante a lição: balão, botões, painel da Maggie e McZee são
+    /// do assistente (devolve `true`); o resto segue para a pintura.
+    fn wizard_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) -> bool {
+        let Some(w) = &self.wizard else { return false };
+        let b = w.balloon(assets, "");
+        let mut ev = b.hit(assets, x, y).map(WizardEvent::Option);
+        if ev.is_none() {
+            ev = self
+                .wizard_buttons(assets)
+                .into_iter()
+                .find(|(_, (bx, by), _)| inside((*bx, *by, 31, 14), x, y))
+                .map(|(e, _, _)| e);
+        }
+        let w = self.wizard.as_ref().expect("lição");
+        if ev.is_none() {
+            ev = w.panel_hit(x, y);
+        }
+        if ev.is_none() && inside(NICHE, x, y) {
+            ev = Some(WizardEvent::McZee);
+        }
+        match ev {
+            Some(e) => {
+                self.wizard_event(e, fx, assets);
+                true
+            }
+            // o balão é opaco: clique dentro dele sem opção não vai para o quadro
+            None => b.contains(assets, x, y),
+        }
+    }
+
+    fn wizard_event(&mut self, e: WizardEvent, fx: &mut Vec<Effect>, assets: &Assets) {
+        let Some(w) = self.wizard.as_mut() else {
+            return;
+        };
+        match w.on_event(e) {
+            WizardOutcome::Stay => {}
+            WizardOutcome::Entered(_) => {
+                if let Some(id) = w.step().your_area {
+                    self.paint_guide_picture(id, assets);
+                }
+            }
+            WizardOutcome::FreePaint => self.wizard = None,
+            WizardOutcome::Leave(id) => fx.push(Effect::ChangeScene(id)),
+        }
+    }
+
+    /// Pinta no quadro a figura de partida do passo ("já comecei para você"):
+    /// os pixels não brancos, centrados, nas cores mais próximas da paleta.
+    fn paint_guide_picture(&mut self, id: u16, assets: &Assets) {
+        let img = assets.image(&pic(id));
+        let ox = (CANVAS_W as i32 - img.width as i32) / 2;
+        let oy = (CANVAS_H as i32 - img.height as i32) / 2;
+        self.history.record_all(&self.canvas, &self.objects);
+        for y in 0..img.height {
+            for x in 0..img.width {
+                let i = ((y * img.width + x) * 4) as usize;
+                let (r, g, b) = (img.rgba[i], img.rgba[i + 1], img.rgba[i + 2]);
+                if (r, g, b) == (255, 255, 255) {
+                    continue;
+                }
+                let (cx, cy) = (ox + x as i32, oy + y as i32);
+                if cx < 0 || cy < 0 || cx >= CANVAS_W as i32 || cy >= CANVAS_H as i32 {
+                    continue;
+                }
+                let k = crate::paint::store::nearest(&self.pal, r, g, b);
+                self.canvas.px[(cy as u32 * CANVAS_W + cx as u32) as usize] = k;
+            }
+        }
+        self.changed = true;
+    }
+
+    /// Depois de um clique comum: avisa o assistente da ferramenta ou do botão
+    /// da faixa escolhidos (é assim que os passos "clique em…" avançam).
+    fn wizard_after_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        if self.wizard.is_none() {
+            return;
+        }
+        if let Some(i) = TOOLS
+            .iter()
+            .position(|t| inside((t.x - 5, 5, t.w + 11, 50), x, y))
+        {
+            self.wizard_event(WizardEvent::Tool(i), fx, assets);
+        } else if (63..95).contains(&y) && (25..500).contains(&x) && (x - 25) % 37 < 32 {
+            self.wizard_event(
+                WizardEvent::OptionButton(((x - 25) / 37) as usize),
+                fx,
+                assets,
+            );
+        }
+    }
+
+    fn draw_wizard(&self, f: &mut Frame, a: &Assets) {
+        let Some(w) = &self.wizard else { return };
+        w.draw_panel(f, a);
+        let blink = (self.wizard_t * 3.0) as i32 % 2 == 0;
+        let color = if blink { [255, 238, 76] } else { BLACK };
+        match w.target() {
+            Some(Target::Tool(i)) => {
+                if let Some(t) = TOOLS.get(i) {
+                    f.frame_rect(t.x - 6, 4, t.w + 13, 52, 3, color);
+                }
+            }
+            Some(Target::Option(k)) => {
+                let r = option_rect(25, k);
+                f.frame_rect(r.0 - 3, r.1 - 3, r.2 + 6, r.3 + 6, 3, color);
+            }
+            Some(Target::Panel) | Some(Target::PanelArea(_)) => {
+                let (x, y, pw, ph) = MAGGIE_PANEL;
+                f.frame_rect(x - 5, y - 5, pw + 10, ph + 10, 3, color);
+            }
+            None => {}
+        }
+        let fallback = self.trick.map_or("", |t| t.label());
+        w.balloon(a, fallback).draw(f, a);
+        for (_, (x, y), (img, _mono)) in self.wizard_buttons(a) {
+            f.blit(&a.image(&pic(img)), x, y);
+        }
+    }
+
     pub fn new_project(kind: ProjectKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
         let mut p = Paint::new(None, assets);
         p.drawings = drawings;
@@ -1089,7 +1268,9 @@ impl Paint {
             return;
         }
         if inside(EXIT, x, y) {
-            let back = if self.project.is_some() {
+            let back = if self.trick.is_some() {
+                SceneId::TricksFloor
+            } else if self.project.is_some() {
                 SceneId::Projects
             } else {
                 SceneId::Studio
@@ -1396,9 +1577,10 @@ impl Paint {
             f.rect(x0 + 1, 461, x1 - x0 - 1, 14, WHITE);
         }
         // textos na "Pablo Graphos" de 8 pontos, como no original
-        let (label, name) = match &self.project {
-            Some(p) => (p.kind().label(), p.kind().new_name()),
-            None => ("Ateliê", "Quadro Novo"),
+        let (label, name) = match (&self.project, self.trick) {
+            (_, Some(t)) => ("Truques", t.label()),
+            (Some(p), None) => (p.kind().label(), p.kind().new_name()),
+            (None, None) => ("Ateliê", "Quadro Novo"),
         };
         match a.font(8) {
             Some(font) => {
@@ -1646,6 +1828,7 @@ fn now_secs() -> u64 {
 impl Scene for Paint {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
+        self.wizard_t += dt;
         for i in input {
             match *i {
                 Input::Click {
@@ -1654,7 +1837,11 @@ impl Scene for Paint {
                     y,
                 } => {
                     self.mouse = (x, y);
-                    self.click(x, y, &mut fx, assets)
+                    if self.wizard.is_some() && self.wizard_click(x, y, &mut fx, assets) {
+                        continue;
+                    }
+                    self.click(x, y, &mut fx, assets);
+                    self.wizard_after_click(x, y, &mut fx, assets);
                 }
                 Input::MouseMove { x, y } => {
                     self.mouse = (x, y);
@@ -1672,7 +1859,11 @@ impl Scene for Paint {
                     x,
                     y,
                 } => {
+                    let painting = self.stroke.is_some();
                     self.end_stroke(x - ORIGIN.0, y - ORIGIN.1);
+                    if painting && self.wizard.is_some() {
+                        self.wizard_event(WizardEvent::Painted, &mut fx, assets);
+                    }
                     if self.vacuum_anchor.is_some() {
                         self.vacuum_release(x - ORIGIN.0, y - ORIGIN.1);
                     }
@@ -1758,6 +1949,7 @@ impl Scene for Paint {
         if let Some(h) = &self.help {
             h.draw(frame, assets);
         }
+        self.draw_wizard(frame, assets);
     }
 
     fn leave(&mut self) -> Vec<Effect> {
@@ -1778,6 +1970,24 @@ impl Scene for Paint {
                 Err(e) => e,
             };
             return vec![Effect::Log(msg)];
+        }
+        if self.trick.is_some() {
+            // a lição grava só o que foi desenhado, sem mexer no último desenho
+            if !self.changed {
+                return Vec::new();
+            }
+            let flat = self.composed();
+            let path = dir.join(format!(
+                "truque-{}.png",
+                crate::paint::store::timestamp(now_secs())
+            ));
+            self.changed = false;
+            return vec![Effect::Log(
+                match crate::paint::store::save_png(&flat, &self.pal, &path) {
+                    Ok(()) => format!("desenho da lição guardado em {}", path.display()),
+                    Err(e) => format!("não consegui gravar {}: {e}", path.display()),
+                },
+            )];
         }
         if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
             return vec![Effect::Log(format!("sons: {e}"))];

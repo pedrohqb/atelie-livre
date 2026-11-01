@@ -241,6 +241,13 @@ pub const PROJECTS: &[Element] = &[
 
 pub const TRICKS_BG: u16 = 0x687b;
 pub const TRICKS: &[Element] = &[
+    // estátua do porco no pedestal "Básico" (medida na captura do original)
+    Element {
+        id: 0x6a01,
+        mask: 0x6a11,
+        x: 151,
+        y: 44,
+    },
     Element {
         id: 0x6a13,
         mask: 0x0000,
