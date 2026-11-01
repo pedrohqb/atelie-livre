@@ -51,14 +51,19 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    (`424b`, `4219`, `4223`, `4241`, `426b`, `428b`, `42a1`, `4281`, `42cb`,
    `42e1`). Segue, Enter ou um clique no balão passam a página; Para sai.
 4. **Imaginópolis** (`6cfd`, 641×480, alinhado à esquerda): a porta "Entre"
-   do Museu Mágico, por volta de (302,172), leva à rua; o McZee no
-   carrinho da montanha-russa (roteiro `ATAG` 0x2bc) atravessa de tempos em
-   tempos.
+   do Museu Mágico, por volta de (302,172), leva à rua. O McZee passa no
+   carrinho da montanha-russa (roteiro `ATAG` 0x2bc) logo ao chegar
+   (0,2 s depois de a tela aparecer, 3,5 s de duração), uma vez só: em 90 s
+   de gravação ele não volta. A Entrada e o título ficam parados no
+   original (33 s de gravação da Entrada sem nenhuma mudança).
 5. **Rua** (`6d01`): a porta do prédio, por volta de (338,355–385), leva ao
    saguão (resposta com atraso).
-6. **Saguão** (parede `6a6b`): elevador; quadro de andares com Truques de
+6. **Saguão** (parede `6a6b`): elevador (as portas e o botão ao lado levam
+   para dentro dele, ver abaixo); quadro de andares com Truques de
    Desenho, Oficina de Projetos, Ateliê de Pintura e Saguão/Galeria (clique
-   no nome); botões "Tchau" e "Galeria". McZee oferece: começar a desenhar
+   no nome, troca direta); botões "Tchau" e "Galeria"; o mastro de
+   bombeiro sobe ao Ateliê; o skate "LÁ FORA" volta para a rua; a Bolsa
+   Mágica e o buraco do rato (abaixo). McZee oferece: começar a desenhar
    por conta própria; fazer história em quadrinhos, botão, adesivo ou
    desenho animado; aprender truques de desenho; copiar, apagar ou limpar
    desenhos.
@@ -232,6 +237,79 @@ remontagem "usável primeiro". Código em
 - Fora, por enquanto: arrastar figuras, clique duplo para editar a figura na
   pintura, desenho de abertura com título girado, figura "Fim", Varinha
   Mágica na pausa, nome do desenho animado e seta de acrescentar espaços.
+
+## Objetos das salas e elevador
+
+Medido no original no Wine (gravação a 10 quadros/s; sons pelo rastro do
+winmm, ver `sons-das-acoes.md`). Implementado em
+`crates/engine/src/scenes/room_objects.rs`, `elevator.rs`, `room.rs` e
+`gallery_room.rs`.
+
+**Bolsa Mágica** (fechada `6833`, aberta `6873`). Chega fechada nos
+andares e aberta no Ateliê e na Galeria. Um clique a abre (som `2cf`) e
+põe no chão a **maleta vermelha** (`685b`), o **livro verde** (`6863`) e a
+**Varinha Mágica** (`686b`); outro clique a fecha (`2ce`). Posições (bolsa
+fechada / aberta / maleta / livro / varinha):
+
+| sala | fechada | aberta | maleta | livro | varinha |
+|---|---|---|---|---|---|
+| Saguão | (97,388) | (97,410) | (263,394) | (356,367) | (222,421) |
+| Ateliê | (129,392) | (129,414) | (305,330) | (265,383) | (352,410) |
+| Oficina | (146,392) | (146,414) | (330,328) | (247,379) | (374,407) |
+| Truques | (149,357) | (149,379) | (387,306) | (285,282) | (284,370) |
+| Galeria | (95,378)* | (95,400) | (304,391) | (235,360) | (246,422) |
+
+\* estimada (a bolsa da Galeria só foi vista aberta).
+
+- **Maleta**: abre a pasta de trabalhos por cima da sala (som `2f1`). No
+  original é o diálogo "Esta Pasta / Conteúdo / Título / Artista" com o
+  botão "Já"; *no port* é o painel de miniaturas da Galeria
+  (`SceneId::Portfolio`, aberto com `Effect::Push`): clique duplo abre o
+  quadro na pintura, "Fechar" ou um clique fora volta à sala.
+- **Livro verde**: a História do McZee por cima da sala (sons `2e2`/`265`
+  e `2f6`); Para volta à sala (`SceneId::BookStory`).
+- **Varinha Mágica**: some do chão, a bolsa se fecha, o cursor vira a
+  varinha (`CURSOR` `b7`) e o McZee mostra `WHAT 100d[59]` ("Quando você
+  clica no mastro de bombeiro ou no buraco do rato com a Varinha Mágica,
+  coisas incríveis acontecem!"; na Galeria, `[57]`), som `307`. O balão
+  não segura o clique: o mesmo clique já usa a varinha. Com ela:
+  - no **mastro** (ou na abertura dele no chão): um bicho desce ou sobe
+    pelo mastro, sem trocar de andar (som `2f3`);
+  - no **buraco do rato**: sai uma surpresa (som `20a` ou `2ea`, mesmo
+    tamanho no rastro; o port usa `2ea`);
+  - na **bolsa**: a varinha volta e a bolsa se abre;
+  - em outro lugar: só fecha o balão (a varinha continua na mão).
+  Depois da surpresa a bolsa reaparece aberta, com a varinha dentro.
+  Durante a surpresa os cliques esperam.
+- **Mastro de bombeiro**: sobe um andar (som `2f3`; nos Truques o original
+  sobe a um sótão escuro de onde se desce ao saguão, o port vai direto ao
+  saguão). **Abertura do mastro** no chão (`682b`): desce um andar (`2f2`).
+- **Skate** "LÁ FORA" (`6c33`, saguão): volta para a rua (som `2fc`).
+  Skate "ELEVADOR" (`6843`, andares): entra no elevador (`2fc`, `311`).
+
+As surpresas são roteiros `ATAG` gravados em relação a um ponto. O bloco
+de cada sala saiu de casar as figuras quadro a quadro nas gravações:
+
+| sala | mastro (ponto) | buraco do rato (ponto) |
+|---|---|---|
+| Saguão | 0x38b–0x394 (596,0) | 0x3e9–0x3ef (513,346) |
+| Ateliê | 0x70d–0x716 (575,−3) | 0x76c–0x773 (466,328) |
+| Oficina | 0x4b0–0x4b8 (573,−22) | 0x515–0x519 (479,289) |
+| Truques | 0xcd–0xd4 (539,−32) | 0x12d–0x132 (576,273) |
+| Galeria | — | 0x258–0x25e (445,348), por eliminação |
+
+**Elevador** (parede `6dd3`). Portas `6e2b` (máscara `6e31`) em (123,47),
+escotilha `6e33` em (189,111), mostrador `6e01` em (259,4) com o número
+aceso do andar em (270/300/330/361, 9) (`6e0b`, `6e3b`, `6e5b`, `6e6b`),
+painel `6e13` em (530,81) com o botão aceso (`6e23` (574,240), `6e53`
+(585,203), `6e63` (572,167), `6e73` (567,127)), "Tchau" `681b` em (46,6) e
+o McZee com a fantasia da sala em (−30,180), que pergunta
+`WHAT 100d[64]` "Subindo? Ou descendo?". Um clique num andar do painel
+toca o motor (`2d8`) e a escotilha mostra o roteiro 0x190 (subindo) ou
+0x191 (descendo), 1,4 s por andar, gravado em relação às portas; o
+mostrador muda a cada andar. Depois as portas se abrem (`2d4`), o vão
+mostra a parede do andar por 1 s e a sala aparece (`311`) com o balão de
+chegada. Clicar no andar em que se está só abre as portas.
 
 ## Conferência
 

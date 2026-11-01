@@ -50,10 +50,11 @@ No Wine o título fica só 3 s antes do cadastro, então os roteiros não chegam
 a aparecer na gravação; o motor toca o pássaro primeiro e depois sorteia os
 demais enquanto a abertura dura.
 
-### Imaginópolis (mapa, tela ainda não reimplementada) — 0x2bc (700)
+### Imaginópolis (fundo 0x6cfd) — 0x2bc (700)
 
 McZee no carrinho de supermercado descendo a montanha-russa e sumindo ao
-longe ("AAAI!"). **Alta**: visto na gravação logo após a entrada.
+longe ("AAAI!"). **Alta**: visto na gravação 0,2 s depois de a tela
+aparecer, uma vez só (90 s de gravação sem repetir).
 
 ### Rua (fundo 0x6d01) — 0x5dc, 0x640, 0x672 (1500, 1600, 1650)
 
@@ -114,38 +115,34 @@ Canguru (586, 229), baleia (−225, 68), robô vermelho e branco correndo
 (−74, 287), tiranossauro, patins, Maggie de skate. Tela desconhecida (talvez
 a Galeria ou outra sala com o canguru). Não usado.
 
-### Chegadas pela corda, à esquerda — 0xcd–0xd4, 0x38b–0x394, 0x4b0–0x4b8, 0x70d–0x716
+### Surpresas da Varinha Mágica: mastro e buraco do rato
 
-Quatro blocos (205–212, 907–916, 1200–1208, 1805–1814) com os mesmos
-roteiros: um personagem desce pela borda esquerda da tela (x ≈ −110…−15, de
-y < 0 até o chão) e o inverso, subindo. Personagens: McZee pendurado
-(0x60e8, deita no chão em 0x60f0), menino de camiseta vermelha (0x6100),
-Maggie segurando a vara, que termina em pé no disco do elevador em
-(−53, 290) (0x6110/0x611c), rato na corda (0x64f0), sapo-bobo-da-corte
-(0x6500), morsa (0x651c/0x6520) e lagarto (0x6538); mais quatro pedaços de
-corda/gancho parados por 3 s (0x6558, 0x6560, 0x6568, 0x66d8, som 0x222).
-Nos quatro blocos as origens diferem alguns pixels, o que sugere um bloco
-por sala (as quatro do prédio), mas nenhuma chegada foi vista nas gravações
-(as trocas de andar pelo diretório e pela vara foram instantâneas) e os
-personagens das salas ficam parados (abaixo). **Baixa**; não usado.
+Os blocos 205–212, 907–916, 1200–1208 e 1805–1814 (antes chamados
+"chegadas pela corda") são os bichos que descem ou sobem pelo **mastro de
+bombeiro** quando se clica nele com a Varinha Mágica: McZee (0x60e8),
+menino (0x6100), Maggie (0x6110), rato (0x64f0), sapo-bobo-da-corte
+(0x6500), morsa (0x651c) e lagarto (0x6538), mais nós e gosmas parados no
+mastro por 3 s (0x6558, 0x6560, 0x6568, 0x66d8, som 0x222). As origens são
+relativas ao mastro da sala. Os blocos 300–306, 600–606, 1000–1007,
+1301–1305 e 1900–1907 são as surpresas do **buraco do rato** (rato de
+cartola, ratos dançando, roda, morcego, tiranossauro, casa, nuvem,
+pinguim, barbatanas, besouro, aviões com faixa), relativas ao canto do
+buraco (`683b`) de cada sala.
 
-### Gags do buraco do rato — 0x12d–0x132, 0x258–0x25e, 0x3e9–0x3ef, 0x515–0x519, 0x76c–0x773
-
-Cinco blocos (300–306, 600–606, 1000–1007, 1301–1305, 1900–1907) de
-roteiros com origem pequena (relativos a um ponto, como os da rua): rato
-de cartola que espirra fumaça (0x66e0/0x66f0), rato espiando (0x66f8), ratos
-dançando (0x6790), rato na roda (0x6740), morcego (0x67d0), tiranossauro
-pequeno (0x67c0), casa que cresce (0x6700), nuvem com lanças (0x61a4),
-pinguim (0x617c), barbatanas (0x6578), besouro (0x67a8), aviões com a faixa
-"Microsoft"/"Almoce no Joca" (0x6124, 0x6730, 0x67e8). Provavelmente
-ancorados no buraco do rato que há em cada sala (e no título?); os cinco
-blocos correspondem a cinco telas. Âncoras não medidas. **Baixa**; não usado.
+**Alta** (casamento exato das figuras nas gravações): saguão = mastro
+0x38b–0x394 em (596,0) e buraco 0x3e9–0x3ef em (513,346); Truques = mastro
+0xcd–0xd4 em (539,−32) e buraco 0x12d–0x132 em (576,273); Oficina =
+mastro 0x4b0–0x4b8 em (573,−22) e buraco 0x515–0x519 em (479,289); Ateliê
+= mastro 0x70d–0x716 em (575,−3) e buraco 0x76c–0x773 em (466,328).
+Galeria = buraco 0x258–0x25e em (445,348), por eliminação. Detalhes em
+`fine-artist.md` ("Objetos das salas e elevador").
 
 ### Outros
 
-- 0x190/0x191 (400–401): a seta "SOBE" do indicador do elevador descendo e
-  subindo 72 px em (101, 137) — fundo desconhecido (talvez a tela preta do
-  elevador). Média; não usado.
+- 0x190/0x191 (400–401): a escotilha do elevador durante a viagem (barras
+  dos andares passando e a placa "SOBE!"), subindo e descendo, gravada em
+  relação às portas (123, 47). **Alta** (casamento exato); usado pelo
+  elevador, um por andar.
 - 0x4c9–0x4ce, 0x4e2–0x4e6, 0x4fb–0x4ff (1225–1279): uma figura parada por
   3 s com o som 0x222 (sino, capa, rosa, teia, cabeça de touro, fitas,
   óculos, bolo, chapéu, gravata...): adereços dos Truques de Desenho ou do
@@ -182,5 +179,8 @@ travessias acima.
 - `Street`: clique no hidrante ou na lata toca o roteiro correspondente.
 - `Room`: personagem parado por andar (sorteado) e uma travessia do bloco do
   andar entre 4 e 10 s depois de chegar, depois a cada 12–30 s.
+- `Room` e `GalleryRoom`: a Varinha Mágica no mastro ou no buraco do rato
+  toca uma surpresa sorteada do bloco da sala (`room_objects`).
+- `Imaginopolis`: o carrinho 0x2bc 0,2 s depois de chegar, uma vez.
 - Sons das células viram `Effect::PlaySound(SoundRef::Snd(Artist, id))`.
 - Sem os dados (recurso ou imagem ausente) nada toca e nada quebra.

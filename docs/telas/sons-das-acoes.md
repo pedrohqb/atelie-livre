@@ -36,6 +36,15 @@ COMANDOS` (executa e lista os sons) e `match.py` (tamanhos → ids, usando
 | traço do pincel, página 1 opção 1 | `021e` (com repetição) |
 | traço do pincel, página 1 opção 2 | `0263` (com repetição) |
 | escolher cor / padrão | (sem som) |
+| salas: abrir / fechar a Bolsa Mágica | `02cf` / `02ce` |
+| salas: maleta (pasta) | `02f1` |
+| salas: livro verde (história) | `02e2` ou `0265`, e `02f6` |
+| salas: pegar a Varinha Mágica | `0307` |
+| salas: varinha no buraco do rato | `020a` ou `02ea` (mesmo tamanho) |
+| salas: mastro (subir, ou varinha no mastro) | `02f3` |
+| salas: abertura do mastro (descer) | `02f2` |
+| salas: skate | `02fc` (e `025e`/`0269`/`0303`, mesmo tamanho) |
+| elevador: motor, portas, chegada | `02d8` (com repetição), `02d4`, `0311` |
 
 Os recursos `BTNW` do `ARTIST.EXE` (definições de botões) trazem o som do
 botão no `u16` do deslocamento 4 (ex.: `BTNW 1000` → `021c`, `1001` →
