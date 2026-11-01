@@ -6,6 +6,7 @@ use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
 use super::stickers::{Placed, Stickers};
+use super::supertools::{GUIDES_NAME, Guides, Notice, Supertools};
 use super::transformers::Transformers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
@@ -103,6 +104,7 @@ pub enum Tool {
     Sounds,
     Vacuum,
     Transformers,
+    Supertools,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,7 +113,6 @@ enum Action {
     Undo,
     /// Imprimir: exporta o quadro em PNG e manda para a impressora (`lp`), se houver.
     Print,
-    Unavailable(&'static str),
 }
 
 /// Ferramenta da barra: ícone normal e ativo, com as máscaras, e a largura do clique.
@@ -195,7 +196,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 35,
         normal: (0x1007, 0x1009),
         active: (0x1069, 0x106b),
-        action: Action::Unavailable("super-ferramentas"),
+        action: Action::Select(Tool::Supertools),
     },
     ToolDef {
         x: 458,
@@ -368,6 +369,7 @@ pub struct Paint {
     stickers: Stickers,
     sounds: Sounds,
     transformers: Transformers,
+    supertools: Supertools,
     mouse: (i32, i32),
     /// Tempo acumulado, para o piscar do contorno dos objetos.
     time: f32,
@@ -416,6 +418,7 @@ impl Paint {
             stickers: Stickers::new(assets),
             sounds: Sounds::new(assets),
             transformers: Transformers::new(),
+            supertools: Supertools::new(),
             mouse: (0, 0),
             time: 0.0,
             vacuum: VacuumMode::Cut,
@@ -428,6 +431,9 @@ impl Paint {
         p.restore_objects(&records, assets);
         if let Some(d) = &p.drawings {
             p.sounds.load_spots(&d.join(SPOTS_NAME));
+            if let Some(g) = Guides::load(&d.join(GUIDES_NAME)) {
+                p.supertools.guides = g;
+            }
         }
         p
     }
@@ -487,11 +493,21 @@ impl Paint {
         &self.transformers
     }
 
+    pub fn supertools(&self) -> &Supertools {
+        &self.supertools
+    }
+
+    /// Linhas guia das Super-ferramentas (só na tela).
+    pub fn guides(&self) -> &Guides {
+        &self.supertools.guides
+    }
+
     /// Objeto sob o ponteiro, se a ferramenta mexe em objetos (o contorno pisca).
     fn hovered_object(&self) -> Option<u32> {
         let handles = matches!(
             (self.tool, self.vacuum),
-            (Tool::Vacuum, VacuumMode::Stickers | VacuumMode::Copy) | (Tool::Transformers, _)
+            (Tool::Vacuum, VacuumMode::Stickers | VacuumMode::Copy)
+                | (Tool::Transformers | Tool::Supertools, _)
         );
         if !handles || !inside(canvas_rect(), self.mouse.0, self.mouse.1) {
             return None;
@@ -704,7 +720,7 @@ impl Paint {
 
     fn option_count(&self) -> usize {
         match self.tool {
-            Tool::Stickers | Tool::Sounds | Tool::Transformers => 0,
+            Tool::Stickers | Tool::Sounds | Tool::Transformers | Tool::Supertools => 0,
             Tool::Brush => 12,
             Tool::Bucket => BUCKET_BUTTONS.len(),
             Tool::Words => WORDS_BUTTONS.len(),
@@ -936,6 +952,21 @@ impl Paint {
                         self.changed = true;
                     }
                 }
+                Tool::Supertools => {
+                    let mut changed = false;
+                    let notice = self.supertools.press(
+                        cx,
+                        cy,
+                        &mut self.objects,
+                        &self.canvas,
+                        &mut self.history,
+                        &mut changed,
+                    );
+                    self.changed |= changed;
+                    if let Some(n) = notice {
+                        self.notice(n, fx);
+                    }
+                }
                 Tool::Stickers | Tool::Sounds => {}
             }
             return;
@@ -959,6 +990,7 @@ impl Paint {
                     self.stickers.reset();
                     self.sounds.reset();
                     self.transformers.reset();
+                    self.supertools.reset();
                 }
                 Action::Undo => {
                     if self.history.toggle(&mut self.canvas, &mut self.objects) {
@@ -966,9 +998,6 @@ impl Paint {
                     }
                 }
                 Action::Print => fx.push(self.print()),
-                Action::Unavailable(name) => fx.push(Effect::Log(format!(
-                    "{name}: ferramenta ainda não disponível"
-                ))),
             }
             return;
         }
@@ -986,6 +1015,10 @@ impl Paint {
             {
                 fx.push(Effect::Log(msg.into()));
             }
+            return;
+        }
+        if self.tool == Tool::Supertools {
+            self.supertools.click_strip(x, y);
             return;
         }
         if self.tool == Tool::Brush {
@@ -1008,7 +1041,7 @@ impl Paint {
                 Tool::Brush => self.set_brush(self.page, k),
                 Tool::Bucket => self.bucket_option = k,
                 Tool::Words => self.words_option = k,
-                Tool::Stickers | Tool::Sounds | Tool::Transformers => {}
+                Tool::Stickers | Tool::Sounds | Tool::Transformers | Tool::Supertools => {}
                 Tool::Vacuum => {
                     self.vacuum = VACUUM_MODES[k];
                     if self.vacuum == VacuumMode::Sounds {
@@ -1016,6 +1049,15 @@ impl Paint {
                     }
                 }
             }
+        }
+    }
+
+    /// Aviso de uma ferramenta (balão do original); por ora vai para o registro.
+    fn notice(&mut self, n: Notice, fx: &mut Vec<Effect>) {
+        match n {
+            Notice::NoVanishingPoint => fx.push(Effect::Log(
+                "super-ferramentas: você ainda não definiu um ponto de fuga".into(),
+            )),
         }
     }
 
@@ -1342,6 +1384,10 @@ impl Paint {
                 self.transformers.draw_strip(f, a);
                 None
             }
+            Tool::Supertools => {
+                self.supertools.draw_strip(f, a);
+                None
+            }
             Tool::Vacuum => {
                 f.blit_masked(&a.image(&pic(0x1119)), &a.image(&pic(0x111b)), 4, 56);
                 for (k, id) in VACUUM_BUTTONS.iter().enumerate() {
@@ -1484,6 +1530,7 @@ impl Scene for Paint {
                     {
                         self.changed = true;
                     }
+                    self.supertools.drag(x - ORIGIN.0, y - ORIGIN.1);
                 }
                 Input::MouseUp {
                     button: MouseButton::Left,
@@ -1495,6 +1542,7 @@ impl Scene for Paint {
                         self.vacuum_release(x - ORIGIN.0, y - ORIGIN.1);
                     }
                     self.transformers.release();
+                    self.supertools.release();
                 }
                 Input::Key {
                     key,
@@ -1526,6 +1574,9 @@ impl Scene for Paint {
         if self.transformers.update(dt, &mut self.objects) {
             self.changed = true;
         }
+        if self.supertools.update(dt, &mut self.objects) {
+            self.changed = true;
+        }
         if let Some(placed) = self.stickers.update(dt) {
             self.place_sticker(placed);
         }
@@ -1547,6 +1598,7 @@ impl Scene for Paint {
         }
         self.draw_columns(frame);
         self.draw_canvas(frame);
+        self.supertools.guides.draw(frame);
         self.draw_blink(frame);
         if self.tool == Tool::Transformers {
             self.transformers.draw_overlay(frame, &self.objects);
@@ -1592,6 +1644,9 @@ impl Scene for Paint {
         if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
             return vec![Effect::Log(format!("sons: {e}"))];
         }
+        if let Err(e) = self.supertools.guides.save(&dir.join(GUIDES_NAME)) {
+            return vec![Effect::Log(format!("guias: {e}"))];
+        }
         let saved = match &self.project {
             Some(p) => super::projects::save_picture(
                 dir,
@@ -1624,7 +1679,7 @@ impl Scene for Paint {
 mod tests {
     use super::*;
     use crate::paint::WHITE as W;
-    use crate::paint::store::LAST_NAME;
+    use crate::paint::store::{LAST_NAME, load_png};
     use crate::scenes::stickers::ANIMALS;
     use crate::scenes::testutil::empty_assets;
 
@@ -1846,15 +1901,46 @@ mod tests {
     }
 
     #[test]
-    fn inactive_tool_logs() {
+    fn supertools_guides_are_overlay_only_and_saved() {
+        use crate::scenes::supertools::{Grid, Op};
         let (_d, a) = empty_assets();
-        let mut p = Paint::new(None, &a);
-        let fx = p.update(&[click(430, 30)], 0.0, &a);
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(430, 30)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Supertools);
+        // quadriculado grande (3.º botão) e ponto de fuga no quadro
+        p.update(&[click(25 + 37 * 2 + 10, 70)], 0.0, &a);
+        assert_eq!(p.guides().grid, Grid::Big);
+        p.update(&[click(25 + 37 * 5 + 10, 70)], 0.0, &a);
+        assert_eq!(p.supertools().op(), Op::VanishingPoint);
+        p.update(&[click(300, 250), up(300, 250)], 0.0, &a);
+        assert_eq!(p.guides().horizon, Some((250 - ORIGIN.1, 300 - ORIGIN.0)));
+        // linha do PF sem PF avisa (depois de apagar o horizonte com o ímã)
+        p.update(
+            &[click(25 + 37 * 10 + 10, 70), click(100, 250), up(100, 250)],
+            0.0,
+            &a,
+        );
+        assert_eq!(p.guides().horizon, None);
+        let fx = p.update(
+            &[click(25 + 37 * 6 + 10, 70), click(100, 300), up(100, 300)],
+            0.0,
+            &a,
+        );
         assert!(
             fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("super-ferramentas")))
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("ponto de fuga")))
         );
-        assert_eq!(p.tool(), Tool::Brush);
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        assert_eq!(painted(&p), 0);
+        p.leave();
+        assert!(dir.path().join(GUIDES_NAME).exists());
+        let q = Paint::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(q.guides().grid, Grid::Big);
+        // o PNG não tem guias
+        let flat = load_png(&dir.path().join(LAST_NAME), q.palette()).unwrap();
+        assert!(flat.px.iter().all(|&v| v == W));
     }
 
     #[test]

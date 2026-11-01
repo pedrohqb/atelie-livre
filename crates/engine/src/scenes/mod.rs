@@ -13,6 +13,7 @@ pub mod splash;
 pub mod sticker_scripts;
 pub mod stickers;
 pub mod street;
+pub mod supertools;
 pub mod transformers;
 pub mod writer;
 

@@ -264,3 +264,52 @@ fn linked_objects_move_together() {
         (r2.0 + 15, r2.1 - 10, r2.2, r2.3)
     );
 }
+
+#[test]
+fn approach_vp_for_one_second_shrinks_and_moves_and_png_has_no_guides() {
+    use engine::scenes::supertools::{BUTTONS, Op as SOp};
+    let (_d, a) = empty_assets();
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+    let id = place_animal(&mut p, &a, 150, 350);
+    let r0 = p.objects().get(id).unwrap().rect();
+    p.update(&[click(430, 30)], 0.0, &a);
+    assert_eq!(p.tool(), Tool::Supertools);
+    let button = |op: SOp| {
+        let b = BUTTONS.iter().find(|b| b.op == op).unwrap();
+        let r = option_rect(b.k);
+        click(r.0 + 10, r.1 + 10)
+    };
+    // quadriculado grande + ponto de fuga em (500, 150) da tela
+    p.update(
+        &[button(SOp::BigGrid), button(SOp::VanishingPoint)],
+        0.0,
+        &a,
+    );
+    p.update(&[click(500, 150), up(500, 150)], 0.0, &a);
+    let vp = (500 - ORIGIN.0, 150 - ORIGIN.1);
+    assert_eq!(p.guides().vp(), Some(vp));
+    let dist = |r: (i32, i32, i32, i32)| {
+        let (cx, cy) = (r.0 + r.2 / 2, r.1 + r.3 / 2);
+        (((cx - vp.0).pow(2) + (cy - vp.1).pow(2)) as f32).sqrt()
+    };
+    p.update(&[button(SOp::Approach)], 0.0, &a);
+    let (sx, sy) = opaque_point(&p, id);
+    p.update(&[click(sx, sy)], 0.0, &a);
+    for _ in 0..60 {
+        p.update(&[], 1.0 / 60.0, &a);
+    }
+    p.update(&[up(sx, sy)], 0.0, &a);
+    let r1 = p.objects().get(id).unwrap().rect();
+    assert!(r1.2 < r0.2 && r1.3 < r0.3, "{r0:?} {r1:?}");
+    let (d0, d1) = (dist(r0), dist(r1));
+    assert!(d1 < d0 - 50.0 && d1 > d0 - 70.0, "{d0} {d1}");
+    // o PNG achatado não tem o quadriculado nem o horizonte
+    p.leave();
+    let flat = load_png(&dir.path().join("ultimo.png"), p.palette()).unwrap();
+    assert_eq!(flat.px, p.composed().px);
+    let green = flat.px.iter().filter(|&&v| v != WHITE).count();
+    assert_eq!(green, painted(&p));
+    assert_eq!(flat.get(48, 0), Some(WHITE));
+    assert_eq!(flat.get(10, vp.1), Some(WHITE));
+}
