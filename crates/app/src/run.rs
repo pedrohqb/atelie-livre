@@ -7,7 +7,7 @@ use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::{
-    Browser, Chooser, Entry, Floor, Gallery, Imaginopolis, Paint, Room, Splash, Story, Street,
+    Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
     Writer,
 };
 use engine::{Frame, SCREEN_H, SCREEN_W};
@@ -50,7 +50,11 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     };
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets)),
-        SceneId::Gallery => Box::new(Gallery::new(drawings_dir(), assets)),
+        SceneId::Gallery => Box::new(GalleryRoom::new(
+            cfg.click_sound.clone(),
+            drawings_dir(),
+            assets,
+        )),
         SceneId::Building => room(Floor::Lobby),
         SceneId::Studio => room(Floor::Studio),
         SceneId::Projects => room(Floor::Projects),

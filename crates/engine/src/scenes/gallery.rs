@@ -55,6 +55,13 @@ fn has_ext(p: &Path, ext: &str) -> bool {
     p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))
 }
 
+/// Arquivos de trabalho que não aparecem na galeria: os "últimos" reabertos
+/// pela pintura e pelos projetos (`ultimo*.png`) e as páginas de impressão.
+fn is_listed(name: &std::ffi::OsStr) -> bool {
+    let n = name.to_string_lossy();
+    n != LAST_NAME && !n.starts_with("ultimo") && !n.starts_with("impressao-")
+}
+
 /// Desenhos da pasta (`.png` e `.mag`), mais recentes primeiro (`ultimo.png`
 /// fora, pois repete o desenho mais recente). Um `.mag` fica de fora quando há
 /// um `.png` de mesmo nome: são o mesmo desenho gravado duas vezes.
@@ -66,7 +73,7 @@ pub fn list_drawings(dir: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = all
         .iter()
         .filter(|p| {
-            (has_ext(p, "png") && p.file_name().is_some_and(|n| n != LAST_NAME))
+            (has_ext(p, "png") && p.file_name().is_some_and(is_listed))
                 || (has_ext(p, "mag") && !all.contains(&p.with_extension("png")))
         })
         .cloned()
