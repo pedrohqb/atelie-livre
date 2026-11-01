@@ -153,6 +153,12 @@ impl Sounds {
         self.chosen = None;
     }
 
+    /// Tira da mão o som escolhido (nome, referência), para prendê-lo a um objeto.
+    pub fn take_chosen(&mut self) -> Option<(String, SoundRef)> {
+        let (c, i) = self.chosen.take()?;
+        self.cats.get(c)?.sounds.get(i).cloned()
+    }
+
     pub fn update(&mut self, dt: f32) {
         if let Some((_, t)) = self.flash.as_mut() {
             *t -= dt.max(0.0);

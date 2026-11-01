@@ -1,6 +1,7 @@
 //! Desenhos em PNG e `.MAG`: gravar o quadro e abrir o último.
 
 use super::canvas::{CANVAS_H, CANVAS_W, Canvas};
+use super::objects::{Objects, Record, fingerprint, parse_json, to_json};
 use formats::mag;
 use formats::palette::Rgb;
 use std::io;
@@ -70,6 +71,46 @@ pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
     Some(c)
 }
 
+/// Abre um PNG de qualquer tamanho (até 594×347) como carimbo: alfa 0 e o
+/// branco puro ficam transparentes; as cores vão para a paleta.
+pub fn load_stamp_png(path: &Path, pal: &[Rgb]) -> Option<super::stamp::Stamp> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut dec = png::Decoder::new(io::BufReader::new(file));
+    dec.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = dec.read_info().ok()?;
+    let (w, h) = (reader.info().width, reader.info().height);
+    if w == 0 || h == 0 || w > CANVAS_W || h > CANVAS_H {
+        return None;
+    }
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let step = match info.color_type {
+        png::ColorType::Rgb => 3,
+        png::ColorType::Rgba => 4,
+        _ => return None,
+    };
+    let mut cache = std::collections::HashMap::new();
+    let px = buf[..info.buffer_size()]
+        .chunks_exact(step)
+        .map(|p| {
+            if (step == 4 && p[3] == 0) || (p[0], p[1], p[2]) == (255, 255, 255) {
+                return None;
+            }
+            let key = (p[0], p[1], p[2]);
+            Some(
+                *cache
+                    .entry(key)
+                    .or_insert_with(|| nearest(pal, key.0, key.1, key.2)),
+            )
+        })
+        .collect();
+    Some(super::stamp::Stamp {
+        w: info.width,
+        h: info.height,
+        px,
+    })
+}
+
 /// Abre um desenho `.MAG` do Fine Artist de 594×347; as cores da paleta do
 /// documento são aproximadas à do programa. Outro tamanho ou erro → `None`.
 pub fn load_mag(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
@@ -124,6 +165,59 @@ pub fn save_mag(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// Nome do arquivo de objetos de um desenho (`ultimo.objetos.json`).
+pub fn objects_name(stem: &str) -> String {
+    format!("{stem}.objetos.json")
+}
+
+/// Nome do fundo (quadro sem os objetos) de um desenho (`ultimo.fundo.png`).
+pub fn background_name(stem: &str) -> String {
+    format!("{stem}.fundo.png")
+}
+
+/// Grava, ao lado de `<stem>.png` (já achatado), os objetos em
+/// `<stem>.objetos.json` e o fundo em `<stem>.fundo.png`; sem objetos, apaga
+/// os dois.
+pub fn save_objects(
+    dir: &Path,
+    stem: &str,
+    background: &Canvas,
+    objs: &Objects,
+    composed: &Canvas,
+    pal: &[Rgb],
+) -> io::Result<()> {
+    let json = dir.join(objects_name(stem));
+    let bg = dir.join(background_name(stem));
+    if objs.is_empty() {
+        let _ = std::fs::remove_file(&json);
+        let _ = std::fs::remove_file(&bg);
+        return Ok(());
+    }
+    save_png(background, pal, &bg)?;
+    let text = to_json(&objs.records(), fingerprint(composed, pal));
+    let mut tmp = json.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, &json)
+}
+
+/// Abre `<stem>.png`; se `<stem>.objetos.json` existe, bate com o PNG
+/// (impressão digital) e `<stem>.fundo.png` abre, devolve o fundo e os
+/// objetos a remontar; senão o PNG achatado e nenhum objeto.
+pub fn load_drawing(dir: &Path, stem: &str, pal: &[Rgb]) -> Option<(Canvas, Vec<Record>)> {
+    let flat = load_png(&dir.join(format!("{stem}.png")), pal)?;
+    let editable = std::fs::read_to_string(dir.join(objects_name(stem)))
+        .ok()
+        .and_then(|t| parse_json(&t))
+        .filter(|(fp, recs)| !recs.is_empty() && *fp == fingerprint(&flat, pal))
+        .and_then(|(_, recs)| {
+            let bg = load_png(&dir.join(background_name(stem)), pal)?;
+            Some((bg, recs))
+        });
+    Some(editable.unwrap_or((flat, Vec::new())))
+}
+
 /// `desenho-AAAAMMDD-HHMMSS.png` em UTC.
 pub fn timestamp_name(unix_secs: u64) -> String {
     format!("desenho-{}.png", timestamp(unix_secs))
@@ -165,18 +259,45 @@ pub fn save_drawing(
     changed: bool,
     now: u64,
 ) -> Result<(), String> {
+    save_drawing_objects(dir, c, &Objects::default(), pal, changed, now)
+}
+
+/// Como `save_drawing`, com os objetos: os PNG e o `.MAG` recebem a
+/// composição achatada; `ultimo.objetos.json` e `ultimo.fundo.png` (e as
+/// cópias com data) guardam os objetos e o fundo para reabrir editável.
+pub fn save_drawing_objects(
+    dir: &Path,
+    c: &Canvas,
+    objs: &Objects,
+    pal: &[Rgb],
+    changed: bool,
+    now: u64,
+) -> Result<(), String> {
     let fail = |e: io::Error, p: &Path| format!("não consegui gravar {}: {e}", p.display());
     std::fs::create_dir_all(dir).map_err(|e| fail(e, dir))?;
+    let flat = compose_unclipped(c, objs);
     let last = dir.join(LAST_NAME);
-    save_png(c, pal, &last).map_err(|e| fail(e, &last))?;
+    save_png(&flat, pal, &last).map_err(|e| fail(e, &last))?;
+    save_objects(dir, "ultimo", c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
     if changed {
         let stem = timestamp_stem(now);
         let named = dir.join(format!("{stem}.png"));
-        save_png(c, pal, &named).map_err(|e| fail(e, &named))?;
+        save_png(&flat, pal, &named).map_err(|e| fail(e, &named))?;
         let named = dir.join(format!("{stem}.mag"));
-        save_mag(c, pal, &named).map_err(|e| fail(e, &named))?;
+        save_mag(&flat, pal, &named).map_err(|e| fail(e, &named))?;
+        save_objects(dir, &stem, c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
     }
     Ok(())
+}
+
+/// Composição achatada para gravar: o recorte retangular (quadrinho em
+/// edição) não vale, só a máscara de recorte (forma do botão/adesivo).
+pub fn compose_unclipped(c: &Canvas, objs: &Objects) -> Canvas {
+    let mut out = c.clone();
+    out.clip = None;
+    objs.draw_onto(&mut out);
+    out.clip = c.clip;
+    out
 }
 
 #[cfg(test)]
@@ -238,6 +359,26 @@ mod tests {
         );
         drop(w);
         assert_eq!(load_png(&p, &pal()), None);
+    }
+
+    #[test]
+    fn load_stamp_png_makes_white_transparent() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.png");
+        let mut c = Canvas::new(2, 1);
+        c.px[1] = 7;
+        // índice 0 da paleta de teste não é branco puro: usar uma paleta com branco no 0
+        let mut pal = pal();
+        pal[0] = Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        };
+        save_png(&c, &pal, &p).unwrap();
+        let s = load_stamp_png(&p, &pal).unwrap();
+        assert_eq!((s.w, s.h), (2, 1));
+        assert_eq!(s.px, vec![None, Some(7)]);
+        assert_eq!(load_stamp_png(&dir.path().join("nao.png"), &pal), None);
     }
 
     #[test]
@@ -319,6 +460,58 @@ mod tests {
         std::fs::write(&m, b"CHNK lixo").unwrap();
         assert_eq!(load_mag(&m, &pal()), None);
         assert_eq!(load_mag(&dir.path().join("nao.mag"), &pal()), None);
+    }
+
+    #[test]
+    fn save_with_objects_writes_json_and_background_and_reopens() {
+        use super::super::objects::Source;
+        use super::super::stamp::Stamp;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().to_path_buf();
+        let c = Canvas::new(CANVAS_W, CANVAS_H);
+        let mut objs = Objects::default();
+        let img = std::rc::Rc::new(Stamp {
+            w: 2,
+            h: 2,
+            px: vec![Some(3); 4],
+        });
+        objs.place(img, 10, 20, Source::Roll { roll: 2, item: 1 });
+        save_drawing_objects(&d, &c, &objs, &pal(), true, 1_793_404_800).unwrap();
+        let mut names: Vec<String> = std::fs::read_dir(&d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                "desenho-20261031-000000.fundo.png",
+                "desenho-20261031-000000.mag",
+                "desenho-20261031-000000.objetos.json",
+                "desenho-20261031-000000.png",
+                "ultimo.fundo.png",
+                "ultimo.objetos.json",
+                "ultimo.png",
+            ]
+        );
+        // o PNG está achatado, o fundo não
+        assert_eq!(
+            load_png(&d.join(LAST_NAME), &pal()).unwrap().get(10, 20),
+            Some(3)
+        );
+        let (bg, recs) = load_drawing(&d, "ultimo", &pal()).unwrap();
+        assert_eq!(bg.get(10, 20), Some(0));
+        assert_eq!(recs.len(), 1);
+        assert_eq!(recs[0].source, Source::Roll { roll: 2, item: 1 });
+        // outro ultimo.png (quadro novo) invalida o JSON: abre achatado
+        save_png(&c, &pal(), &d.join(LAST_NAME)).unwrap();
+        let (bg, recs) = load_drawing(&d, "ultimo", &pal()).unwrap();
+        assert_eq!(bg.get(10, 20), Some(0));
+        assert!(recs.is_empty());
+        // gravar sem objetos apaga o JSON e o fundo
+        save_drawing_objects(&d, &c, &Objects::default(), &pal(), false, 0).unwrap();
+        assert!(!d.join("ultimo.objetos.json").exists());
+        assert!(!d.join("ultimo.fundo.png").exists());
     }
 
     #[test]

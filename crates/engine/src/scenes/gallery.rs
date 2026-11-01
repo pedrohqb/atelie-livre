@@ -56,17 +56,25 @@ fn has_ext(p: &Path, ext: &str) -> bool {
 }
 
 /// Desenhos da pasta (`.png` e `.mag`), mais recentes primeiro (`ultimo.png`
-/// fora, pois repete o desenho mais recente). Um `.mag` fica de fora quando há
-/// um `.png` de mesmo nome: são o mesmo desenho gravado duas vezes.
+/// fora, pois repete o desenho mais recente; `*.fundo.png` fora, pois é o
+/// fundo sem os objetos). Um `.mag` fica de fora quando há um `.png` de mesmo
+/// nome: são o mesmo desenho gravado duas vezes.
 pub fn list_drawings(dir: &Path) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let all: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+    let is_background = |p: &Path| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(".fundo.png"))
+    };
     let mut files: Vec<PathBuf> = all
         .iter()
         .filter(|p| {
-            (has_ext(p, "png") && p.file_name().is_some_and(|n| n != LAST_NAME))
+            (has_ext(p, "png")
+                && p.file_name().is_some_and(|n| n != LAST_NAME)
+                && !is_background(p))
                 || (has_ext(p, "mag") && !all.contains(&p.with_extension("png")))
         })
         .cloned()
