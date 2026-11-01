@@ -10,6 +10,7 @@ use super::supertools::{GUIDES_NAME, Guides, Notice, Supertools};
 use super::transformers::Transformers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
+use crate::help::HelpBalloon;
 use crate::paint::geom::{
     ellipse_points, fill_ellipse_points, fill_rect_points, fill_triangle_points, polyline_points,
     rect_points, thicken, triangle_points,
@@ -25,8 +26,10 @@ use crate::rng::XorShift;
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use formats::fnt::Font;
 use formats::palette::Rgb;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use crate::paint::COLORS;
 const SWATCHES: usize = COLORS.len();
@@ -42,6 +45,25 @@ const RED: [u8; 3] = [250, 0, 57];
 const PAGE_COUNT: u8 = 6;
 const STAMP_SPACING: i32 = 16;
 const EXIT: (i32, i32, i32, i32) = (580, 18, 56, 88);
+/// Nicho do McZee à direita da faixa: clique abre o balão de ajuda.
+const NICHE: (i32, i32, i32, i32) = (533, 56, 47, 48);
+/// Canto do balão de ajuda, à direita do quadro.
+const HELP_POS: (i32, i32) = (445, 115);
+/// Blocos `WHAT` da ajuda de cada ferramenta.
+const WHAT_BRUSH: u16 = 0x1002;
+const WHAT_BUCKET: u16 = 0x1003;
+const WHAT_SOUNDS: u16 = 0x1004;
+const WHAT_STICKERS: u16 = 0x1005;
+const WHAT_TRANSFORMERS: u16 = 0x1006;
+const WHAT_EGG: u16 = 0x1007;
+const WHAT_VACUUM: u16 = 0x1008;
+const WHAT_WORDS: u16 = 0x1009;
+const WHAT_SUPERTOOLS: u16 = 0x100a;
+const WHAT_PRINT: u16 = 0x100b;
+/// Avisos do Rex ("Você ainda não definiu um ponto de fuga" é o 5).
+const WHAT_ERRORS: u16 = 0x100f;
+/// O balão do Pincel aparece na primeira vez que a tela abre na sessão.
+static FIRST_HELP: AtomicBool = AtomicBool::new(true);
 const ARROW_UP: (i32, i32, i32, i32) = (504, 58, 16, 14);
 const ARROW_DOWN: (i32, i32, i32, i32) = (504, 90, 16, 14);
 /// Carimbos da página 2 do pincel (`ARTIST.PIC`).
@@ -370,6 +392,10 @@ pub struct Paint {
     sounds: Sounds,
     transformers: Transformers,
     supertools: Supertools,
+    /// Balão de ajuda do McZee aberto.
+    help: Option<HelpBalloon>,
+    /// Blocos `WHAT` já lidos.
+    dialogs: HashMap<u16, Rc<Vec<formats::what::Record>>>,
     mouse: (i32, i32),
     /// Tempo acumulado, para o piscar do contorno dos objetos.
     time: f32,
@@ -419,6 +445,8 @@ impl Paint {
             sounds: Sounds::new(assets),
             transformers: Transformers::new(),
             supertools: Supertools::new(),
+            help: None,
+            dialogs: HashMap::new(),
             mouse: (0, 0),
             time: 0.0,
             vacuum: VacuumMode::Cut,
@@ -435,7 +463,81 @@ impl Paint {
                 p.supertools.guides = g;
             }
         }
+        if FIRST_HELP.swap(false, Ordering::Relaxed) {
+            p.open_help(WHAT_BRUSH, 1, assets);
+        }
         p
+    }
+
+    /// Abre o balão de ajuda do registro `index` do bloco `WHAT` (se existir).
+    fn open_help(&mut self, block: u16, index: usize, assets: &Assets) {
+        let records = self
+            .dialogs
+            .entry(block)
+            .or_insert_with(|| Rc::new(assets.dialogs(Program::Artist, block)))
+            .clone();
+        self.help = HelpBalloon::new(records, block, index, HELP_POS.0, HELP_POS.1);
+    }
+
+    /// Balão de ajuda aberto, se houver.
+    pub fn help(&self) -> Option<&HelpBalloon> {
+        self.help.as_ref()
+    }
+
+    /// Bloco e registro da ajuda da ferramenta atual (`option` = da opção escolhida).
+    fn help_target(&self, option: bool) -> (u16, usize) {
+        match self.tool {
+            Tool::Brush => (
+                WHAT_BRUSH,
+                if option && self.brush.0 == 5 {
+                    17 + self.brush.1
+                } else {
+                    1
+                },
+            ),
+            Tool::Bucket => (WHAT_BUCKET, if option { 1 + self.bucket_option } else { 0 }),
+            Tool::Stickers => (WHAT_STICKERS, 0),
+            Tool::Sounds => (WHAT_SOUNDS, 0),
+            Tool::Words => (WHAT_WORDS, 0),
+            Tool::Vacuum => (
+                WHAT_VACUUM,
+                if option {
+                    match self.vacuum {
+                        VacuumMode::Cut => 13,
+                        VacuumMode::Stickers => 1,
+                        VacuumMode::Paste => 9,
+                        VacuumMode::Area => 6,
+                        VacuumMode::Copy => 7,
+                        VacuumMode::Color => 2,
+                        VacuumMode::Sounds => 3,
+                        VacuumMode::All => 4,
+                    }
+                } else {
+                    0
+                },
+            ),
+            Tool::Transformers => (
+                WHAT_TRANSFORMERS,
+                if option {
+                    self.transformers.help_record()
+                } else {
+                    0
+                },
+            ),
+            Tool::Supertools => (
+                WHAT_SUPERTOOLS,
+                if option {
+                    self.supertools.help_record()
+                } else {
+                    0
+                },
+            ),
+        }
+    }
+
+    fn show_help(&mut self, option: bool, assets: &Assets) {
+        let (block, index) = self.help_target(option);
+        self.open_help(block, index, assets);
     }
 
     /// Remonta os objetos lidos do `*.objetos.json` (adesivos pelos rolos,
@@ -872,6 +974,17 @@ impl Paint {
             fx.extend(fb.click(x, y, self.drawings.as_deref(), assets));
             return;
         }
+        if let Some(h) = self.help.take() {
+            if h.contains(assets, x, y) {
+                // ligação (dica, tecla, glossário) abre o registro ligado no lugar
+                self.help = match h.link_at(assets, x, y) {
+                    Some(target) => h.follow(target).or(Some(h)),
+                    None => Some(h),
+                };
+                return;
+            }
+            // clique fora fecha o balão e segue
+        }
         self.stroke = None;
         self.finish_sticker();
         // qualquer clique encerra o texto que estava sendo digitado
@@ -964,11 +1077,15 @@ impl Paint {
                     );
                     self.changed |= changed;
                     if let Some(n) = notice {
-                        self.notice(n, fx);
+                        self.notice(n, fx, assets);
                     }
                 }
                 Tool::Stickers | Tool::Sounds => {}
             }
+            return;
+        }
+        if self.project.is_none() && inside(NICHE, x, y) {
+            self.show_help(false, assets);
             return;
         }
         if inside(EXIT, x, y) {
@@ -991,13 +1108,18 @@ impl Paint {
                     self.sounds.reset();
                     self.transformers.reset();
                     self.supertools.reset();
+                    self.show_help(false, assets);
                 }
                 Action::Undo => {
                     if self.history.toggle(&mut self.canvas, &mut self.objects) {
                         self.changed = true;
                     }
+                    self.open_help(WHAT_EGG, 0, assets);
                 }
-                Action::Print => fx.push(self.print()),
+                Action::Print => {
+                    fx.push(self.print());
+                    self.open_help(WHAT_PRINT, 0, assets);
+                }
             }
             return;
         }
@@ -1010,15 +1132,24 @@ impl Paint {
             return;
         }
         if self.tool == Tool::Transformers {
-            if let Some(log) = self.transformers.click_strip(x, y)
-                && let Some(msg) = log
-            {
-                fx.push(Effect::Log(msg.into()));
+            if let Some(log) = self.transformers.click_strip(x, y) {
+                if let Some(msg) = log {
+                    fx.push(Effect::Log(msg.into()));
+                }
+                if !inside(ARROW_UP, x, y) && !inside(ARROW_DOWN, x, y) {
+                    self.show_help(true, assets);
+                }
             }
             return;
         }
         if self.tool == Tool::Supertools {
-            self.supertools.click_strip(x, y);
+            if self.supertools.click_strip(x, y) {
+                if inside(crate::scenes::supertools::SWITCH, x, y) {
+                    self.open_help(WHAT_SUPERTOOLS, 17, assets);
+                } else {
+                    self.show_help(true, assets);
+                }
+            }
             return;
         }
         if self.tool == Tool::Brush {
@@ -1049,15 +1180,19 @@ impl Paint {
                     }
                 }
             }
+            self.show_help(true, assets);
         }
     }
 
-    /// Aviso de uma ferramenta (balão do original); por ora vai para o registro.
-    fn notice(&mut self, n: Notice, fx: &mut Vec<Effect>) {
+    /// Aviso de uma ferramenta: o balão do Rex do original, mais o registro.
+    fn notice(&mut self, n: Notice, fx: &mut Vec<Effect>, assets: &Assets) {
         match n {
-            Notice::NoVanishingPoint => fx.push(Effect::Log(
-                "super-ferramentas: você ainda não definiu um ponto de fuga".into(),
-            )),
+            Notice::NoVanishingPoint => {
+                fx.push(Effect::Log(
+                    "super-ferramentas: você ainda não definiu um ponto de fuga".into(),
+                ));
+                self.open_help(WHAT_ERRORS, 5, assets);
+            }
         }
     }
 
@@ -1619,6 +1754,9 @@ impl Scene for Paint {
             .draw_overlay(frame, assets, &self.pal, self.mouse);
         if self.tool == Tool::Sounds {
             self.sounds.draw_overlay(frame, assets);
+        }
+        if let Some(h) = &self.help {
+            h.draw(frame, assets);
         }
     }
 

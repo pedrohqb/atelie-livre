@@ -52,6 +52,30 @@ impl Balloon {
     }
 }
 
+/// Caixa do balão: borda preta de 2 px, fundo pontilhado (amarelo nas
+/// posições de 1 em 3) e cantos arredondados.
+pub fn draw_box(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
+    f.rect(x, y, w, h, BLACK);
+    for yy in y + 2..y + h - 2 {
+        for xx in x + 2..x + w - 2 {
+            let c = if (xx + 2 * yy) % 3 == 0 {
+                YELLOW
+            } else {
+                WHITE
+            };
+            f.put(xx, yy, c);
+        }
+    }
+    for (cx, cy) in [
+        (x, y),
+        (x + w - 1, y),
+        (x, y + h - 1),
+        (x + w - 1, y + h - 1),
+    ] {
+        f.put(cx, cy, WHITE);
+    }
+}
+
 /// Quebra o texto em linhas que cabem em `width` pixels.
 pub fn wrap(font: &Font, text: &str, width: u32) -> Vec<String> {
     let mut lines = Vec::new();
@@ -141,23 +165,7 @@ impl Balloon {
         let font = Self::font(a);
         let (lines, opts, h) = self.layout(font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        // fundo pontilhado: amarelo nas posições (x + y) ímpares de 1 em 3
-        f.rect(self.x, self.y, self.w, h, BLACK);
-        for y in self.y + 2..self.y + h - 2 {
-            for x in self.x + 2..self.x + self.w - 2 {
-                let c = if (x + 2 * y) % 3 == 0 { YELLOW } else { WHITE };
-                f.put(x, y, c);
-            }
-        }
-        // cantos arredondados (tira um pixel de cada canto)
-        for (cx, cy) in [
-            (self.x, self.y),
-            (self.x + self.w - 1, self.y),
-            (self.x, self.y + h - 1),
-            (self.x + self.w - 1, self.y + h - 1),
-        ] {
-            f.put(cx, cy, WHITE);
-        }
+        draw_box(f, self.x, self.y, self.w, h);
         let mut ty = self.y + PAD;
         for line in &lines {
             match &font {

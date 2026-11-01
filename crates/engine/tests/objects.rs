@@ -313,3 +313,56 @@ fn approach_vp_for_one_second_shrinks_and_moves_and_png_has_no_guides() {
     assert_eq!(flat.get(48, 0), Some(WHITE));
     assert_eq!(flat.get(10, vp.1), Some(WHITE));
 }
+
+#[test]
+fn mczee_click_with_bucket_opens_paint_bucket_balloon() {
+    let Some(a) = assets() else { return };
+    let mut p = Paint::new(None, &a);
+    // na primeira vez o balão do Pincel pode estar aberto: um clique fora fecha
+    p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
+    p.update(&[click(78, 30)], 0.0, &a);
+    assert_eq!(p.tool(), Tool::Bucket);
+    // escolher a ferramenta já abre o balão; fechar e abrir pelo McZee
+    p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
+    assert!(p.help().is_none());
+    p.update(&[click(556, 80)], 0.0, &a);
+    let h = p.help().expect("balão aberto");
+    assert_eq!(h.title(), "Paint bucket");
+    assert!(h.record().plain().contains("Lata de tinta"));
+    assert!(h.x >= 445 && h.x + h.w <= 635);
+    // opção "Troca-cores" (2.º botão da lata) abre o balão dela, com a tecla de atalho ligada
+    p.update(&[click(113 + 37 + 10, 70)], 0.0, &a);
+    let h = p.help().unwrap();
+    assert_eq!(h.title(), "Color swapper");
+    let (bx, by) = (h.x, h.y);
+    let hh = h.height(&a);
+    // procura a ligação da tecla de atalho varrendo o balão
+    let mut target = None;
+    for y in (by..by + hh).step_by(2) {
+        for x in (bx..bx + h.w).step_by(4) {
+            if let Some(t) = h.link_at(&a, x, y) {
+                target = Some((x, y, t));
+                break;
+            }
+        }
+        if target.is_some() {
+            break;
+        }
+    }
+    // a primeira ligação é a palavra do glossário ("adesivo", registro 20)
+    let (lx, ly, t) = target.expect("ligação no balão");
+    assert_eq!(t, 20);
+    p.update(&[click(lx, ly)], 0.0, &a);
+    assert_eq!(p.help().unwrap().title(), "adesivo");
+    let mut f = engine::Frame::new(640, 480);
+    p.draw(&mut f, &a);
+}
+
+#[test]
+fn help_without_data_never_opens_and_niche_click_is_harmless() {
+    let (_d, a) = empty_assets();
+    let mut p = Paint::new(None, &a);
+    p.update(&[click(556, 80), click(78, 30), click(556, 80)], 0.0, &a);
+    assert!(p.help().is_none());
+    assert_eq!(p.tool(), Tool::Bucket);
+}
