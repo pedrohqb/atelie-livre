@@ -64,22 +64,25 @@ mono = normal), achados com `tools/wine/locate.py` nas faixas capturadas
 | 2 | 3 | `14c9`/`14cc` | Grudar ou desgrudar | clique em dois objetos liga (corrente entre eles; movem juntos); clique na corrente desliga |
 | 2 | 4 | `14cd`/`14d0` | Inverter lateral | clique espelha |
 | 2 | 5 | `14d1`/`14d4` | Inverter em cima/embaixo | clique espelha |
-| 2 | 6 | `14d9`/`14dc` | Coloca-adesivos | grava o objeto como adesivo do usuário (fase 2) |
+| 2 | 6 | `14d9`/`14da` | Coloca-adesivos | grava o objeto como adesivo do usuário (fase 2) |
 
-Separador de faixa: `14ef` (29×48). Confira as posições exatas com o
-`locate.py` antes de fixar as constantes.
+Separador de faixa: `14ef` (29×48, máscara `14f1`), logo após o último
+botão (x = 25 + 37·n − 2: 319 na página 1, 282 na página 2); tampa
+esquerda `14db` (19×46) em (4, 57). Posições conferidas com o `locate.py`
+(`14dc` não existe no `.PIC`: o mono de Coloca-adesivos é `14da`).
 
 ## 3. Super-ferramentas de desenho (`1007`; ajuda `WHAT 100a`)
 
-Faixa única (`scratch/orig_sf1.png`; botões em x = 25 + 37·k, com o
-separador `14ef` entre o 3.º e o 4.º): Sem quadriculado `1485`/`1488`,
-Quadriculado grande `1489`/`148c`, Quadriculado pequeno `148d`/`1490` |
-Ponto de fuga `1477`/`1478`, Linha do ponto de fuga `1479`/`147c`, Eixo de
-construção `147d`/`1480`, Aproximar do PF `14d5`/`1481`?, Afastar do PF
-`14d7`/`1484`?, Apagar linha guia (ímã) `14d8`? | Interruptor mágico
-`1491` (22×41, em x 464; `1494`/`1497`/`1498` ligado/desligado). Os `?`
-são palpites a confirmar com o `locate.py` (os ícones escolhidos no
-momento da captura não casam porque estão realçados).
+Faixa única (`scratch/orig_sf1.png`; botões em x = 25 + 37·k, conferidos
+com o `locate.py`): k = 0 Sem quadriculado `1485`/`1488`, k = 1
+Quadriculado **pequeno** `148d`/`1490`, k = 2 Quadriculado **grande**
+`1489`/`148c`; ponta `14ef` em x 134; tampa `14db` em x 189; k = 5 Ponto
+de fuga `1477`/`1478`, k = 6 Linha do ponto de fuga `1479`/`147c`, k = 7
+Aproximar do PF `1481`/`1484`, k = 8 Afastar do PF `14d5`/`14d6`, k = 9
+Eixo de construção `147d`/`1480`, k = 10 Apagar linha guia (ímã)
+`14d7`/`14d8`; Interruptor mágico `1491` ligado / `1497` desligado (22×41,
+em (464, 58); `1495` e `1499` são máscaras). O aviso "sem PF" é o
+registro 5 do bloco `100f` (Rex).
 
 - As **linhas guia** são overlay (nunca no PNG): `Guides { grid: None |
   Big(48 px) | Small(24 px), horizon: Option<(y, vp_x)>, vp_lines:

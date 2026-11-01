@@ -7,7 +7,7 @@ use super::sticker_scripts::{SCRIPT_FPS, SCRIPTS, Script};
 use crate::assets::{Assets, ImageRef, Program};
 use crate::clipart::{ClipRoll, load_rolls};
 use crate::paint::stamp::Stamp;
-use crate::paint::{Canvas, Cell, History, ORIGIN, Shape};
+use crate::paint::{Cell, ORIGIN, Shape};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
 use std::rc::Rc;
@@ -114,10 +114,22 @@ impl Film {
     }
 }
 
+/// Adesivo colocado no quadro, pronto para virar objeto: imagem, canto
+/// superior esquerdo (coordenadas do quadro) e origem (rolo, casa).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    pub stamp: Stamp,
+    pub x: i32,
+    pub y: i32,
+    pub roll: usize,
+    pub item: usize,
+}
+
 /// Adesivo escolhido, ainda não colocado.
 enum Held {
     Animal(usize),
-    Clip(Stamp),
+    /// Clip-art pronto e a casa do rolo de onde veio.
+    Clip(Stamp, usize),
 }
 
 /// Roteiro de um bicho lido de `A-MAG100.ANI` (`formats::atag`): células
@@ -314,35 +326,56 @@ impl Stickers {
         self.held = None;
     }
 
-    /// Termina a animação em curso, colando a imagem de repouso (ação do ovo).
-    /// Verdadeiro se algo foi colado.
-    pub fn finish(&mut self, canvas: &mut Canvas, history: &mut History) -> bool {
-        let Some(p) = self.playing.take() else {
-            return false;
-        };
-        let Some((stamp, x, y)) = &p.rest else {
-            return false;
-        };
-        history.record(canvas);
-        canvas.paste(stamp, *x, *y);
-        true
+    /// Termina a animação em curso: devolve a imagem de repouso a colocar no
+    /// quadro, se o bicho tem uma (a cobra vai embora sem deixar nada).
+    pub fn finish(&mut self) -> Option<Placed> {
+        let p = self.playing.take()?;
+        let (stamp, x, y) = p.rest?;
+        Some(Placed {
+            stamp,
+            x,
+            y,
+            roll: 0,
+            item: p.animal,
+        })
     }
 
-    /// Avança a animação; verdadeiro se ela terminou (e colou) neste passo.
-    pub fn update(&mut self, dt: f32, canvas: &mut Canvas, history: &mut History) -> bool {
-        if let Some(p) = self.playing.as_mut() {
-            p.t += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
-        } else {
-            return false;
-        }
+    /// Avança a animação; devolve o adesivo a colocar se ela terminou neste passo.
+    pub fn update(&mut self, dt: f32) -> Option<Placed> {
+        let p = self.playing.as_mut()?;
+        p.t += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
         let done = self
             .playing
             .as_ref()
             .is_some_and(|p| self.frame_images(p).is_none());
-        if done {
-            return self.finish(canvas, history);
+        if done { self.finish() } else { None }
+    }
+
+    /// Imagem de repouso do adesivo (rolo, casa), para reabrir um desenho.
+    pub fn stamp_for(
+        &self,
+        roll: usize,
+        item: usize,
+        assets: &Assets,
+        pal: &[Rgb],
+    ) -> Option<Stamp> {
+        if roll == 0 {
+            let frames = ANIMALS.get(item)?;
+            return Some(match (self.ani.get(item), &SCRIPTS[item]) {
+                (Some(an), _) => Stamp::from_images(&an.cells[0].0, &an.cells[0].1, pal),
+                (None, Some(sc)) => {
+                    let id = sc.rest.map_or(frames[0], |(id, _, _)| id);
+                    Stamp::from_images(&assets.image(&pic(id)), &assets.image(&pic(id + 6)), pal)
+                }
+                (None, None) => Stamp::from_images(
+                    &assets.image(&pic(frames[0])),
+                    &assets.image(&pic(frames[0] + 6)),
+                    pal,
+                ),
+            });
         }
-        false
+        let art = self.clip.get(roll - 1)?.items.get(item)?.art()?;
+        Some(line_art_stamp(&art, pal))
     }
 
     /// Imagens visíveis no instante atual: (id, x, y na tela, `x, y` é o centro
@@ -377,16 +410,15 @@ impl Stickers {
         }
     }
 
-    /// Clique com a ferramenta de adesivos; verdadeiro se foi tratado aqui.
+    /// Clique com a ferramenta de adesivos: `None` se não era daqui,
+    /// `Some(Some(adesivo))` se um adesivo de clip-art foi colocado.
     pub fn click(
         &mut self,
         x: i32,
         y: i32,
-        canvas: &mut Canvas,
-        history: &mut History,
         assets: &Assets,
         pal: &[Rgb],
-    ) -> Option<bool> {
+    ) -> Option<Option<Placed>> {
         if self.film_open {
             let film = self.film();
             if inside(film.rect(), x, y) {
@@ -405,19 +437,19 @@ impl Stickers {
                         }
                     }
                 }
-                return Some(false);
+                return Some(None);
             }
         }
         if inside(ARROW_UP, x, y) {
             let pages = self.page_count();
             self.page = (self.page + pages - 1) % pages;
             self.reset();
-            return Some(false);
+            return Some(None);
         }
         if inside(ARROW_DOWN, x, y) {
             self.page = (self.page + 1) % self.page_count();
             self.reset();
-            return Some(false);
+            return Some(None);
         }
         if let Some(k) = (0..ROLLS_PER_PAGE).find(|&k| inside(slot_rect(k), x, y)) {
             let roll = self.page * ROLLS_PER_PAGE + k;
@@ -431,15 +463,20 @@ impl Stickers {
                 }
                 self.held = None;
             }
-            return Some(false);
+            return Some(None);
         }
         if self.held.is_some() && inside(canvas_rect(), x, y) {
             let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
             match self.held.take() {
-                Some(Held::Clip(stamp)) => {
-                    history.record(canvas);
-                    canvas.paste(&stamp, cx - stamp.w as i32 / 2, cy - stamp.h as i32 / 2);
-                    return Some(true);
+                Some(Held::Clip(stamp, item)) => {
+                    let (x, y) = (cx - stamp.w as i32 / 2, cy - stamp.h as i32 / 2);
+                    return Some(Some(Placed {
+                        stamp,
+                        x,
+                        y,
+                        roll: self.roll,
+                        item,
+                    }));
                 }
                 Some(Held::Animal(animal)) => {
                     let stamp = |id: u16| {
@@ -480,7 +517,7 @@ impl Stickers {
                 }
                 None => {}
             }
-            return Some(false);
+            return Some(None);
         }
         None
     }
@@ -490,7 +527,7 @@ impl Stickers {
             return Some(Held::Animal(item));
         }
         let art = self.clip.get(self.roll - 1)?.items.get(item)?.art()?;
-        Some(Held::Clip(line_art_stamp(&art, pal)))
+        Some(Held::Clip(line_art_stamp(&art, pal), item))
     }
 
     /// Faixa de opções: rolos da página e setas.
@@ -584,7 +621,7 @@ impl Stickers {
                     let (x, y) = (mouse.0 + dx, mouse.1 + dy);
                     blit_clipped(f, &a.image(&pic(id)), &a.image(&pic(id + 6)), x, y, clip);
                 }
-                Some(Held::Clip(stamp)) => {
+                Some(Held::Clip(stamp, _)) => {
                     let x0 = mouse.0 - stamp.w as i32 / 2;
                     let y0 = mouse.1 - stamp.h as i32 / 2;
                     for (k, v) in stamp.px.iter().enumerate() {

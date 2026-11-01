@@ -236,8 +236,10 @@ fn clip_art_sticker_is_placed_at_full_size() {
     p.update(&[c(106, 120)], 0.0, &a);
     assert!(p.stickers().holding());
     p.update(&[c(330, 280)], 0.0, &a);
-    let px = &p.canvas().px;
-    let w = p.canvas().w as usize;
+    // o adesivo é um objeto sobre o quadro: medir na composição
+    let flat = p.composed();
+    let px = &flat.px;
+    let w = flat.w as usize;
     let (mut x0, mut x1) = (usize::MAX, 0);
     for (k, v) in px.iter().enumerate() {
         if *v != 0 {

@@ -438,6 +438,20 @@ impl Assets {
         }
     }
 
+    /// Há uma imagem válida para `r`? (Sem aviso; a imagem fica em cache.)
+    pub fn has_image(&self, r: &ImageRef) -> bool {
+        if self.images.borrow().contains_key(r) {
+            return true;
+        }
+        match self.load_image(r) {
+            Ok(img) => {
+                self.images.borrow_mut().insert(r.clone(), Rc::new(img));
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     /// Imagem decodificada (em cache); recurso ausente ou inválido vira `placeholder(32, 32)`.
     pub fn image(&self, r: &ImageRef) -> Rc<Image> {
         if let Some(img) = self.images.borrow().get(r) {
@@ -640,6 +654,16 @@ mod tests {
         assert!(a.patterns(Program::Artist).is_empty());
         assert!(a.patterns(Program::Writer).is_empty());
         assert_eq!(a.palettes(Program::Artist).pal256.len(), 256);
+    }
+
+    #[test]
+    fn has_image_is_false_without_pic() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("ARTIST.EXE"), b"MZ").unwrap();
+        let a = Assets::open(dir.path()).unwrap();
+        assert!(!a.has_image(&ImageRef::Pic(Program::Artist, 0x1000)));
+        // `image` continua devolvendo o quadriculado
+        assert_eq!(a.image(&ImageRef::Pic(Program::Artist, 0x1000)).width, 32);
     }
 
     #[test]

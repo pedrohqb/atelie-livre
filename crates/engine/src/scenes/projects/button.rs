@@ -382,7 +382,7 @@ mod tests {
         c.plot(117 + 10, 173, &Ink::solid(INK_BLACK));
         assert!(b.set_kind(Kind::Round, &mut c, &mut h));
         assert_eq!(c.get(127, 173), Some(WHITE));
-        assert!(h.toggle(&mut c));
+        assert!(h.toggle(&mut c, &mut crate::paint::Objects::default()));
         assert_eq!(c.get(127, 173), Some(INK_BLACK));
     }
 

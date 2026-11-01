@@ -8,8 +8,8 @@ pub mod flipbook;
 
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
-use crate::paint::store::{save_png, timestamp};
-use crate::paint::{Canvas, History};
+use crate::paint::store::{compose_unclipped, save_objects, save_png, timestamp};
+use crate::paint::{Canvas, History, Objects};
 use formats::palette::Rgb;
 use std::path::Path;
 
@@ -110,22 +110,29 @@ impl ProjectKind {
 }
 
 /// Grava o quadro de um projeto de página única: `ultimo-<tipo>.png` sempre e,
-/// se mudou, `<tipo>-AAAAMMDD-HHMMSS.png`.
+/// se mudou, `<tipo>-AAAAMMDD-HHMMSS.png`. Os objetos vão achatados no PNG e,
+/// ao lado, em `*.objetos.json` + `*.fundo.png` (como em `save_drawing_objects`).
 pub fn save_picture(
     dir: &Path,
     kind: ProjectKind,
     c: &Canvas,
+    objs: &Objects,
     pal: &[Rgb],
     changed: bool,
     now: u64,
 ) -> Result<(), String> {
     let fail = |e: std::io::Error, p: &Path| format!("não consegui gravar {}: {e}", p.display());
     std::fs::create_dir_all(dir).map_err(|e| fail(e, dir))?;
+    let flat = compose_unclipped(c, objs);
+    let last_stem = format!("ultimo-{}", kind.file_stem());
     let last = dir.join(kind.last_name());
-    save_png(c, pal, &last).map_err(|e| fail(e, &last))?;
+    save_png(&flat, pal, &last).map_err(|e| fail(e, &last))?;
+    save_objects(dir, &last_stem, c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
     if changed {
-        let named = dir.join(format!("{}-{}.png", kind.file_stem(), timestamp(now)));
-        save_png(c, pal, &named).map_err(|e| fail(e, &named))?;
+        let stem = format!("{}-{}", kind.file_stem(), timestamp(now));
+        let named = dir.join(format!("{stem}.png"));
+        save_png(&flat, pal, &named).map_err(|e| fail(e, &named))?;
+        save_objects(dir, &stem, c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
     }
     Ok(())
 }
@@ -240,13 +247,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path().join("desenhos");
         let c = Canvas::new(CANVAS_W, CANVAS_H);
-        save_picture(&d, ProjectKind::Comics, &c, &pal(), false, 0).unwrap();
+        let o = Objects::default();
+        save_picture(&d, ProjectKind::Comics, &c, &o, &pal(), false, 0).unwrap();
         assert!(d.join("ultimo-quadrinhos.png").exists());
         assert_eq!(std::fs::read_dir(&d).unwrap().count(), 1);
-        save_picture(&d, ProjectKind::Button, &c, &pal(), true, 1_793_404_800).unwrap();
+        save_picture(&d, ProjectKind::Button, &c, &o, &pal(), true, 1_793_404_800).unwrap();
         assert!(d.join("ultimo-botao.png").exists());
         assert!(d.join("botao-20261031-000000.png").exists());
-        save_picture(&d, ProjectKind::Sticker, &c, &pal(), true, 0).unwrap();
+        save_picture(&d, ProjectKind::Sticker, &c, &o, &pal(), true, 0).unwrap();
         assert!(d.join("adesivo-19700101-000000.png").exists());
         assert_eq!(ProjectKind::Sticker.last_name(), "ultimo-adesivo.png");
     }
@@ -257,8 +265,16 @@ mod tests {
         let file = dir.path().join("arquivo");
         std::fs::write(&file, b"x").unwrap();
         let c = Canvas::new(2, 2);
-        let e =
-            save_picture(&file.join("sub"), ProjectKind::Comics, &c, &pal(), true, 0).unwrap_err();
+        let e = save_picture(
+            &file.join("sub"),
+            ProjectKind::Comics,
+            &c,
+            &Objects::default(),
+            &pal(),
+            true,
+            0,
+        )
+        .unwrap_err();
         assert!(e.contains("não consegui gravar"));
     }
 

@@ -8,6 +8,7 @@ pub mod assets;
 pub mod balloon;
 pub mod clipart;
 pub mod frame;
+pub mod help;
 pub mod paint;
 pub mod paths;
 pub mod rng;

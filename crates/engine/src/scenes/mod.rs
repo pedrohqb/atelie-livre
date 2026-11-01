@@ -17,6 +17,8 @@ pub mod sticker_scripts;
 pub mod stickers;
 pub mod story;
 pub mod street;
+pub mod supertools;
+pub mod transformers;
 pub mod tricks_3d;
 pub mod tricks_basic;
 pub mod wizard;

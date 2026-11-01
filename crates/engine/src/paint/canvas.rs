@@ -186,28 +186,43 @@ pub fn line_points(a: (i32, i32), b: (i32, i32)) -> Vec<(i32, i32)> {
     }
 }
 
-/// Desfazer de um nível: guarda o quadro antes da última ação; desfazer e refazer se alternam.
+/// Desfazer de um nível: guarda o quadro (e, se a ação mexeu neles, os
+/// objetos) antes da última ação; desfazer e refazer se alternam.
 #[derive(Debug, Clone, Default)]
 pub struct History {
     saved: Option<Vec<u8>>,
+    /// Objetos de antes da ação; `None` quando a ação só mexeu nos pixels.
+    objects: Option<super::objects::Objects>,
 }
 
 impl History {
-    /// Chamar antes de cada ação que muda o quadro.
+    /// Chamar antes de cada ação que muda só o quadro.
     pub fn record(&mut self, c: &Canvas) {
         self.saved = Some(c.px.clone());
+        self.objects = None;
+    }
+
+    /// Chamar antes de uma ação que muda os objetos (e talvez o quadro).
+    pub fn record_all(&mut self, c: &Canvas, objs: &super::objects::Objects) {
+        self.saved = Some(c.px.clone());
+        self.objects = Some(objs.clone());
     }
 
     /// Guarda um estado anterior já copiado (quando só se sabe depois se a ação mudou algo).
     pub fn record_previous(&mut self, px: Vec<u8>) {
         self.saved = Some(px);
+        self.objects = None;
     }
 
-    /// Troca o quadro pelo guardado (desfaz ou refaz). Falso se não há nada guardado.
-    pub fn toggle(&mut self, c: &mut Canvas) -> bool {
+    /// Troca o quadro (e os objetos, se guardados) pelo estado guardado
+    /// (desfaz ou refaz). Falso se não há nada guardado.
+    pub fn toggle(&mut self, c: &mut Canvas, objs: &mut super::objects::Objects) -> bool {
         match &mut self.saved {
             Some(s) if s.len() == c.px.len() => {
                 std::mem::swap(s, &mut c.px);
+                if let Some(o) = self.objects.as_mut() {
+                    std::mem::swap(o, objs);
+                }
                 true
             }
             _ => false,
@@ -372,12 +387,38 @@ mod tests {
     fn history_toggle_undo_redo() {
         let mut c = Canvas::new(4, 4);
         let mut h = History::default();
-        assert!(!h.toggle(&mut c));
+        let mut o = super::super::objects::Objects::default();
+        assert!(!h.toggle(&mut c, &mut o));
         h.record(&c);
         c.plot(0, 0, &Ink::solid(BLACK));
-        assert!(h.toggle(&mut c));
+        assert!(h.toggle(&mut c, &mut o));
         assert_eq!(c.get(0, 0), Some(WHITE));
-        assert!(h.toggle(&mut c));
+        assert!(h.toggle(&mut c, &mut o));
         assert_eq!(c.get(0, 0), Some(BLACK));
+    }
+
+    #[test]
+    fn history_restores_objects_only_when_recorded_with_them() {
+        use super::super::objects::{Objects, Source};
+        use super::super::stamp::Stamp;
+        let mut c = Canvas::new(4, 4);
+        let mut o = Objects::default();
+        let img = std::rc::Rc::new(Stamp {
+            w: 1,
+            h: 1,
+            px: vec![Some(1)],
+        });
+        let mut h = History::default();
+        h.record_all(&c, &o);
+        o.place(img.clone(), 0, 0, Source::Png("x".into()));
+        assert!(h.toggle(&mut c, &mut o));
+        assert!(o.is_empty());
+        assert!(h.toggle(&mut c, &mut o));
+        assert_eq!(o.len(), 1);
+        // ação só de pixels: os objetos ficam como estão
+        h.record(&c);
+        o.place(img, 1, 1, Source::Png("y".into()));
+        assert!(h.toggle(&mut c, &mut o));
+        assert_eq!(o.len(), 2);
     }
 }

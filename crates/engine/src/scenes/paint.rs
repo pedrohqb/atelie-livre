@@ -5,25 +5,31 @@
 use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
-use super::stickers::Stickers;
+use super::stickers::{Placed, Stickers};
+use super::supertools::{GUIDES_NAME, Guides, Notice, Supertools};
+use super::transformers::Transformers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
+use crate::help::HelpBalloon;
 use crate::paint::geom::{
     ellipse_points, fill_ellipse_points, fill_rect_points, fill_triangle_points, polyline_points,
     rect_points, thicken, triangle_points,
 };
+use crate::paint::objects::words_stamp;
 use crate::paint::stamp::Stamp;
-use crate::paint::store::{LAST_NAME, load_png, save_drawing};
+use crate::paint::store::{load_drawing, save_drawing_objects};
 use crate::paint::{
-    CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Shape, balloon_pixels, effect_shape,
-    line_points, page_shapes, text_pixels, text_size,
+    CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Objects, Shape, Source, balloon_pixels,
+    effect_shape, line_points, page_shapes, text_pixels, text_size,
 };
 use crate::rng::XorShift;
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use formats::fnt::Font;
 use formats::palette::Rgb;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use crate::paint::COLORS;
 const SWATCHES: usize = COLORS.len();
@@ -39,6 +45,25 @@ const RED: [u8; 3] = [250, 0, 57];
 const PAGE_COUNT: u8 = 6;
 const STAMP_SPACING: i32 = 16;
 const EXIT: (i32, i32, i32, i32) = (580, 18, 56, 88);
+/// Nicho do McZee à direita da faixa: clique abre o balão de ajuda.
+const NICHE: (i32, i32, i32, i32) = (533, 56, 47, 48);
+/// Canto do balão de ajuda, à direita do quadro.
+const HELP_POS: (i32, i32) = (445, 115);
+/// Blocos `WHAT` da ajuda de cada ferramenta.
+const WHAT_BRUSH: u16 = 0x1002;
+const WHAT_BUCKET: u16 = 0x1003;
+const WHAT_SOUNDS: u16 = 0x1004;
+const WHAT_STICKERS: u16 = 0x1005;
+const WHAT_TRANSFORMERS: u16 = 0x1006;
+const WHAT_EGG: u16 = 0x1007;
+const WHAT_VACUUM: u16 = 0x1008;
+const WHAT_WORDS: u16 = 0x1009;
+const WHAT_SUPERTOOLS: u16 = 0x100a;
+const WHAT_PRINT: u16 = 0x100b;
+/// Avisos do Rex ("Você ainda não definiu um ponto de fuga" é o 5).
+const WHAT_ERRORS: u16 = 0x100f;
+/// O balão do Pincel aparece na primeira vez que a tela abre na sessão.
+static FIRST_HELP: AtomicBool = AtomicBool::new(true);
 const ARROW_UP: (i32, i32, i32, i32) = (504, 58, 16, 14);
 const ARROW_DOWN: (i32, i32, i32, i32) = (504, 90, 16, 14);
 /// Carimbos da página 2 do pincel (`ARTIST.PIC`).
@@ -89,6 +114,8 @@ const VACUUM_BUTTONS: [u16; 8] = [
 const WORDS_BUTTONS: [u16; 2] = [0x1797, 0x1799];
 /// Período do piscar do cursor de texto, em segundos (meio período aceso).
 const CARET_PERIOD: f32 = 1.0;
+/// Meio período do piscar do contorno do objeto sob o ponteiro, em segundos.
+const BLINK_HALF: f32 = 0.25;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
@@ -98,6 +125,8 @@ pub enum Tool {
     Words,
     Sounds,
     Vacuum,
+    Transformers,
+    Supertools,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +135,6 @@ enum Action {
     Undo,
     /// Imprimir: exporta o quadro em PNG e manda para a impressora (`lp`), se houver.
     Print,
-    Unavailable(&'static str),
 }
 
 /// Ferramenta da barra: ícone normal e ativo, com as máscaras, e a largura do clique.
@@ -182,7 +210,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 36,
         normal: (0x1045, 0x104b),
         active: (0x1065, 0x1067),
-        action: Action::Unavailable("transformadores"),
+        action: Action::Select(Tool::Transformers),
     },
     ToolDef {
         x: 412,
@@ -190,7 +218,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 35,
         normal: (0x1007, 0x1009),
         active: (0x1069, 0x106b),
-        action: Action::Unavailable("super-ferramentas"),
+        action: Action::Select(Tool::Supertools),
     },
     ToolDef {
         x: 458,
@@ -332,6 +360,8 @@ pub struct Paint {
     vacuum_anchor: Option<(i32, i32)>,
     /// Trecho aspirado ou copiado.
     clipboard: Option<Stamp>,
+    /// Objeto sob o ponteiro quando o aspira-cópias foi apertado.
+    vacuum_object: Option<u32>,
     drawings: Option<PathBuf>,
     pal: Vec<Rgb>,
     patterns: Vec<[u8; 8]>,
@@ -339,6 +369,8 @@ pub struct Paint {
     /// Carimbos dos efeitos 6 a 11 da página 3.
     effect_stamps: Vec<Shape>,
     canvas: Canvas,
+    /// Adesivos e palavras por cima da pintura.
+    objects: Objects,
     history: History,
     tool: Tool,
     color: usize,
@@ -358,7 +390,15 @@ pub struct Paint {
     changed: bool,
     stickers: Stickers,
     sounds: Sounds,
+    transformers: Transformers,
+    supertools: Supertools,
+    /// Balão de ajuda do McZee aberto.
+    help: Option<HelpBalloon>,
+    /// Blocos `WHAT` já lidos.
+    dialogs: HashMap<u16, Rc<Vec<formats::what::Record>>>,
     mouse: (i32, i32),
+    /// Tempo acumulado, para o piscar do contorno dos objetos.
+    time: f32,
     /// Projeto da Oficina em andamento, se a tela foi aberta por ele.
     project: Option<Project>,
 }
@@ -372,10 +412,10 @@ impl Paint {
             .iter()
             .map(|&id| Shape::from_stamp(&assets.image(&pic(id))))
             .collect();
-        let canvas = drawings
+        let (canvas, records) = drawings
             .as_ref()
-            .and_then(|d| load_png(&d.join(LAST_NAME), &pal))
-            .unwrap_or_else(|| Canvas::new(CANVAS_W, CANVAS_H));
+            .and_then(|d| load_drawing(d, "ultimo", &pal))
+            .unwrap_or_else(|| (Canvas::new(CANVAS_W, CANVAS_H), Vec::new()));
         let mut p = Paint {
             common: KidCommon::new(None),
             drawings,
@@ -387,6 +427,7 @@ impl Paint {
                 .map(|&id| Shape::from_stamp(&assets.image(&pic(id))))
                 .collect(),
             canvas,
+            objects: Objects::default(),
             history: History::default(),
             tool: Tool::Brush,
             color: SWATCHES - 1,
@@ -402,17 +443,179 @@ impl Paint {
             changed: false,
             stickers: Stickers::new(assets),
             sounds: Sounds::new(assets),
+            transformers: Transformers::new(),
+            supertools: Supertools::new(),
+            help: None,
+            dialogs: HashMap::new(),
             mouse: (0, 0),
+            time: 0.0,
             vacuum: VacuumMode::Cut,
             vacuum_anchor: None,
+            vacuum_object: None,
             clipboard: None,
             project: None,
         };
         p.set_brush(1, 0);
+        p.restore_objects(&records, assets);
         if let Some(d) = &p.drawings {
             p.sounds.load_spots(&d.join(SPOTS_NAME));
+            if let Some(g) = Guides::load(&d.join(GUIDES_NAME)) {
+                p.supertools.guides = g;
+            }
+        }
+        if FIRST_HELP.swap(false, Ordering::Relaxed) {
+            p.open_help(WHAT_BRUSH, 1, assets);
         }
         p
+    }
+
+    /// Abre o balão de ajuda do registro `index` do bloco `WHAT` (se existir).
+    fn open_help(&mut self, block: u16, index: usize, assets: &Assets) {
+        let records = self
+            .dialogs
+            .entry(block)
+            .or_insert_with(|| Rc::new(assets.dialogs(Program::Artist, block)))
+            .clone();
+        self.help = HelpBalloon::new(records, block, index, HELP_POS.0, HELP_POS.1);
+    }
+
+    /// Balão de ajuda aberto, se houver.
+    pub fn help(&self) -> Option<&HelpBalloon> {
+        self.help.as_ref()
+    }
+
+    /// Bloco e registro da ajuda da ferramenta atual (`option` = da opção escolhida).
+    fn help_target(&self, option: bool) -> (u16, usize) {
+        match self.tool {
+            Tool::Brush => (
+                WHAT_BRUSH,
+                if option && self.brush.0 == 5 {
+                    17 + self.brush.1
+                } else {
+                    1
+                },
+            ),
+            Tool::Bucket => (WHAT_BUCKET, if option { 1 + self.bucket_option } else { 0 }),
+            Tool::Stickers => (WHAT_STICKERS, 0),
+            Tool::Sounds => (WHAT_SOUNDS, 0),
+            Tool::Words => (WHAT_WORDS, 0),
+            Tool::Vacuum => (
+                WHAT_VACUUM,
+                if option {
+                    match self.vacuum {
+                        VacuumMode::Cut => 13,
+                        VacuumMode::Stickers => 1,
+                        VacuumMode::Paste => 9,
+                        VacuumMode::Area => 6,
+                        VacuumMode::Copy => 7,
+                        VacuumMode::Color => 2,
+                        VacuumMode::Sounds => 3,
+                        VacuumMode::All => 4,
+                    }
+                } else {
+                    0
+                },
+            ),
+            Tool::Transformers => (
+                WHAT_TRANSFORMERS,
+                if option {
+                    self.transformers.help_record()
+                } else {
+                    0
+                },
+            ),
+            Tool::Supertools => (
+                WHAT_SUPERTOOLS,
+                if option {
+                    self.supertools.help_record()
+                } else {
+                    0
+                },
+            ),
+        }
+    }
+
+    fn show_help(&mut self, option: bool, assets: &Assets) {
+        let (block, index) = self.help_target(option);
+        self.open_help(block, index, assets);
+    }
+
+    /// Remonta os objetos lidos do `*.objetos.json` (adesivos pelos rolos,
+    /// PNG do usuário na pasta de desenhos, palavras pela fonte).
+    fn restore_objects(&mut self, records: &[crate::paint::objects::Record], assets: &Assets) {
+        let font = self.font.clone();
+        self.objects = Objects::from_records(records, |src| match src {
+            Source::Roll { roll, item } => self.stickers.stamp_for(*roll, *item, assets, &self.pal),
+            Source::Png(name) => {
+                let dir = self.drawings.as_ref()?;
+                // só nomes simples, dentro da pasta de desenhos
+                if name.contains(['/', '\\']) {
+                    return None;
+                }
+                crate::paint::store::load_stamp_png(&dir.join(name), &self.pal)
+            }
+            Source::Words {
+                text,
+                balloon,
+                color,
+            } => Some(words_stamp(font.as_deref(), text, *balloon, *color)),
+        });
+    }
+
+    /// Quadro com os objetos por cima (o que se vê e o que se grava).
+    pub fn composed(&self) -> Canvas {
+        crate::paint::store::compose_unclipped(&self.canvas, &self.objects)
+    }
+
+    pub fn objects(&self) -> &Objects {
+        &self.objects
+    }
+
+    /// Paleta de 256 cores do quadro.
+    pub fn palette(&self) -> &[Rgb] {
+        &self.pal
+    }
+
+    /// Coloca um adesivo como objeto (uma ação do ovo).
+    fn place_sticker(&mut self, placed: Placed) {
+        self.history.record_all(&self.canvas, &self.objects);
+        self.objects.place(
+            Rc::new(placed.stamp),
+            placed.x,
+            placed.y,
+            Source::Roll {
+                roll: placed.roll,
+                item: placed.item,
+            },
+        );
+        self.changed = true;
+    }
+
+    pub fn transformers(&self) -> &Transformers {
+        &self.transformers
+    }
+
+    pub fn supertools(&self) -> &Supertools {
+        &self.supertools
+    }
+
+    /// Linhas guia das Super-ferramentas (só na tela).
+    pub fn guides(&self) -> &Guides {
+        &self.supertools.guides
+    }
+
+    /// Objeto sob o ponteiro, se a ferramenta mexe em objetos (o contorno pisca).
+    fn hovered_object(&self) -> Option<u32> {
+        let handles = matches!(
+            (self.tool, self.vacuum),
+            (Tool::Vacuum, VacuumMode::Stickers | VacuumMode::Copy)
+                | (Tool::Transformers | Tool::Supertools, _)
+        );
+        if !handles || !inside(canvas_rect(), self.mouse.0, self.mouse.1) {
+            return None;
+        }
+        self.objects
+            .hit(self.mouse.0 - ORIGIN.0, self.mouse.1 - ORIGIN.1)
     }
 
     /// Abre a tela como um projeto da Oficina: reabre o último trabalho desse
@@ -427,12 +630,13 @@ impl Paint {
             ))));
             return p;
         }
-        if let Some(c) = p
+        if let Some((c, records)) = p
             .drawings
             .as_ref()
-            .and_then(|d| load_png(&d.join(kind.last_name()), &p.pal))
+            .and_then(|d| load_drawing(d, &format!("ultimo-{}", kind.file_stem()), &p.pal))
         {
             p.canvas = c;
+            p.restore_objects(&records, assets);
         }
         let project = Project::new(kind);
         project.prepare(&mut p.canvas);
@@ -460,9 +664,10 @@ impl Paint {
         let name =
             crate::paint::store::timestamp_name(now_secs()).replace("desenho-", "impressao-");
         let path = dir.join(name);
+        let flat = self.composed();
         let page = match &self.project {
-            Some(p) => p.print_page(&self.canvas, &self.pal),
-            None => self.canvas.clone(),
+            Some(p) => p.print_page(&flat, &self.pal),
+            None => flat,
         };
         if let Err(e) = crate::paint::store::save_png(&page, &self.pal, &path) {
             return Effect::Log(format!(
@@ -552,14 +757,26 @@ impl Paint {
         if w.text.is_empty() {
             return;
         }
-        let font = self.font.clone();
-        let font = font.as_deref();
-        self.history.record(&self.canvas);
-        if self.words_option == 1 {
-            self.canvas.draw_balloon(font, w.x, w.y, &w.text);
-        }
-        self.canvas
-            .draw_text(font, w.x, w.y, &w.text, COLORS[self.color]);
+        let balloon = self.words_option == 1;
+        let color = COLORS[self.color];
+        let stamp = words_stamp(self.font.as_deref(), &w.text, balloon, color);
+        // o canto do texto fica onde o clique foi; o balão sobra em volta
+        let pad = if balloon {
+            crate::paint::text::BALLOON_PAD
+        } else {
+            0
+        };
+        self.history.record_all(&self.canvas, &self.objects);
+        self.objects.place(
+            Rc::new(stamp),
+            w.x - pad,
+            w.y - pad,
+            Source::Words {
+                text: w.text,
+                balloon,
+                color,
+            },
+        );
         self.changed = true;
     }
 
@@ -598,14 +815,14 @@ impl Paint {
     }
 
     fn finish_sticker(&mut self) {
-        if self.stickers.finish(&mut self.canvas, &mut self.history) {
-            self.changed = true;
+        if let Some(placed) = self.stickers.finish() {
+            self.place_sticker(placed);
         }
     }
 
     fn option_count(&self) -> usize {
         match self.tool {
-            Tool::Stickers | Tool::Sounds => 0,
+            Tool::Stickers | Tool::Sounds | Tool::Transformers | Tool::Supertools => 0,
             Tool::Brush => 12,
             Tool::Bucket => BUCKET_BUTTONS.len(),
             Tool::Words => WORDS_BUTTONS.len(),
@@ -757,6 +974,17 @@ impl Paint {
             fx.extend(fb.click(x, y, self.drawings.as_deref(), assets));
             return;
         }
+        if let Some(h) = self.help.take() {
+            if h.contains(assets, x, y) {
+                // ligação (dica, tecla, glossário) abre o registro ligado no lugar
+                self.help = match h.link_at(assets, x, y) {
+                    Some(target) => h.follow(target).or(Some(h)),
+                    None => Some(h),
+                };
+                return;
+            }
+            // clique fora fecha o balão e segue
+        }
         self.stroke = None;
         self.finish_sticker();
         // qualquer clique encerra o texto que estava sendo digitado
@@ -771,12 +999,11 @@ impl Paint {
             }
         }
         if self.tool == Tool::Stickers {
-            match self
-                .stickers
-                .click(x, y, &mut self.canvas, &mut self.history, assets, &self.pal)
-            {
+            match self.stickers.click(x, y, assets, &self.pal) {
                 Some(placed) => {
-                    self.changed |= placed;
+                    if let Some(placed) = placed {
+                        self.place_sticker(placed);
+                    }
                     return;
                 }
                 // qualquer outro clique solta o adesivo que estava na mão
@@ -784,6 +1011,24 @@ impl Paint {
             }
         }
         if self.tool == Tool::Sounds {
+            // som preso a um objeto: colocar no adesivo clicado, ou tocar o dele
+            if inside(canvas_rect(), x, y)
+                && let Some(id) = self.objects.hit(x - ORIGIN.0, y - ORIGIN.1)
+            {
+                if let Some((_, snd)) = self.sounds.take_chosen() {
+                    self.history.record_all(&self.canvas, &self.objects);
+                    if let Some(o) = self.objects.get_mut(id) {
+                        o.sound = Some(snd.clone());
+                    }
+                    fx.push(Effect::PlaySound(snd));
+                    self.changed = true;
+                    return;
+                }
+                if let Some(snd) = self.objects.get(id).and_then(|o| o.sound.clone()) {
+                    fx.push(Effect::PlaySound(snd));
+                    return;
+                }
+            }
             match self.sounds.click(x, y) {
                 Some(Some(snd)) => {
                     fx.push(Effect::PlaySound(snd));
@@ -809,8 +1054,38 @@ impl Paint {
                     }
                 }
                 Tool::Vacuum => self.vacuum_press(cx, cy),
+                Tool::Transformers => {
+                    if self.transformers.press(
+                        cx,
+                        cy,
+                        &mut self.objects,
+                        &self.canvas,
+                        &mut self.history,
+                    ) {
+                        self.changed = true;
+                    }
+                }
+                Tool::Supertools => {
+                    let mut changed = false;
+                    let notice = self.supertools.press(
+                        cx,
+                        cy,
+                        &mut self.objects,
+                        &self.canvas,
+                        &mut self.history,
+                        &mut changed,
+                    );
+                    self.changed |= changed;
+                    if let Some(n) = notice {
+                        self.notice(n, fx, assets);
+                    }
+                }
                 Tool::Stickers | Tool::Sounds => {}
             }
+            return;
+        }
+        if self.project.is_none() && inside(NICHE, x, y) {
+            self.show_help(false, assets);
             return;
         }
         if inside(EXIT, x, y) {
@@ -831,16 +1106,20 @@ impl Paint {
                     self.tool = tool;
                     self.stickers.reset();
                     self.sounds.reset();
+                    self.transformers.reset();
+                    self.supertools.reset();
+                    self.show_help(false, assets);
                 }
                 Action::Undo => {
-                    if self.history.toggle(&mut self.canvas) {
+                    if self.history.toggle(&mut self.canvas, &mut self.objects) {
                         self.changed = true;
                     }
+                    self.open_help(WHAT_EGG, 0, assets);
                 }
-                Action::Print => fx.push(self.print()),
-                Action::Unavailable(name) => fx.push(Effect::Log(format!(
-                    "{name}: ferramenta ainda não disponível"
-                ))),
+                Action::Print => {
+                    fx.push(self.print());
+                    self.open_help(WHAT_PRINT, 0, assets);
+                }
             }
             return;
         }
@@ -850,6 +1129,27 @@ impl Paint {
         }
         if let Some(k) = (0..SWATCHES).find(|&k| inside(pattern_rect(k), x, y)) {
             self.pattern = k;
+            return;
+        }
+        if self.tool == Tool::Transformers {
+            if let Some(log) = self.transformers.click_strip(x, y) {
+                if let Some(msg) = log {
+                    fx.push(Effect::Log(msg.into()));
+                }
+                if !inside(ARROW_UP, x, y) && !inside(ARROW_DOWN, x, y) {
+                    self.show_help(true, assets);
+                }
+            }
+            return;
+        }
+        if self.tool == Tool::Supertools {
+            if self.supertools.click_strip(x, y) {
+                if inside(crate::scenes::supertools::SWITCH, x, y) {
+                    self.open_help(WHAT_SUPERTOOLS, 17, assets);
+                } else {
+                    self.show_help(true, assets);
+                }
+            }
             return;
         }
         if self.tool == Tool::Brush {
@@ -872,13 +1172,26 @@ impl Paint {
                 Tool::Brush => self.set_brush(self.page, k),
                 Tool::Bucket => self.bucket_option = k,
                 Tool::Words => self.words_option = k,
-                Tool::Stickers | Tool::Sounds => {}
+                Tool::Stickers | Tool::Sounds | Tool::Transformers | Tool::Supertools => {}
                 Tool::Vacuum => {
                     self.vacuum = VACUUM_MODES[k];
-                    if matches!(self.vacuum, VacuumMode::Stickers | VacuumMode::Sounds) {
+                    if self.vacuum == VacuumMode::Sounds {
                         fx.push(Effect::Log("aspirador: opção ainda não disponível".into()));
                     }
                 }
+            }
+            self.show_help(true, assets);
+        }
+    }
+
+    /// Aviso de uma ferramenta: o balão do Rex do original, mais o registro.
+    fn notice(&mut self, n: Notice, fx: &mut Vec<Effect>, assets: &Assets) {
+        match n {
+            Notice::NoVanishingPoint => {
+                fx.push(Effect::Log(
+                    "super-ferramentas: você ainda não definiu um ponto de fuga".into(),
+                ));
+                self.open_help(WHAT_ERRORS, 5, assets);
             }
         }
     }
@@ -918,6 +1231,15 @@ impl Paint {
         match self.vacuum {
             VacuumMode::Cut | VacuumMode::Copy | VacuumMode::Color => {
                 self.vacuum_anchor = Some((cx, cy));
+                self.vacuum_object = self.objects.hit(cx, cy);
+            }
+            // aspira-coisas: tira o objeto clicado
+            VacuumMode::Stickers => {
+                if let Some(id) = self.objects.hit(cx, cy) {
+                    self.history.record_all(&self.canvas, &self.objects);
+                    self.objects.remove(id);
+                    self.changed = true;
+                }
             }
             VacuumMode::Paste => {
                 if let Some(s) = &self.clipboard {
@@ -936,15 +1258,31 @@ impl Paint {
                 }
             }
             VacuumMode::All => {
-                self.history.record(&self.canvas);
+                self.history.record_all(&self.canvas, &self.objects);
                 self.canvas.clear();
+                self.objects = Objects::default();
                 self.changed = true;
             }
-            VacuumMode::Stickers | VacuumMode::Sounds => {}
+            VacuumMode::Sounds => {}
         }
     }
 
+    /// Imagem do objeto como está na tela (escala, inversões e giros aplicados).
+    fn object_stamp(&self, id: u32) -> Option<Stamp> {
+        let o = self.objects.get(id)?;
+        let px = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .map(|(x, y)| o.pixel(x, y))
+            .collect();
+        Some(Stamp {
+            w: o.w as u32,
+            h: o.h as u32,
+            px,
+        })
+    }
+
     fn vacuum_release(&mut self, cx: i32, cy: i32) {
+        let object = self.vacuum_object.take();
         let Some(r) = self.drag_rect(cx, cy) else {
             self.vacuum_anchor = None;
             return;
@@ -952,6 +1290,10 @@ impl Paint {
         self.vacuum_anchor = None;
         let (x0, y0, w, h) = r;
         match self.vacuum {
+            // um clique (sem arrastar) num objeto copia o objeto
+            VacuumMode::Copy if w <= 2 && h <= 2 && object.is_some() => {
+                self.clipboard = object.and_then(|id| self.object_stamp(id));
+            }
             VacuumMode::Copy => self.clipboard = Some(self.copy_rect(r)),
             VacuumMode::Cut => {
                 self.clipboard = Some(self.copy_rect(r));
@@ -1173,6 +1515,14 @@ impl Paint {
                 }
                 Some(self.words_option)
             }
+            Tool::Transformers => {
+                self.transformers.draw_strip(f, a);
+                None
+            }
+            Tool::Supertools => {
+                self.supertools.draw_strip(f, a);
+                None
+            }
             Tool::Vacuum => {
                 f.blit_masked(&a.image(&pic(0x1119)), &a.image(&pic(0x111b)), 4, 56);
                 for (k, id) in VACUUM_BUTTONS.iter().enumerate() {
@@ -1210,10 +1560,30 @@ impl Paint {
     }
 
     fn draw_canvas(&self, f: &mut Frame) {
-        for (k, &i) in self.canvas.px.iter().enumerate() {
-            let x = ORIGIN.0 + (k as u32 % self.canvas.w) as i32;
-            let y = ORIGIN.1 + (k as u32 / self.canvas.w) as i32;
+        let flat = self.composed();
+        for (k, &i) in flat.px.iter().enumerate() {
+            let x = ORIGIN.0 + (k as u32 % flat.w) as i32;
+            let y = ORIGIN.1 + (k as u32 / flat.w) as i32;
             f.put(x, y, self.rgb(i));
+        }
+    }
+
+    /// Contorno piscando (preto e branco a cada 0,25 s) do objeto sob o ponteiro.
+    fn draw_blink(&self, f: &mut Frame) {
+        let Some(id) = self.hovered_object() else {
+            return;
+        };
+        let Some(o) = self.objects.get(id) else {
+            return;
+        };
+        let on = (self.time / BLINK_HALF) as i64 % 2 == 0;
+        let c = if on { BLACK } else { WHITE };
+        let r = canvas_rect();
+        for (x, y) in o.outline() {
+            let (sx, sy) = (ORIGIN.0 + x, ORIGIN.1 + y);
+            if inside(r, sx, sy) {
+                f.put(sx, sy, c);
+            }
         }
     }
 
@@ -1288,7 +1658,14 @@ impl Scene for Paint {
                 }
                 Input::MouseMove { x, y } => {
                     self.mouse = (x, y);
-                    self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1)
+                    self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
+                    if self
+                        .transformers
+                        .drag(x - ORIGIN.0, y - ORIGIN.1, &mut self.objects)
+                    {
+                        self.changed = true;
+                    }
+                    self.supertools.drag(x - ORIGIN.0, y - ORIGIN.1);
                 }
                 Input::MouseUp {
                     button: MouseButton::Left,
@@ -1299,6 +1676,8 @@ impl Scene for Paint {
                     if self.vacuum_anchor.is_some() {
                         self.vacuum_release(x - ORIGIN.0, y - ORIGIN.1);
                     }
+                    self.transformers.release();
+                    self.supertools.release();
                 }
                 Input::Key {
                     key,
@@ -1322,13 +1701,19 @@ impl Scene for Paint {
         if let Some(w) = self.words.as_mut() {
             w.blink = (w.blink + dt) % CARET_PERIOD;
         }
+        if dt.is_finite() && dt > 0.0 {
+            self.time = (self.time + dt) % 3600.0;
+        }
         self.spray_tick();
         self.sounds.update(dt);
-        if self
-            .stickers
-            .update(dt, &mut self.canvas, &mut self.history)
-        {
+        if self.transformers.update(dt, &mut self.objects) {
             self.changed = true;
+        }
+        if self.supertools.update(dt, &mut self.objects) {
+            self.changed = true;
+        }
+        if let Some(placed) = self.stickers.update(dt) {
+            self.place_sticker(placed);
         }
         fx
     }
@@ -1348,6 +1733,11 @@ impl Scene for Paint {
         }
         self.draw_columns(frame);
         self.draw_canvas(frame);
+        self.supertools.guides.draw(frame);
+        self.draw_blink(frame);
+        if self.tool == Tool::Transformers {
+            self.transformers.draw_overlay(frame, &self.objects);
+        }
         if let Some(p) = &self.project {
             p.draw_overlay(frame, assets);
         }
@@ -1364,6 +1754,9 @@ impl Scene for Paint {
             .draw_overlay(frame, assets, &self.pal, self.mouse);
         if self.tool == Tool::Sounds {
             self.sounds.draw_overlay(frame, assets);
+        }
+        if let Some(h) = &self.help {
+            h.draw(frame, assets);
         }
     }
 
@@ -1389,16 +1782,27 @@ impl Scene for Paint {
         if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
             return vec![Effect::Log(format!("sons: {e}"))];
         }
+        if let Err(e) = self.supertools.guides.save(&dir.join(GUIDES_NAME)) {
+            return vec![Effect::Log(format!("guias: {e}"))];
+        }
         let saved = match &self.project {
             Some(p) => super::projects::save_picture(
                 dir,
                 p.kind(),
                 &self.canvas,
+                &self.objects,
                 &self.pal,
                 self.changed,
                 now_secs(),
             ),
-            None => save_drawing(dir, &self.canvas, &self.pal, self.changed, now_secs()),
+            None => save_drawing_objects(
+                dir,
+                &self.canvas,
+                &self.objects,
+                &self.pal,
+                self.changed,
+                now_secs(),
+            ),
         };
         let msg = match saved {
             Ok(()) => format!("desenho guardado em {}", dir.display()),
@@ -1413,6 +1817,7 @@ impl Scene for Paint {
 mod tests {
     use super::*;
     use crate::paint::WHITE as W;
+    use crate::paint::store::{LAST_NAME, load_png};
     use crate::scenes::stickers::ANIMALS;
     use crate::scenes::testutil::empty_assets;
 
@@ -1424,6 +1829,10 @@ mod tests {
         }
     }
 
+    fn mv(x: i32, y: i32) -> Input {
+        Input::MouseMove { x, y }
+    }
+
     fn up(x: i32, y: i32) -> Input {
         Input::MouseUp {
             button: MouseButton::Left,
@@ -1432,8 +1841,9 @@ mod tests {
         }
     }
 
+    /// Pixels não brancos da composição (fundo + objetos).
     fn painted(p: &Paint) -> usize {
-        p.canvas().px.iter().filter(|&&v| v != W).count()
+        p.composed().px.iter().filter(|&&v| v != W).count()
     }
 
     #[test]
@@ -1629,15 +2039,86 @@ mod tests {
     }
 
     #[test]
-    fn inactive_tool_logs() {
+    fn supertools_guides_are_overlay_only_and_saved() {
+        use crate::scenes::supertools::{Grid, Op};
         let (_d, a) = empty_assets();
-        let mut p = Paint::new(None, &a);
-        let fx = p.update(&[click(378, 30)], 0.0, &a);
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(430, 30)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Supertools);
+        // quadriculado grande (3.º botão) e ponto de fuga no quadro
+        p.update(&[click(25 + 37 * 2 + 10, 70)], 0.0, &a);
+        assert_eq!(p.guides().grid, Grid::Big);
+        p.update(&[click(25 + 37 * 5 + 10, 70)], 0.0, &a);
+        assert_eq!(p.supertools().op(), Op::VanishingPoint);
+        p.update(&[click(300, 250), up(300, 250)], 0.0, &a);
+        assert_eq!(p.guides().horizon, Some((250 - ORIGIN.1, 300 - ORIGIN.0)));
+        // linha do PF sem PF avisa (depois de apagar o horizonte com o ímã)
+        p.update(
+            &[click(25 + 37 * 10 + 10, 70), click(100, 250), up(100, 250)],
+            0.0,
+            &a,
+        );
+        assert_eq!(p.guides().horizon, None);
+        let fx = p.update(
+            &[click(25 + 37 * 6 + 10, 70), click(100, 300), up(100, 300)],
+            0.0,
+            &a,
+        );
         assert!(
             fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("transformadores")))
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("ponto de fuga")))
         );
-        assert_eq!(p.tool(), Tool::Brush);
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        assert_eq!(painted(&p), 0);
+        p.leave();
+        assert!(dir.path().join(GUIDES_NAME).exists());
+        let q = Paint::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(q.guides().grid, Grid::Big);
+        // o PNG não tem guias
+        let flat = load_png(&dir.path().join(LAST_NAME), q.palette()).unwrap();
+        assert!(flat.px.iter().all(|&v| v == W));
+    }
+
+    #[test]
+    fn transformers_move_object_by_drag_and_strip_pages() {
+        use crate::scenes::transformers::Op;
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        let r = p.objects().get(id).unwrap().rect();
+        let o = p.objects().get(id).unwrap();
+        let (x, y) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        let (sx, sy) = (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y);
+        p.update(&[click(378, 30)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Transformers);
+        assert_eq!(p.transformers().op(), Op::Move);
+        p.update(
+            &[click(sx, sy), mv(sx + 20, sy + 5), up(sx + 20, sy + 5)],
+            0.0,
+            &a,
+        );
+        assert_eq!(
+            p.objects().get(id).unwrap().rect(),
+            (r.0 + 20, r.1 + 5, r.2, r.3)
+        );
+        // página 2, inverter lateral
+        p.update(&[click(510, 95)], 0.0, &a);
+        assert_eq!(p.transformers().page(), 2);
+        p.update(&[click(25 + 37 * 4 + 10, 70)], 0.0, &a);
+        assert_eq!(p.transformers().op(), Op::FlipH);
+        p.update(&[click(sx + 20, sy + 5), up(sx + 20, sy + 5)], 0.0, &a);
+        assert!(p.objects().get(id).unwrap().flip_h);
+        // o ovo desfaz a inversão
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert!(!p.objects().get(id).unwrap().flip_h);
+        let mut f = Frame::new(640, 480);
+        p.update(&[mv(sx + 20, sy + 5)], 0.1, &a);
+        p.draw(&mut f, &a);
     }
 
     #[test]
@@ -1675,6 +2156,100 @@ mod tests {
         assert!(!dir.path().join(SPOTS_NAME).exists());
     }
 
+    /// Coloca o peixe-espada (bicho 1) centrado em `(x, y)` e espera a animação.
+    fn place_fish(p: &mut Paint, a: &Assets, x: i32, y: i32) -> u32 {
+        p.update(&[click(129, 30), click(40, 80), click(54, 152)], 0.0, a);
+        p.update(&[click(x, y)], 0.0, a);
+        p.update(&[], 10.0, a);
+        p.objects().items.last().unwrap().id
+    }
+
+    #[test]
+    fn sticker_object_sound_follows_object_and_is_saved() {
+        use crate::assets::SoundRef;
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        let o = p.objects().get(id).unwrap();
+        let (x, y) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        let (sx, sy) = (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y);
+        // sem biblioteca de sons não há som para escolher: prende um à mão
+        let snd = SoundRef::Library {
+            file: "MAG100.SND".into(),
+            index: 3,
+        };
+        p.objects.get_mut(id).unwrap().sound = Some(snd.clone());
+        p.update(&[click(170, 30)], 0.0, &a);
+        let fx = p.update(&[click(sx, sy)], 0.0, &a);
+        assert!(
+            fx.iter()
+                .any(|e| matches!(e, Effect::PlaySound(s) if *s == snd))
+        );
+        p.leave();
+        let q = Paint::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(q.objects().get(id).unwrap().sound, Some(snd));
+    }
+
+    #[test]
+    fn copy_vacuum_click_copies_object_and_paste_paints_pixels() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        let o = p.objects().get(id).unwrap();
+        let (x, y) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        let (sx, sy) = (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y);
+        p.update(&[click(328, 30), click(25 + 37 * 4 + 10, 70)], 0.0, &a);
+        assert_eq!(p.vacuum_mode(), VacuumMode::Copy);
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+        assert!(p.has_clipboard());
+        assert_eq!(p.objects().len(), 1);
+        p.update(&[click(25 + 37 * 2 + 10, 70), click(100, 400)], 0.0, &a);
+        // a cópia é tinta no fundo, não um objeto
+        assert_eq!(p.objects().len(), 1);
+        assert!(p.canvas().px.iter().any(|&v| v != W));
+    }
+
+    #[test]
+    fn jogar_tudo_fora_removes_objects_and_egg_restores_them() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        place_fish(&mut p, &a, 300, 300);
+        p.update(&[click(328, 30), click(25 + 37 * 7 + 10, 70)], 0.0, &a);
+        p.update(&[click(300, 300)], 0.0, &a);
+        assert_eq!(p.objects().len(), 0);
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert_eq!(p.objects().len(), 1);
+    }
+
+    #[test]
+    fn blink_outline_only_with_thing_vacuum_over_object() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        let o = p.objects().get(id).unwrap();
+        let (x, y) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        let (sx, sy) = (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y);
+        p.update(&[Input::MouseMove { x: sx, y: sy }], 0.0, &a);
+        assert_eq!(p.hovered_object(), None);
+        p.update(&[click(328, 30), click(25 + 37 + 10, 70)], 0.0, &a);
+        p.update(&[Input::MouseMove { x: sx, y: sy }], 0.0, &a);
+        assert_eq!(p.hovered_object(), Some(id));
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        p.update(&[], 0.3, &a);
+        p.draw(&mut f, &a);
+    }
+
     fn text(s: &str) -> Input {
         Input::Text(s.to_string())
     }
@@ -1707,7 +2282,7 @@ mod tests {
         let n = painted(&p);
         assert!(n > 0);
         // fonte 8×8 reserva: tudo dentro de 16×8 a partir de (100, 200) na tela
-        let c = p.canvas();
+        let c = p.composed();
         for (k, &v) in c.px.iter().enumerate() {
             if v != W {
                 let (x, y) = ((k as u32 % c.w) as i32, (k as u32 / c.w) as i32);
@@ -1791,7 +2366,7 @@ mod tests {
         p.update(&[click(228, 30), click(25 + 37 + 10, 70)], 0.0, &a);
         p.update(&[click(13, 113 + 9 * 37)], 0.0, &a); // tinta preta
         p.update(&[click(100, 200), text("Oi"), key(Key::Enter)], 0.0, &a);
-        let c = p.canvas();
+        let c = p.composed();
         // texto 16×8 em (77, 91): balão de (71, 85) a (99, 105) exclusivos
         assert_eq!(c.get(71, 85), Some(1));
         assert_eq!(c.get(98, 104), Some(1));
