@@ -1040,6 +1040,44 @@ impl Paint {
         }
     }
 
+    /// Lata de tinta em `(cx, cy)` do quadro: dentro de um adesivo ou palavra
+    /// pinta o próprio objeto (como no original); no fundo, as bordas dos
+    /// objetos seguram a tinta.
+    fn pour(&mut self, cx: i32, cy: i32) {
+        let ink = self.ink();
+        if let Some(id) = self.objects.hit(cx, cy) {
+            self.history.record_all(&self.canvas, &self.objects);
+            let Some(o) = self.objects.get_mut(id) else {
+                return;
+            };
+            let (ox, oy) = (cx - o.x, cy - o.y);
+            if !o.fill_at(ox, oy, &ink) {
+                return;
+            }
+            // a imagem mudou: passa a ser um adesivo do usuário, gravado ao lado
+            let name = format!(
+                "adesivo-{}-{id}.png",
+                crate::paint::store::timestamp(now_secs())
+            );
+            if let Some(dir) = &self.drawings
+                && std::fs::create_dir_all(dir).is_ok()
+                && crate::paint::store::save_stamp_png(&o.image, &self.pal, &dir.join(&name))
+                    .is_ok()
+            {
+                o.source = Source::Png(name);
+            }
+            self.changed = true;
+            return;
+        }
+        let seen = self.composed();
+        let before = self.canvas.px.clone();
+        self.canvas.fill_within(cx, cy, &ink, &seen.px);
+        if self.canvas.px != before {
+            self.history.record_previous(before);
+            self.changed = true;
+        }
+    }
+
     fn ink(&self) -> Ink {
         Ink {
             color: COLORS[self.color],
@@ -1286,15 +1324,7 @@ impl Paint {
             match self.tool {
                 Tool::Brush => self.start_stroke(cx, cy),
                 Tool::Words => self.start_words(cx, cy),
-                Tool::Bucket => {
-                    let before = self.canvas.px.clone();
-                    let ink = self.ink();
-                    self.canvas.fill(cx, cy, &ink);
-                    if self.canvas.px != before {
-                        self.history.record_previous(before);
-                        self.changed = true;
-                    }
-                }
+                Tool::Bucket => self.pour(cx, cy),
                 Tool::Vacuum => self.vacuum_press(cx, cy),
                 Tool::Transformers => {
                     if self.transformers.press(
@@ -2240,6 +2270,74 @@ mod tests {
         assert_eq!(p.tool(), Tool::Bucket);
         p.update(&[click(300, 300)], 0.0, &a);
         assert_eq!(painted(&p), (CANVAS_W * CANVAS_H) as usize);
+    }
+
+    /// Moldura quadrada de 40×40 com 4 px de borda preta, miolo branco opaco
+    /// e um buraco transparente de 10×10 no meio.
+    fn ring() -> Rc<Stamp> {
+        let mut px = vec![Some(crate::paint::WHITE); 40 * 40];
+        for y in 0..40 {
+            for x in 0..40 {
+                if !(4..36).contains(&x) || !(4..36).contains(&y) {
+                    px[y * 40 + x] = Some(crate::paint::BLACK);
+                } else if (15..25).contains(&x) && (15..25).contains(&y) {
+                    px[y * 40 + x] = None;
+                }
+            }
+        }
+        Rc::new(Stamp { w: 40, h: 40, px })
+    }
+
+    #[test]
+    fn bucket_inside_sticker_paints_the_sticker() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        let id = p.objects.place(ring(), 100, 100, Source::Png("x".into()));
+        p.update(&[click(70, 30)], 0.0, &a);
+        // miolo branco do adesivo (fora do buraco)
+        p.update(&[click(ORIGIN.0 + 108, ORIGIN.1 + 108)], 0.0, &a);
+        let o = p.objects.get(id).unwrap();
+        assert_eq!(o.pixel(8, 8), Some(COLORS[SWATCHES - 1]));
+        assert_eq!(o.pixel(1, 1), Some(crate::paint::BLACK));
+        assert_eq!(o.pixel(20, 20), None);
+        // o fundo não foi tocado e o adesivo virou um PNG do usuário
+        assert!(p.canvas.px.iter().all(|&i| i == crate::paint::WHITE));
+        assert!(matches!(&o.source, Source::Png(n) if n.starts_with("adesivo-")));
+        let Source::Png(n) = &o.source else {
+            unreachable!()
+        };
+        let back = crate::paint::store::load_stamp_png(&dir.path().join(n), &p.pal).unwrap();
+        assert_eq!(back.px[8 * 40 + 8], Some(COLORS[SWATCHES - 1]));
+        assert_eq!(back.px[20 * 40 + 20], None);
+        // o ovo desfaz
+        p.update(&[click(279, 30)], 0.0, &a);
+        assert_eq!(
+            p.objects.get(id).unwrap().pixel(8, 8),
+            Some(crate::paint::WHITE)
+        );
+    }
+
+    #[test]
+    fn bucket_outside_stops_at_sticker_edges() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.objects.place(ring(), 100, 100, Source::Png("x".into()));
+        p.update(&[click(70, 30), click(ORIGIN.0 + 5, ORIGIN.1 + 5)], 0.0, &a);
+        // o fundo à vista no buraco do adesivo continua branco
+        assert_eq!(
+            p.canvas.px[(120 * CANVAS_W + 120) as usize],
+            crate::paint::WHITE
+        );
+        // o resto do fundo (fora do adesivo) foi pintado
+        assert_ne!(
+            p.canvas.px[(5 * CANVAS_W + 5) as usize],
+            crate::paint::WHITE
+        );
+        assert_ne!(
+            p.canvas.px[(300 * CANVAS_W + 500) as usize],
+            crate::paint::WHITE
+        );
     }
 
     #[test]

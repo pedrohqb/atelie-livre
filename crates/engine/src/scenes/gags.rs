@@ -128,6 +128,16 @@ impl GagPlayer {
         }
     }
 
+    /// Alguém mexeu (clique ou tecla): as animações de passagem são do tempo
+    /// em que ninguém mexe, então a espera recomeça (a que já está tocando segue).
+    pub fn poke(&mut self) {
+        if self.current.is_none() {
+            self.wait = self
+                .wait
+                .max(self.rng.range(self.between.0, self.between.1));
+        }
+    }
+
     /// Fixa o próximo roteiro em vez de sortear.
     pub fn queue(&mut self, id: u16) {
         self.next = Some(id);

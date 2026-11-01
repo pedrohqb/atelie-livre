@@ -3,7 +3,7 @@
 //! giros de 90°, correntes (objetos grudados) e som preso. O pincel e a lata
 //! pintam o fundo, por baixo deles. Spec: `docs/superpowers/specs/2026-10-31-objetos-design.md`.
 
-use super::canvas::{BLACK, Canvas, WHITE};
+use super::canvas::{BLACK, Canvas, Ink, ORIGIN, WHITE};
 use super::stamp::Stamp;
 use super::text::{balloon_pixels, text_pixels, text_size};
 use crate::assets::SoundRef;
@@ -126,6 +126,54 @@ impl Object {
             return None;
         }
         self.image.px[(iy * iw + ix) as usize]
+    }
+
+    /// Despeja tinta dentro do objeto, no ponto `(ox, oy)` relativo ao canto:
+    /// a área da mesma cor ligada ao ponto muda para a tinta. A imagem passa
+    /// a ser a que se vê (com escala, giros e inversões aplicados), sem eles.
+    /// Devolve `false` se o ponto é transparente ou nada mudou.
+    pub fn fill_at(&mut self, ox: i32, oy: i32, ink: &Ink) -> bool {
+        let Some(target) = self.pixel(ox, oy) else {
+            return false;
+        };
+        let (w, h) = (self.w.max(1), self.h.max(1));
+        let mut px: Vec<Option<u8>> = (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .map(|(x, y)| self.pixel(x, y))
+            .collect();
+        let mut changed = false;
+        let mut seen = vec![false; px.len()];
+        let mut stack = vec![(ox, oy)];
+        seen[(oy * w + ox) as usize] = true;
+        while let Some((x, y)) = stack.pop() {
+            let i = (y * w + x) as usize;
+            let c = ink.index_at(self.x + x + ORIGIN.0, self.y + y + ORIGIN.1);
+            if px[i] != Some(c) {
+                changed = true;
+            }
+            px[i] = Some(c);
+            for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                    continue;
+                }
+                let j = (ny * w + nx) as usize;
+                if !seen[j] && self.pixel(nx, ny) == Some(target) {
+                    seen[j] = true;
+                    stack.push((nx, ny));
+                }
+            }
+        }
+        if changed {
+            self.image = Rc::new(Stamp {
+                w: w as u32,
+                h: h as u32,
+                px,
+            });
+            self.flip_h = false;
+            self.flip_v = false;
+            self.turns = 0;
+        }
+        changed
     }
 
     /// Gira 90° (horário se `right`), mantendo o centro.

@@ -134,10 +134,22 @@ impl Canvas {
     /// Preenche a região de vizinhança 4 com o mesmo índice do pixel `(x, y)`,
     /// sem sair do recorte.
     pub fn fill(&mut self, x: i32, y: i32, ink: &Ink) {
+        let walls = self.px.clone();
+        self.fill_within(x, y, ink, &walls);
+    }
+
+    /// Como [`Canvas::fill`], mas a área é decidida pela imagem `seen` (do
+    /// tamanho do quadro): é o que se vê na tela, com os adesivos e as
+    /// palavras por cima, e as bordas deles seguram a tinta. Só o fundo é
+    /// pintado (os objetos continuam por cima).
+    pub fn fill_within(&mut self, x: i32, y: i32, ink: &Ink, seen_px: &[u8]) {
         let Some(start) = self.writable(x, y) else {
             return;
         };
-        let target = self.px[start];
+        if seen_px.len() != self.px.len() {
+            return;
+        }
+        let target = seen_px[start];
         let mut seen = vec![false; self.px.len()];
         let mut stack = vec![(x, y)];
         seen[start] = true;
@@ -147,7 +159,7 @@ impl Canvas {
             for (nx, ny) in [(px - 1, py), (px + 1, py), (px, py - 1), (px, py + 1)] {
                 if let Some(i) = self.writable(nx, ny)
                     && !seen[i]
-                    && self.px[i] == target
+                    && seen_px[i] == target
                 {
                     seen[i] = true;
                     stack.push((nx, ny));

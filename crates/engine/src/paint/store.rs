@@ -71,6 +71,36 @@ pub fn load_png(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
     Some(c)
 }
 
+/// Grava um adesivo do usuário como PNG RGBA (transparente fora da forma),
+/// para `load_stamp_png` reabrir; troca o arquivo de uma vez.
+pub fn save_stamp_png(st: &super::stamp::Stamp, pal: &[Rgb], path: &Path) -> io::Result<()> {
+    let mut rgba = Vec::with_capacity((st.w * st.h * 4) as usize);
+    for p in &st.px {
+        match p {
+            Some(i) => {
+                let c = pal
+                    .get(*i as usize)
+                    .copied()
+                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+                rgba.extend_from_slice(&[c.r, c.g, c.b, 255]);
+            }
+            None => rgba.extend_from_slice(&[255, 255, 255, 0]),
+        }
+    }
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    {
+        let file = std::fs::File::create(&tmp)?;
+        let mut enc = png::Encoder::new(io::BufWriter::new(file), st.w, st.h);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().map_err(io::Error::other)?;
+        w.write_image_data(&rgba).map_err(io::Error::other)?;
+    }
+    std::fs::rename(&tmp, path)
+}
+
 /// Abre um PNG de qualquer tamanho (até 594×347) como carimbo: alfa 0 e o
 /// branco puro ficam transparentes; as cores vão para a paleta.
 pub fn load_stamp_png(path: &Path, pal: &[Rgb]) -> Option<super::stamp::Stamp> {
@@ -93,7 +123,8 @@ pub fn load_stamp_png(path: &Path, pal: &[Rgb]) -> Option<super::stamp::Stamp> {
     let px = buf[..info.buffer_size()]
         .chunks_exact(step)
         .map(|p| {
-            if (step == 4 && p[3] == 0) || (p[0], p[1], p[2]) == (255, 255, 255) {
+            // com canal alfa só ele diz o que é transparente; sem ele, o branco
+            if (step == 4 && p[3] == 0) || (step == 3 && (p[0], p[1], p[2]) == (255, 255, 255)) {
                 return None;
             }
             let key = (p[0], p[1], p[2]);

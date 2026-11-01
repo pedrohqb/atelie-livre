@@ -274,8 +274,10 @@ const EASEL: (i32, i32) = (120, 179);
 const EASEL_SCALE: u32 = 4;
 
 /// Espera antes da primeira animação ambiente e entre as seguintes (s).
-const GAG_FIRST: (f32, f32) = (4.0, 10.0);
-const GAG_BETWEEN: (f32, f32) = (12.0, 30.0);
+/// Animações de passagem: só depois de um tempo sem ninguém clicar (como no
+/// original); cada clique ou tecla recomeça a espera.
+const GAG_FIRST: (f32, f32) = (20.0, 30.0);
+const GAG_BETWEEN: (f32, f32) = (20.0, 40.0);
 
 pub struct Room {
     common: KidCommon,
@@ -429,6 +431,12 @@ fn blit_white_transparent(f: &mut Frame, img: &crate::Image, x: i32, y: i32) {
 impl Scene for Room {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
+        if input
+            .iter()
+            .any(|i| matches!(i, Input::Click { .. } | Input::Key { .. }))
+        {
+            self.gags.poke();
+        }
         fx.extend(
             self.gags
                 .update(dt, assets)
@@ -514,7 +522,6 @@ impl Scene for Room {
         if let Some(c) = &self.character {
             c.draw(frame, assets);
         }
-        self.gags.draw(frame, assets);
         if self.floor == Floor::Studio
             && let Some(c) = &self.last_drawing
         {
@@ -531,6 +538,8 @@ impl Scene for Room {
                 }
             }
         }
+        // por cima de tudo (até do quadro no cavalete), menos dos balões
+        self.gags.draw(frame, assets);
         if let Some(b) = &self.balloon {
             b.draw(frame, assets);
         }
@@ -668,7 +677,12 @@ mod tests {
         let mut r = Room::new(Floor::Lobby, None, None, &a);
         let mut f = Frame::new(640, 480);
         let mut played = 0;
-        for _ in 0..200 {
+        // nada nos primeiros 15 s sem cliques; depois de 30 s já começou
+        for _ in 0..150 {
+            r.update(&[], 0.1, &a);
+            assert!(!r.gags.is_playing());
+        }
+        for _ in 0..400 {
             r.update(&[], 0.1, &a);
             if r.gags.is_playing() {
                 played += 1;
@@ -679,5 +693,23 @@ mod tests {
         // McZee fantasiado à esquerda do saguão: pixel não branco na barriga
         r.draw(&mut f, &a);
         assert_ne!(f.pixel(60, 300)[..3], [255, 255, 255]);
+    }
+
+    #[test]
+    fn clicks_postpone_room_gags() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        // um clique a cada 10 s: nunca fica ocioso o bastante
+        for k in 0..600 {
+            let input = if k % 100 == 0 {
+                vec![click(600, 470)]
+            } else {
+                vec![]
+            };
+            r.update(&input, 0.1, &a);
+            assert!(!r.gags.is_playing(), "tocou no passo {k}");
+        }
     }
 }
