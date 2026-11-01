@@ -155,9 +155,10 @@ impl Floor {
             Floor::Tricks => 42,
         };
         let fallback = self.fallback_balloon();
-        match assets.dialogs(Program::Artist, ROOMS_WHAT).get(k) {
+        let records = assets.dialogs(Program::Artist, ROOMS_WHAT);
+        match records.get(k) {
             Some(r) if r.options().len() == fallback.options.len() => {
-                Balloon::from_record(r, fallback.x, fallback.y, user)
+                Balloon::from_block(&records, k, fallback.x, fallback.y, user).unwrap_or(fallback)
             }
             _ => fallback,
         }

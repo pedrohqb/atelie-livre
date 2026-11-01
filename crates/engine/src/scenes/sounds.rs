@@ -254,7 +254,8 @@ impl Sounds {
                 if k == self.cat { YELLOW } else { WHITE },
             );
             f.rect(r.0 + 1, r.1 + 1, r.2 - 2, 8, BLUE);
-            let label = c.name.as_str();
+            let spaced = spaced_name(&c.name);
+            let label = spaced.as_str();
             match &font {
                 Some(fo) => {
                     let w = fo.width(label) as i32;
@@ -398,8 +399,27 @@ impl Sounds {
     }
 }
 
+/// Nome da categoria com espaços antes das maiúsculas ("AnimalDeFazenda" →
+/// "Animal De Fazenda"), como na lista do original.
+fn spaced_name(name: &str) -> String {
+    let mut out = String::new();
+    for (i, ch) in name.chars().enumerate() {
+        if i > 0 && ch.is_uppercase() && !out.ends_with(' ') {
+            out.push(' ');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn category_names_get_spaces() {
+        assert_eq!(super::spaced_name("AnimalDeFazenda"), "Animal De Fazenda");
+        assert_eq!(super::spaced_name("Agudo"), "Agudo");
+    }
+
     use super::*;
 
     fn fake() -> Sounds {

@@ -417,3 +417,13 @@ fn what_blocks_decode_with_options_and_links() {
         }
     }
 }
+
+#[test]
+fn glossary_words_fill_the_balloon_text() {
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let w = a.dialogs(Program::Artist, 0x100d);
+    // 100d[9]: "Dê um [clique duplo] na imagem do quadro."
+    let b = engine::balloon::Balloon::from_block(&w, 9, 0, 0, "x").unwrap();
+    assert!(b.text.contains("clique duplo"), "{}", b.text);
+}

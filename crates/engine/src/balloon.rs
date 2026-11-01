@@ -27,6 +27,42 @@ impl Balloon {
     /// Balão a partir de um registro `WHAT` do original: o texto antes da
     /// primeira opção vira `text` (o `@` vira `name`), as opções ficam na ordem
     /// em que aparecem e a largura é a do original.
+    /// Como [`Balloon::from_record`] para o registro `k` de um bloco, com as
+    /// palavras do glossário (figura `ffff`) trocadas pelo título do registro
+    /// que elas apontam ("Dê um *clique duplo* na imagem").
+    pub fn from_block(records: &[Record], k: usize, x: i32, y: i32, name: &str) -> Option<Balloon> {
+        let r = records.get(k)?;
+        let mut r = r.clone();
+        r.items = r
+            .items
+            .into_iter()
+            .map(|i| match i {
+                Item::Picture { id, param } if id == formats::what::PIC_GLOSSARY => {
+                    match records.get(param as usize) {
+                        Some(t) => Item::Text {
+                            text: t.title.trim().to_string(),
+                            bold: true,
+                            color: 0xf,
+                            indent: 0,
+                            key: false,
+                            signature: false,
+                        },
+                        None => Item::Text {
+                            text: String::new(),
+                            bold: false,
+                            color: 0xf,
+                            indent: 0,
+                            key: false,
+                            signature: false,
+                        },
+                    }
+                }
+                other => other,
+            })
+            .collect();
+        Some(Balloon::from_record(&r, x, y, name))
+    }
+
     pub fn from_record(r: &Record, x: i32, y: i32, name: &str) -> Balloon {
         let mut text = String::new();
         let mut in_options = false;

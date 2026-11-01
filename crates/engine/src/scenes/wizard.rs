@@ -189,8 +189,8 @@ impl Wizard {
             self.step().record
         };
         let dialogs = assets.dialogs(Program::Artist, block);
-        match dialogs.get(k) {
-            Some(r) => Balloon::from_record(r, BALLOON_POS.0, BALLOON_POS.1, "artista"),
+        match Balloon::from_block(&dialogs, k, BALLOON_POS.0, BALLOON_POS.1, "artista") {
+            Some(b) => b,
             None => Balloon {
                 x: BALLOON_POS.0,
                 y: BALLOON_POS.1,

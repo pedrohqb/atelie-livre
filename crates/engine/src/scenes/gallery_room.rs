@@ -271,10 +271,9 @@ impl GalleryRoom {
                 options: Vec::new(),
             },
         };
-        let mut b = match assets.dialogs(Program::Artist, WHAT).get(k) {
-            Some(r) => Balloon::from_record(r, 0, 0, super::room::DEFAULT_USER),
-            None => fallback,
-        };
+        let records = assets.dialogs(Program::Artist, WHAT);
+        let mut b =
+            Balloon::from_block(&records, k, 0, 0, super::room::DEFAULT_USER).unwrap_or(fallback);
         // as opções de disquete do original não existem aqui
         if kind == Ask::Welcome2 {
             b.options
