@@ -62,6 +62,16 @@ valores negativos para baixo e o erro se acumula. Com a divisão, a saída é
 idêntica, amostra por amostra, à do decodificador `adpcm_ms` do FFmpeg em
 todos os 253 sons.
 
+## Bloco `loop` (repetição)
+
+Todo som das DLLs traz, entre `fmt ` e `data`, um bloco `loop` de 10 bytes:
+`u32` início, `u32` fim (em amostras) e `u16` 60. Com fim maior que início,
+o som tem um trecho de repetição: o original toca do começo até o fim do
+trecho, repete `início..fim` enquanto o botão do mouse está apertado (traços
+do pincel, aspirador, spray) e, ao soltar, toca o resto (`fim..final`). O
+início pode ser 0 (ex.: `021e` = 0..6933). Nos demais sons os dois valores
+são 0. `formats::wave::decode` devolve o trecho em `Pcm::loop_points`.
+
 ## Bibliotecas de som em `CHNK`
 
 `SHARED/STUFF/MAG100.SND` e `MAX100.SND` têm o mesmo nome de extensão, mas

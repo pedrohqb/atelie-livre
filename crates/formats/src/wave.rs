@@ -12,6 +12,8 @@ pub struct Pcm {
     pub channels: u16,
     /// Amostras intercaladas por canal.
     pub samples: Vec<i16>,
+    /// Trecho de repetição do bloco `loop` (início e fim, em quadros), se houver.
+    pub loop_points: Option<(u32, u32)>,
 }
 
 pub fn is_riff_wave(data: &[u8]) -> bool {
@@ -42,6 +44,7 @@ pub fn decode(data: &[u8]) -> Result<Pcm> {
     let mut fmt = None;
     let mut fact = None;
     let mut body = None;
+    let mut loop_points = None;
     while r.pos() + 8 <= end {
         let id = r.tag()?;
         let len = r.u32_le()? as usize;
@@ -56,6 +59,12 @@ pub fn decode(data: &[u8]) -> Result<Pcm> {
             }
             b"fact" if len >= 4 => fact = Some(r.clone().u32_le()? as usize),
             b"data" => body = Some(&data[at..at + len.min(avail)]),
+            // `u32` início, `u32` fim (em amostras) e `u16` 60 (ver `docs/formats/sons.md`)
+            b"loop" if len >= 8 && avail >= 8 => {
+                let mut l = r.clone();
+                let (start, stop) = (l.u32_le()?, l.u32_le()?);
+                loop_points = (stop > start).then_some((start, stop));
+            }
             _ => {}
         }
         r.seek(at + len.min(avail))?;
@@ -84,10 +93,12 @@ pub fn decode(data: &[u8]) -> Result<Pcm> {
     if let Some(frames) = fact {
         samples.truncate(frames.saturating_mul(fmt.channels as usize));
     }
+    let frames = samples.len() / fmt.channels as usize;
     Ok(Pcm {
         sample_rate: fmt.rate,
         channels: fmt.channels,
         samples,
+        loop_points: loop_points.filter(|&(_, stop)| stop as usize <= frames),
     })
 }
 
@@ -394,6 +405,32 @@ mod tests {
         assert_eq!(decode(&wav).unwrap().samples, [0]);
     }
 
+    fn loop_chunk(start: u32, stop: u32) -> Vec<u8> {
+        let mut b = start.to_le_bytes().to_vec();
+        b.extend_from_slice(&stop.to_le_bytes());
+        b.extend_from_slice(&60u16.to_le_bytes());
+        chunk(b"loop", &b)
+    }
+
+    #[test]
+    fn loop_chunk_gives_loop_points() {
+        let pcm = |l: Vec<u8>| {
+            decode(&riff(
+                &[fmt_pcm(1, 8000, 8), chunk(b"data", &[128; 10]), l],
+                0,
+            ))
+            .unwrap()
+            .loop_points
+        };
+        assert_eq!(pcm(loop_chunk(2, 7)), Some((2, 7)));
+        assert_eq!(pcm(loop_chunk(0, 10)), Some((0, 10)));
+        // sem trecho (0, 0), invertido ou além do fim do som: sem repetição
+        assert_eq!(pcm(loop_chunk(0, 0)), None);
+        assert_eq!(pcm(loop_chunk(5, 3)), None);
+        assert_eq!(pcm(loop_chunk(2, 11)), None);
+        assert_eq!(pcm(chunk(b"loop", &[1, 0])), None);
+    }
+
     #[test]
     fn unsupported_format_tag() {
         let mut f = fmt_pcm(1, 8000, 4);
@@ -411,6 +448,7 @@ mod tests {
             sample_rate: u32::MAX,
             channels: 2,
             samples: vec![0],
+            loop_points: None,
         };
         let bytes = encode_pcm16(&p);
         assert_eq!(
@@ -425,6 +463,7 @@ mod tests {
             sample_rate: 11025,
             channels: 2,
             samples: vec![0, -1, 32767, -32768],
+            loop_points: None,
         };
         let bytes = encode_pcm16(&p);
         assert!(is_riff_wave(&bytes));

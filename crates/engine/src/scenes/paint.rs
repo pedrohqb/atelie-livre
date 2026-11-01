@@ -2,6 +2,7 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+use super::paint_sfx as sfx;
 use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
@@ -215,7 +216,7 @@ const TOOLS: [ToolDef; 10] = [
         y: 13,
         w: 45,
         normal: (0x100b, 0x100d),
-        active: (0x100b, 0x100d),
+        active: (0x100f, 0x1011),
         action: Action::Select(Tool::Vacuum),
     },
     ToolDef {
@@ -246,6 +247,16 @@ const TOOLS: [ToolDef; 10] = [
 
 /// Botão do balão da lição: evento, posição e imagens (cor, mono).
 type WizardButton = (WizardEvent, (i32, i32), (u16, u16));
+
+/// Som do botão da faixa sob `(x, y)`: seta de página ou opção `k`.
+fn strip_sound(x: i32, y: i32, option: fn(usize) -> u16) -> Option<Effect> {
+    if inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y) {
+        return Some(sfx::play(sfx::PAGE_ARROW));
+    }
+    (0..12)
+        .find(|&k| inside(option_rect(25, k), x, y))
+        .map(|k| sfx::play(option(k)))
+}
 
 fn inside(r: (i32, i32, i32, i32), x: i32, y: i32) -> bool {
     x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
@@ -439,6 +450,8 @@ pub struct Paint {
     wizard_t: f32,
     /// Mapa do prédio aberto sobre o quadro.
     map_open: bool,
+    /// Som em laço e animação dos ícones da barra.
+    sfx: sfx::State,
 }
 
 impl Paint {
@@ -496,6 +509,7 @@ impl Paint {
             trick: None,
             wizard_t: 0.0,
             map_open: false,
+            sfx: sfx::State::default(),
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
@@ -1244,6 +1258,7 @@ impl Paint {
         }
         if inside(MAP_ICON, x, y) {
             self.map_open = true;
+            fx.push(sfx::play(sfx::MAP));
             self.open_help_at(WHAT_MAP, 3, MAP_HELP_POS, assets);
             return;
         }
@@ -1268,6 +1283,9 @@ impl Paint {
         self.stroke = None;
         self.finish_sticker();
         // qualquer clique encerra o texto que estava sendo digitado
+        if self.words.as_ref().is_some_and(|w| !w.text.is_empty()) {
+            fx.push(sfx::play(sfx::WORDS_DONE));
+        }
         self.commit_words();
         if let Some(p) = self.project.as_mut() {
             if let Some(changed) = p.click(x, y, &mut self.canvas, &mut self.history) {
@@ -1279,8 +1297,12 @@ impl Paint {
             }
         }
         if self.tool == Tool::Stickers {
+            let before = (self.stickers.holding(), self.stickers.film_open());
             match self.stickers.click(x, y, assets, &self.pal) {
                 Some(placed) => {
+                    let arrow = inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y);
+                    let after = (self.stickers.holding(), self.stickers.film_open());
+                    fx.extend(sfx::sticker(placed.is_some(), before, after, arrow).map(sfx::play));
                     if let Some(placed) = placed {
                         self.place_sticker(placed);
                     }
@@ -1315,17 +1337,44 @@ impl Paint {
                     self.changed = true;
                     return;
                 }
-                Some(None) => return,
+                Some(None) => {
+                    if inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y) {
+                        fx.push(sfx::play(sfx::PAGE_ARROW));
+                    } else if !inside(canvas_rect(), x, y) {
+                        fx.push(sfx::play(sfx::SOUND_CATEGORY));
+                    }
+                    return;
+                }
                 None => self.sounds.reset(),
             }
         }
         if inside(canvas_rect(), x, y) {
             let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
             match self.tool {
-                Tool::Brush => self.start_stroke(cx, cy),
-                Tool::Words => self.start_words(cx, cy),
-                Tool::Bucket => self.pour(cx, cy),
-                Tool::Vacuum => self.vacuum_press(cx, cy),
+                Tool::Brush => {
+                    self.start_stroke(cx, cy);
+                    if self.stroke.is_some() {
+                        let id = sfx::stroke(self.brush.0, self.brush.1);
+                        fx.push(self.sfx.start_loop(id));
+                    }
+                }
+                Tool::Words => {
+                    self.start_words(cx, cy);
+                    fx.push(sfx::play(sfx::WORDS_START));
+                }
+                Tool::Bucket => {
+                    fx.push(sfx::play(sfx::bucket(self.bucket_option)));
+                    self.pour(cx, cy);
+                }
+                Tool::Vacuum => {
+                    let k = VACUUM_MODES.iter().position(|&m| m == self.vacuum);
+                    match k.and_then(sfx::vacuum) {
+                        Some((id, true)) => fx.push(self.sfx.start_loop(id)),
+                        Some((id, false)) => fx.push(sfx::play(id)),
+                        None => {}
+                    }
+                    self.vacuum_press(cx, cy);
+                }
                 Tool::Transformers => {
                     if self.transformers.press(
                         cx,
@@ -1338,6 +1387,9 @@ impl Paint {
                     }
                 }
                 Tool::Supertools => {
+                    if sfx::supertool_traces(self.supertools.op()) {
+                        fx.push(self.sfx.start_loop(sfx::GUIDE_STROKE));
+                    }
                     let mut changed = false;
                     let notice = self.supertools.press(
                         cx,
@@ -1356,7 +1408,12 @@ impl Paint {
             }
             return;
         }
+        if inside(sfx::MAGNIFIER_ICON, x, y) {
+            fx.push(sfx::play(sfx::MAGNIFIER));
+            return;
+        }
         if self.project.is_none() && inside(NICHE, x, y) {
+            fx.push(sfx::play(sfx::MCZEE));
             self.show_help(false, assets);
             return;
         }
@@ -1371,10 +1428,13 @@ impl Paint {
             fx.push(Effect::ChangeScene(back));
             return;
         }
-        if let Some(t) = TOOLS
+        if let Some((i, t)) = TOOLS
             .iter()
-            .find(|t| inside((t.x - 5, 5, t.w + 11, 50), x, y))
+            .enumerate()
+            .find(|(_, t)| inside((t.x - 5, 5, t.w + 11, 50), x, y))
         {
+            fx.push(sfx::play(sfx::TOOLS[i]));
+            self.sfx.tool_clicked(i);
             match t.action {
                 Action::Select(tool) => {
                     self.tool = tool;
@@ -1407,6 +1467,7 @@ impl Paint {
         }
         if self.tool == Tool::Transformers {
             if let Some(log) = self.transformers.click_strip(x, y) {
+                fx.extend(strip_sound(x, y, sfx::transformer_option));
                 if let Some(msg) = log {
                     fx.push(Effect::Log(msg.into()));
                 }
@@ -1418,6 +1479,7 @@ impl Paint {
         }
         if self.tool == Tool::Supertools {
             if self.supertools.click_strip(x, y) {
+                fx.extend(strip_sound(x, y, sfx::supertool_option));
                 if inside(crate::scenes::supertools::SWITCH, x, y) {
                     self.open_help(WHAT_SUPERTOOLS, 17, assets);
                 } else {
@@ -1428,6 +1490,7 @@ impl Paint {
         }
         if self.tool == Tool::Brush {
             if inside(ARROW_UP, x, y) {
+                fx.push(sfx::play(sfx::PAGE_ARROW));
                 self.page = if self.page == 1 {
                     PAGE_COUNT
                 } else {
@@ -1436,12 +1499,18 @@ impl Paint {
                 return;
             }
             if inside(ARROW_DOWN, x, y) {
+                fx.push(sfx::play(sfx::PAGE_ARROW));
                 self.page = self.page % PAGE_COUNT + 1;
                 return;
             }
         }
         let x0 = self.options_x0();
         if let Some(k) = (0..self.option_count()).find(|&k| inside(option_rect(x0, k), x, y)) {
+            fx.push(sfx::play(match self.tool {
+                Tool::Words => sfx::WORDS_OPTION,
+                Tool::Vacuum => sfx::VACUUM_OPTION,
+                _ => sfx::OPTION,
+            }));
             match self.tool {
                 Tool::Brush => self.set_brush(self.page, k),
                 Tool::Bucket => self.bucket_option = k,
@@ -1689,16 +1758,27 @@ impl Paint {
     }
 
     fn draw_tools(&self, f: &mut Frame, a: &Assets) {
-        for t in &TOOLS {
+        for (i, t) in TOOLS.iter().enumerate() {
             let active = t.action == Action::Select(self.tool);
-            let (img, mask) = if active { t.active } else { t.normal };
-            if active {
-                let w = a.image(&pic(img)).width as i32;
+            let (mut img, mut mask) = if active { t.active } else { t.normal };
+            let (mut x, mut y) = (t.x, t.y);
+            let anim = self.sfx.icon(i, t.normal.1);
+            if let Some(im) = anim {
+                // centrada no ícone normal
+                let (n, m) = (a.image(&pic(t.normal.0)), a.image(&pic(im.0)));
+                x += (n.width as i32 - m.width as i32) / 2;
+                y += (n.height as i32 - m.height as i32) / 2;
+                (img, mask) = im;
+            }
+            if active || anim.is_some() {
+                let w = a
+                    .image(&pic(if anim.is_some() { t.normal.0 } else { img }))
+                    .width as i32;
                 f.rect(t.x - 5, 5, w + 11, 51, LIGHT);
                 f.rect(t.x - 6, 5, 1, 50, BLACK);
                 f.rect(t.x + w + 6, 5, 1, 50, BLACK);
             }
-            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), t.x, t.y);
+            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), x, y);
         }
         f.blit_masked(&a.image(&pic(0x1055)), &a.image(&pic(0x1057)), 537, 49);
         // ícones da barra inferior
@@ -1922,6 +2002,7 @@ impl Scene for Paint {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
         self.wizard_t += dt;
+        self.sfx.update(dt);
         for i in input {
             match *i {
                 Input::Click {
@@ -1952,6 +2033,9 @@ impl Scene for Paint {
                     x,
                     y,
                 } => {
+                    if std::mem::take(&mut self.sfx.looping) {
+                        fx.push(Effect::StopLoop);
+                    }
                     let painting = self.stroke.is_some();
                     self.end_stroke(x - ORIGIN.0, y - ORIGIN.1);
                     if painting && self.wizard.is_some() {
@@ -1969,7 +2053,14 @@ impl Scene for Paint {
                     alt: false,
                 } => match self.project.as_mut() {
                     Some(Project::Flipbook(fb)) => fb.key(key),
-                    _ => self.key(key),
+                    _ => {
+                        if key == Key::Enter
+                            && self.words.as_ref().is_some_and(|w| !w.text.is_empty())
+                        {
+                            fx.push(sfx::play(sfx::WORDS_DONE));
+                        }
+                        self.key(key)
+                    }
                 },
                 Input::Text(ref t) => match self.project.as_mut() {
                     Some(Project::Flipbook(fb)) => fb.text(t),
@@ -2260,6 +2351,62 @@ mod tests {
         // sem MouseUp; novo clique longe: não liga as duas posições
         p.update(&[click(500, 400)], 0.0, &a);
         assert_eq!(painted(&p), 2 * 208);
+    }
+
+    fn artist(id: u16) -> crate::assets::SoundRef {
+        crate::assets::SoundRef::Snd(Program::Artist, id)
+    }
+
+    #[test]
+    fn choosing_tools_plays_measured_sounds() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        for (x, id) in [(70, 0x0214), (230, 0x0209), (330, 0x0215), (30, 0x0213)] {
+            let fx = p.update(&[click(x, 30)], 0.0, &a);
+            assert!(fx.contains(&Effect::PlaySound(artist(id))), "{x}: {fx:?}");
+        }
+        // opção da faixa e seta de página do pincel
+        let fx = p.update(&[click(25 + 37 * 3 + 16, 79)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlaySound(artist(0x021c))));
+        let fx = p.update(&[click(ARROW_DOWN.0 + 4, ARROW_DOWN.1 + 4)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlaySound(artist(0x021d))));
+        // cor: sem som
+        let r = color_rect(3);
+        let fx = p.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
+    }
+
+    #[test]
+    fn brush_stroke_loops_until_release() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let fx = p.update(&[click(100, 150)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlayLoop(artist(0x021e))), "{fx:?}");
+        let fx = p.update(&[mv(200, 200)], 0.0, &a);
+        assert!(!fx.contains(&Effect::StopLoop));
+        let fx = p.update(&[up(200, 200)], 0.0, &a);
+        assert!(fx.contains(&Effect::StopLoop));
+        // soltar de novo não para outra vez
+        let fx = p.update(&[up(200, 200)], 0.0, &a);
+        assert!(!fx.contains(&Effect::StopLoop));
+        // forma da página 3 (efeitos): som da opção escolhida
+        p.set_brush(3, 4);
+        let fx = p.update(&[click(100, 150)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlayLoop(artist(0x0301))), "{fx:?}");
+    }
+
+    #[test]
+    fn bucket_pour_and_vacuum_sounds() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(70, 30)], 0.0, &a);
+        let fx = p.update(&[click(300, 300)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlaySound(artist(0x0225))));
+        p.update(&[click(330, 30)], 0.0, &a);
+        let fx = p.update(&[click(200, 200)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlayLoop(artist(0x0229))));
+        let fx = p.update(&[up(250, 250)], 0.0, &a);
+        assert!(fx.contains(&Effect::StopLoop));
     }
 
     #[test]
