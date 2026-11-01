@@ -113,6 +113,10 @@ sprays.
 
 ### 4.1 Páginas 5 e 6 do pincel (adendo)
 
+> **Substituído em 01/11/2026**: as páginas 3, 5 e 6 foram refeitas conforme o
+> original; o comportamento medido e a tabela das 72 opções estão em
+> `docs/telas/pincel.md`. O texto abaixo é o palpite antigo.
+
 **Página 5 — formas geométricas** (botões `17b5, 17cf, 17d1, …, 17e3` de
 `ARTIST.PIC`). São ferramentas de arrasto: apertar no quadro fixa a âncora,
 mover mostra a forma elástica só na tela (o quadro não muda) e soltar pinta

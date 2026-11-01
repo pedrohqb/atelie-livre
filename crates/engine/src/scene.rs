@@ -101,6 +101,10 @@ pub enum SceneId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     PlaySound(SoundRef),
+    /// Toca o som com repetição (bloco `loop`) até `StopLoop`; um laço por vez.
+    PlayLoop(SoundRef),
+    /// Para a repetição: o som em laço toca o fim e termina.
+    StopLoop,
     SetCursor(CursorRef),
     ChangeScene(SceneId),
     /// Abre a cena por cima da atual, que fica guardada como está (sem

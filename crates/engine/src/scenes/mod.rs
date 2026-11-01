@@ -9,6 +9,7 @@ pub mod gallery;
 pub mod gallery_room;
 pub mod imaginopolis;
 pub mod paint;
+pub mod paint_sfx;
 pub mod projects;
 pub mod room;
 pub mod room_objects;

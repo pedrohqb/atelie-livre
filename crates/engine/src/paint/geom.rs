@@ -153,6 +153,115 @@ pub fn thicken(points: &[Px], t: i32) -> Vec<Px> {
     out
 }
 
+/// Distância (arredondada) entre dois pontos.
+pub fn dist(a: Px, b: Px) -> i32 {
+    let (dx, dy) = ((b.0 - a.0) as f64, (b.1 - a.1) as f64);
+    (dx * dx + dy * dy).sqrt().round() as i32
+}
+
+/// Ponta da "linha radial": mesma distância de `a` a `b`, no múltiplo de 15°
+/// mais próximo.
+pub fn snap15(a: Px, b: Px) -> Px {
+    let (dx, dy) = ((b.0 - a.0) as f64, (b.1 - a.1) as f64);
+    let r = (dx * dx + dy * dy).sqrt();
+    let step = 15f64.to_radians();
+    let ang = (dy.atan2(dx) / step).round() * step;
+    (
+        a.0 + (r * ang.cos()).round() as i32,
+        a.1 + (r * ang.sin()).round() as i32,
+    )
+}
+
+/// Quadrado de dentro para fora: centrado em `c`, com o ponteiro `p` no círculo
+/// circunscrito (meio lado = distância / √2), como no original.
+pub fn centered_square_points(c: Px, p: Px) -> Vec<Px> {
+    let h = (dist(c, p) as f64 / std::f64::consts::SQRT_2).round() as i32;
+    rect_points((c.0 - h, c.1 - h), (c.0 + h, c.1 + h))
+}
+
+/// Círculo de centro `c` e raio `r`.
+pub fn circle_points(c: Px, r: i32) -> Vec<Px> {
+    ellipse_points((c.0 - r, c.1 - r), (c.0 + r, c.1 + r))
+}
+
+/// Triângulo equilátero de dentro para fora: centro `c`, ápice para cima, com o
+/// ponteiro `p` à distância dos vértices (raio do círculo circunscrito).
+pub fn centered_triangle_points(c: Px, p: Px) -> Vec<Px> {
+    let r = dist(c, p) as f64;
+    let v: Vec<Px> = [90f64, 210.0, 330.0]
+        .iter()
+        .map(|a| {
+            let a = a.to_radians();
+            (
+                c.0 + (r * a.cos()).round() as i32,
+                c.1 - (r * a.sin()).round() as i32,
+            )
+        })
+        .collect();
+    polyline_points(&v, true)
+}
+
+/// Vértices a pelo menos `step` pixels um do outro (o último sempre fica).
+pub fn decimate(verts: &[Px], step: i32) -> Vec<Px> {
+    let mut out: Vec<Px> = Vec::new();
+    for &v in verts {
+        match out.last() {
+            Some(&l) if dist(l, v) < step => {}
+            _ => out.push(v),
+        }
+    }
+    if let (Some(&last), Some(&kept)) = (verts.last(), out.last())
+        && last != kept
+    {
+        if out.len() > 1 {
+            out.pop();
+        }
+        out.push(last);
+    }
+    out
+}
+
+/// "Cria-curvas": arredonda os cantos da poligonal com uma B-spline quadrática
+/// (de meio a meio de cada lado, com o vértice como controle), mantendo as
+/// duas pontas. Fechada se `closed`.
+pub fn smooth_points(verts: &[Px], closed: bool) -> Vec<Px> {
+    if verts.len() < 3 {
+        return polyline_points(verts, closed);
+    }
+    let pts: Vec<(f64, f64)> = verts.iter().map(|&(x, y)| (x as f64, y as f64)).collect();
+    let n = pts.len();
+    let mid = |a: (f64, f64), b: (f64, f64)| ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+    let mut curve: Vec<(f64, f64)> = Vec::new();
+    let (ctrl, first, last) = if closed {
+        let c: Vec<usize> = (0..n).collect();
+        let m0 = mid(pts[n - 1], pts[0]);
+        (c, m0, m0)
+    } else {
+        ((1..n - 1).collect(), pts[0], pts[n - 1])
+    };
+    curve.push(first);
+    for &i in &ctrl {
+        let a = mid(pts[(i + n - 1) % n], pts[i]);
+        let b = mid(pts[i], pts[(i + 1) % n]);
+        let len = ((b.0 - a.0).abs() + (b.1 - a.1).abs()).max(2.0);
+        let steps = (len / 3.0).ceil() as usize;
+        for s in 0..=steps {
+            let t = s as f64 / steps as f64;
+            let u = 1.0 - t;
+            curve.push((
+                u * u * a.0 + 2.0 * u * t * pts[i].0 + t * t * b.0,
+                u * u * a.1 + 2.0 * u * t * pts[i].1 + t * t * b.1,
+            ));
+        }
+    }
+    curve.push(last);
+    let ipts: Vec<Px> = curve
+        .iter()
+        .map(|&(x, y)| (x.round() as i32, y.round() as i32))
+        .collect();
+    polyline_points(&ipts, false)
+}
+
 /// Preenche, linha a linha, do pixel mais à esquerda ao mais à direita do
 /// contorno (serve para formas convexas).
 fn fill_spans(outline: &[Px]) -> Vec<Px> {
