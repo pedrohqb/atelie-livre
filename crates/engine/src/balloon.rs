@@ -11,7 +11,7 @@ use std::rc::Rc;
 const YELLOW: [u8; 3] = [255, 238, 76];
 const WHITE: [u8; 3] = [255, 255, 255];
 const BLACK: [u8; 3] = [0, 0, 0];
-const PAD: i32 = 8;
+pub const PAD: i32 = 8;
 const LINE_GAP: i32 = 2;
 const BULLET: i32 = 14;
 
@@ -74,20 +74,87 @@ pub fn wrap(font: &Font, text: &str, width: u32) -> Vec<String> {
     lines
 }
 
+/// Fonte dos balões: "Pablo Graphos" de 8 pontos, se instalada.
+pub fn balloon_font(a: &Assets) -> Option<Rc<Font>> {
+    a.font(8)
+}
+
+/// Altura de uma linha de texto do balão; sem fonte, a 8×8.
+pub fn line_height(font: Option<&Font>) -> i32 {
+    font.map_or(10, |f| f.height as i32 + LINE_GAP)
+}
+
+/// Quebra o texto na fonte, ou só nas quebras de linha sem ela.
+pub fn wrap_opt(font: Option<&Font>, text: &str, width: u32) -> Vec<String> {
+    match font {
+        Some(f) => wrap(f, text, width),
+        None => text.split('\n').map(str::to_string).collect(),
+    }
+}
+
+/// Caixa do balão: fundo pontilhado amarelo com borda preta e cantos arredondados.
+pub fn draw_box(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
+    // fundo pontilhado: amarelo nas posições (x + y) ímpares de 1 em 3
+    f.rect(x, y, w, h, BLACK);
+    for yy in y + 2..y + h - 2 {
+        for xx in x + 2..x + w - 2 {
+            let c = if (xx + 2 * yy) % 3 == 0 {
+                YELLOW
+            } else {
+                WHITE
+            };
+            f.put(xx, yy, c);
+        }
+    }
+    // cantos arredondados (tira um pixel de cada canto)
+    for (cx, cy) in [
+        (x, y),
+        (x + w - 1, y),
+        (x, y + h - 1),
+        (x + w - 1, y + h - 1),
+    ] {
+        f.put(cx, cy, WHITE);
+    }
+}
+
+/// Bolinha preta com brilho branco (marca das opções), 10×10 a partir de (x, y).
+pub fn draw_bullet(f: &mut Frame, bx: i32, by: i32) {
+    for dy in 0..10 {
+        for dx in 0..10 {
+            let (ex, ey) = (dx as f32 - 4.5, dy as f32 - 4.5);
+            if ex * ex + ey * ey <= 22.0 {
+                f.put(bx + dx, by + dy, BLACK);
+            }
+        }
+    }
+    f.put(bx + 6, by + 3, WHITE);
+    f.put(bx + 5, by + 3, WHITE);
+    f.put(bx + 6, by + 2, WHITE);
+    f.put(bx + 6, by + 4, WHITE);
+    f.put(bx + 7, by + 3, WHITE);
+}
+
+/// Texto numa linha: na fonte do balão ou na 8×8.
+pub fn draw_line(f: &mut Frame, font: Option<&Font>, x: i32, y: i32, s: &str) {
+    match font {
+        Some(fo) => {
+            f.text_font(fo, x, y, s, BLACK);
+        }
+        None => f.text(x, y, s, BLACK),
+    }
+}
+
 impl Balloon {
     fn font(a: &Assets) -> Option<Rc<Font>> {
-        a.font(8)
+        balloon_font(a)
     }
 
     fn line_h(font: Option<&Font>) -> i32 {
-        font.map_or(10, |f| f.height as i32 + LINE_GAP)
+        line_height(font)
     }
 
     fn wrap_any(font: Option<&Font>, text: &str, width: u32) -> Vec<String> {
-        match font {
-            Some(f) => wrap(f, text, width),
-            None => text.split('\n').map(str::to_string).collect(),
-        }
+        wrap_opt(font, text, width)
     }
 
     /// Linhas do texto, linhas de cada opção e altura total; sem fonte, usa a 8×8.
@@ -141,58 +208,18 @@ impl Balloon {
         let font = Self::font(a);
         let (lines, opts, h) = self.layout(font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        // fundo pontilhado: amarelo nas posições (x + y) ímpares de 1 em 3
-        f.rect(self.x, self.y, self.w, h, BLACK);
-        for y in self.y + 2..self.y + h - 2 {
-            for x in self.x + 2..self.x + self.w - 2 {
-                let c = if (x + 2 * y) % 3 == 0 { YELLOW } else { WHITE };
-                f.put(x, y, c);
-            }
-        }
-        // cantos arredondados (tira um pixel de cada canto)
-        for (cx, cy) in [
-            (self.x, self.y),
-            (self.x + self.w - 1, self.y),
-            (self.x, self.y + h - 1),
-            (self.x + self.w - 1, self.y + h - 1),
-        ] {
-            f.put(cx, cy, WHITE);
-        }
+        draw_box(f, self.x, self.y, self.w, h);
         let mut ty = self.y + PAD;
         for line in &lines {
-            match &font {
-                Some(fo) => {
-                    f.text_font(fo, self.x + PAD, ty, line, BLACK);
-                }
-                None => f.text(self.x + PAD, ty, line, BLACK),
-            }
+            draw_line(f, font.as_deref(), self.x + PAD, ty, line);
             ty += lh;
         }
         for (k, opt) in opts.iter().enumerate() {
             let r = self.option_rect(a, k);
-            // bolinha preta com brilho branco
-            let (bx, by) = (r.0, r.1 + 2 + (lh - 10) / 2);
-            for dy in 0..10 {
-                for dx in 0..10 {
-                    let (ex, ey) = (dx as f32 - 4.5, dy as f32 - 4.5);
-                    if ex * ex + ey * ey <= 22.0 {
-                        f.put(bx + dx, by + dy, BLACK);
-                    }
-                }
-            }
-            f.put(bx + 6, by + 3, WHITE);
-            f.put(bx + 5, by + 3, WHITE);
-            f.put(bx + 6, by + 2, WHITE);
-            f.put(bx + 6, by + 4, WHITE);
-            f.put(bx + 7, by + 3, WHITE);
+            draw_bullet(f, r.0, r.1 + 2 + (lh - 10) / 2);
             for (j, line) in opt.iter().enumerate() {
                 let ly = r.1 + 2 + j as i32 * lh;
-                match &font {
-                    Some(fo) => {
-                        f.text_font(fo, r.0 + BULLET + 4, ly, line, BLACK);
-                    }
-                    None => f.text(r.0 + BULLET + 4, ly, line, BLACK),
-                }
+                draw_line(f, font.as_deref(), r.0 + BULLET + 4, ly, line);
             }
         }
     }
