@@ -57,6 +57,7 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         )),
         SceneId::Building => room(Floor::Lobby),
         SceneId::Studio => room(Floor::Studio),
+        SceneId::TricksFloor => room(Floor::Tricks),
         SceneId::Projects => room(Floor::Projects),
         SceneId::Project(kind) => Box::new(Paint::new_project(kind, drawings_dir(), assets)),
         SceneId::Chooser => Box::new(Chooser::new()),

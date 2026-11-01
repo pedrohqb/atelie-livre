@@ -62,6 +62,16 @@ const WHAT_SUPERTOOLS: u16 = 0x100a;
 const WHAT_PRINT: u16 = 0x100b;
 /// Avisos do Rex ("Você ainda não definiu um ponto de fuga" é o 5).
 const WHAT_ERRORS: u16 = 0x100f;
+/// Bloco `WHAT` do mapa do prédio (registro 3: "Mapa do prédio").
+const WHAT_MAP: u16 = 0x100e;
+/// Ícone do andar, no canto inferior esquerdo da barra inferior.
+const MAP_ICON: (i32, i32, i32, i32) = (24, 460, 36, 20);
+/// Cartaz do prédio (o mesmo do saguão) aberto sobre o quadro, com borda.
+const MAP_PIC: u16 = 0x6c01;
+const MAP_FRAME: (i32, i32, i32, i32) = (0, 300, 190, 142);
+const MAP_POS: (i32, i32) = (2, 302);
+/// Balão "Mapa do prédio", ao lado do cartaz.
+const MAP_HELP_POS: (i32, i32) = (196, 330);
 /// O balão do Pincel aparece na primeira vez que a tela abre na sessão.
 static FIRST_HELP: AtomicBool = AtomicBool::new(true);
 const ARROW_UP: (i32, i32, i32, i32) = (504, 58, 16, 14);
@@ -251,6 +261,20 @@ fn pattern_rect(k: usize) -> (i32, i32, i32, i32) {
     (618, 110 + 9 * k as i32, 17, 9)
 }
 
+/// Andar do mapa do prédio sob `(x, y)`: faixas dos rótulos, como no
+/// cartaz do saguão (relativas ao cartaz).
+fn map_floor_at(x: i32, y: i32) -> Option<SceneId> {
+    [
+        (38, SceneId::TricksFloor),
+        (58, SceneId::Projects),
+        (78, SceneId::Studio),
+        (98, SceneId::Building),
+    ]
+    .into_iter()
+    .find(|&(fy, _)| inside((MAP_POS.0 + 98, MAP_POS.1 + fy, 90, 18), x, y))
+    .map(|(_, dest)| dest)
+}
+
 fn canvas_rect() -> (i32, i32, i32, i32) {
     (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32)
 }
@@ -401,6 +425,8 @@ pub struct Paint {
     time: f32,
     /// Projeto da Oficina em andamento, se a tela foi aberta por ele.
     project: Option<Project>,
+    /// Mapa do prédio aberto sobre o quadro.
+    map_open: bool,
 }
 
 impl Paint {
@@ -454,6 +480,7 @@ impl Paint {
             vacuum_object: None,
             clipboard: None,
             project: None,
+            map_open: false,
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
@@ -471,12 +498,39 @@ impl Paint {
 
     /// Abre o balão de ajuda do registro `index` do bloco `WHAT` (se existir).
     fn open_help(&mut self, block: u16, index: usize, assets: &Assets) {
+        self.open_help_at(block, index, HELP_POS, assets);
+    }
+
+    /// Como `open_help`, com o balão em `pos`.
+    fn open_help_at(&mut self, block: u16, index: usize, pos: (i32, i32), assets: &Assets) {
         let records = self
             .dialogs
             .entry(block)
             .or_insert_with(|| Rc::new(assets.dialogs(Program::Artist, block)))
             .clone();
-        self.help = HelpBalloon::new(records, block, index, HELP_POS.0, HELP_POS.1);
+        self.help = HelpBalloon::new(records, block, index, pos.0, pos.1);
+    }
+
+    /// Mapa do prédio aberto?
+    pub fn map_open(&self) -> bool {
+        self.map_open
+    }
+
+    /// Clique com o mapa do prédio aberto: um andar troca de cena (a troca
+    /// grava o desenho); qualquer clique fecha o mapa.
+    fn map_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>) {
+        self.map_open = false;
+        self.help = None;
+        if let Some(dest) = map_floor_at(x, y) {
+            fx.push(Effect::ChangeScene(dest));
+        }
+    }
+
+    fn draw_map(&self, f: &mut Frame, a: &Assets) {
+        let (x, y, w, h) = MAP_FRAME;
+        f.rect(x, y, w, h, WHITE);
+        f.frame_rect(x, y, w, h, 2, BLACK);
+        f.blit(&a.image(&pic(MAP_PIC)), MAP_POS.0, MAP_POS.1);
     }
 
     /// Balão de ajuda aberto, se houver.
@@ -967,6 +1021,15 @@ impl Paint {
     }
 
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        if self.map_open {
+            self.map_click(x, y, fx);
+            return;
+        }
+        if inside(MAP_ICON, x, y) {
+            self.map_open = true;
+            self.open_help_at(WHAT_MAP, 3, MAP_HELP_POS, assets);
+            return;
+        }
         // desenho animado: fora da porta de saída, tudo é do projeto
         if let Some(Project::Flipbook(fb)) = self.project.as_mut()
             && !inside(EXIT, x, y)
@@ -1725,6 +1788,12 @@ impl Scene for Paint {
             fb.draw_strip(frame, assets);
             self.draw_columns(frame);
             fb.draw_canvas(frame, assets);
+            if self.map_open {
+                self.draw_map(frame, assets);
+                if let Some(h) = &self.help {
+                    h.draw(frame, assets);
+                }
+            }
             return;
         }
         match &self.project {
@@ -1754,6 +1823,9 @@ impl Scene for Paint {
             .draw_overlay(frame, assets, &self.pal, self.mouse);
         if self.tool == Tool::Sounds {
             self.sounds.draw_overlay(frame, assets);
+        }
+        if self.map_open {
+            self.draw_map(frame, assets);
         }
         if let Some(h) = &self.help {
             h.draw(frame, assets);
@@ -1852,6 +1924,25 @@ mod tests {
         let mut p = Paint::new(None, &a);
         let fx = p.update(&[click(600, 60)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Studio)));
+    }
+
+    #[test]
+    fn building_map_opens_goes_to_floor_and_closes() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(35, 470)], 0.0, &a);
+        assert!(p.map_open());
+        // "Oficina de Projetos"
+        let fx = p.update(&[click(MAP_POS.0 + 120, MAP_POS.1 + 66)], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Projects)));
+        assert!(!p.map_open());
+        // clique fora fecha sem trocar de cena nem pintar
+        p.update(&[click(35, 470)], 0.0, &a);
+        assert!(p.map_open());
+        let fx = p.update(&[click(320, 200)], 0.0, &a);
+        assert!(!p.map_open());
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+        assert_eq!(painted(&p), 0);
     }
 
     #[test]

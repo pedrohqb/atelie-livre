@@ -73,6 +73,8 @@ pub enum SceneId {
     Building,
     /// Ateliê de Pintura (andar 2), ao sair da pintura.
     Studio,
+    /// Andar dos Truques de Desenho (pelo mapa do prédio).
+    TricksFloor,
     Paint,
     /// Andar dos Projetos, ao sair de um projeto.
     Projects,
