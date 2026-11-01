@@ -25,8 +25,7 @@ que você já possui.
   o rolo de bichos animados (cobra, peixe-espada, tartaruga, pássaro...,
   com os movimentos gravados do original) e os 28 rolos de clip-art
   (passatempos, bichos, dinossauros, fadas, comida, zodíaco chinês...).
-  Escolha o rolo, o adesivo na tira de filme e clique no quadro. Sons e as
-  demais ferramentas ainda não funcionam.
+  Escolha o rolo, o adesivo na tira de filme e clique no quadro.
 - Palavras (primeira versão): com a ferramenta Palavra, clique no quadro e
   digite; Enter (ou um clique em outro lugar) grava o texto na cor atual, na
   fonte "Pablo Graphos" de 16 pontos, simples ou dentro de um balão de fala;
@@ -53,6 +52,19 @@ que você já possui.
   `animacao.json` e um `animacao.gif` com as transições) e é reaberta de
   `ultimo-animacao/` na próxima vez.
 
+- Objetos, Transformadores, Super-ferramentas e ajuda do McZee: adesivos e
+  palavras ficam por cima da pintura como objetos (gravados em
+  `ultimo.objetos.json` ao lado do PNG achatado, para reabrir editável); os
+  **Transformadores** movem, esticam, aumentam e diminuem, empurram para trás
+  e trazem para a frente, giram, grudam com corrente e invertem o objeto sob
+  o ponteiro (o contorno pisca), e o aspirador "coisa" o tira; as
+  **Super-ferramentas de desenho** põem linhas guia só na tela
+  (quadriculados, ponto de fuga com horizonte, linhas do PF, eixos, ímã que
+  apaga, interruptor que esconde) e Aproximar/Afastar do PF deslizam um
+  objeto em perspectiva. Clique no **McZee** (ou escolha uma ferramenta ou
+  opção) para ler o balão de ajuda do original, com as ligações clicáveis.
+  Faltam: Coloca-adesivos (cavalete), Ctrl/Shift ao arrastar e o cavalete
+  de adesivos/palavras do clique em Mover-modificar.
 - Ao abrir, o Ateliê Livre pergunta qual programa usar (ou `--program
   artist|writer`, ou `program = "artist"|"writer"|"ask"` no config).
 - Subprojeto 3a (Creative Writer, primeira versão): `atelie-livre --program

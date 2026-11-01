@@ -84,9 +84,51 @@ seção 4. Resumo:
 - **Cores**: 38 caixas na coluna esquerda (índices da `LOGPALETTE` 8).
 - **Padrões**: 38 caixas na coluna direita, padrões 0–37 de `PAT#` 0x80,
   desenhados na cor atual; bit 0 = cor, bit 1 = branco.
-- **Balões do McZee**: ao escolher uma ferramenta, um balão amarelo explica o
-  uso (ex.: "Pincel — Para pintar o quadro: segure o botão do mouse e
-  arraste"). Ainda não reproduzidos.
+- **Objetos**: no original, adesivos e palavras colocados não viram pixels:
+  ficam por cima da pintura e podem ser movidos, esticados, girados, grudados
+  e aspirados; o contorno pisca sob o ponteiro. No Ateliê Livre são a
+  `Objects` de `paint/objects.rs`; o PNG gravado é a composição achatada e
+  `ultimo.objetos.json` + `ultimo.fundo.png` (e as cópias com data) guardam
+  os objetos e o fundo para reabrir editável (spec
+  [objetos](../superpowers/specs/2026-10-31-objetos-design.md)).
+- **Transformadores** (`1045`; ajuda `WHAT 1006`): faixa de duas páginas
+  com tampa verde `14db` em (4, 57), botões de 32×32 em x = 25 + 37·k,
+  y = 63 e a ponta `14ef`/`14f1` logo após o último botão. Página 1:
+  Mover-modificar `1470`/`1471`, Dimensionar por arraste `149d`/`14a0`,
+  lateral `14a1`/`14a4`, vertical `14a5`/`14a8`, Aumentar `14b1`/`14b4`,
+  Diminuir `14b5`/`14b8`, Empurrar para trás `14b9`/`14bc`, Trazer para a
+  frente `14bd`/`14c0`. Página 2: Mover, Girar à esquerda `14c1`/`14c4`, à
+  direita `14c5`/`14c8`, Grudar ou desgrudar `14c9`/`14cc`, Inverter lateral
+  `14cd`/`14d0`, em cima/embaixo `14d1`/`14d4`, Coloca-adesivos
+  `14d9`/`14da` (cor/mono). Aumentar e Diminuir agem enquanto o botão fica
+  apertado; Empurrar/Trazer repetem ao segurar; Grudar liga dois objetos
+  com uma corrente (clique na corrente desgruda). Coloca-adesivos (cavalete
+  de adesivos) e Ctrl/Shift ao arrastar ainda não existem.
+- **Super-ferramentas de desenho** (`1007`; ajuda `WHAT 100a`): faixa única
+  em dois grupos. Grupo 1 (k = 0..2): Sem quadriculado `1485`/`1488`,
+  Quadriculado pequeno `148d`/`1490`, Quadriculado grande `1489`/`148c`;
+  ponta `14ef` em x 134. Grupo 2 (tampa em x 189; k = 5..10): Ponto de fuga
+  `1477`/`1478`, Linha do ponto de fuga `1479`/`147c`, Aproximar do PF
+  `1481`/`1484`, Afastar do PF `14d5`/`14d6`, Eixo de construção
+  `147d`/`1480`, Apagar linha guia (ímã) `14d7`/`14d8`. Interruptor mágico
+  `1491` (ligado) / `1497` (desligado), 22×41 em (464, 58). As linhas guia
+  são só da tela (quadriculados de 24 e 48 px tracejados, horizonte e PF
+  azuis, linhas do PF e eixos verdes), guardadas em `ultimo.guias.json`;
+  Aproximar/Afastar deslizam o objeto sob o botão apertado a 60 px/s,
+  mudando o tamanho na proporção da distância ao PF.
+- **Balões do McZee**: ao escolher uma ferramenta ou uma opção da faixa, e ao
+  clicar no McZee (nicho x 533..580, y 56..104), um balão amarelo explica o
+  uso — os registros `WHAT` do `ARTIST.EXE` (`1002` pincel, `1003` lata,
+  `1004` sons, `1005` adesivos, `1006` Transformadores, `1007` ovo, `1008`
+  aspirador, `1009` palavra, `100a` Super-ferramentas, `100b` imprimir). O
+  balão fica em (445, 115) com a largura do registro; negrito, cor roxa dos
+  títulos, recuo, o ícone da ferramenta (quando o id `1xxx` existe no
+  `.PIC`) e as ligações (dica `21b`, tecla `21c`, Maggie `21e`, palavra do
+  glossário) são desenhados por `help.rs`; clicar numa ligação abre o
+  registro ligado. Na primeira vez que a tela abre aparece o do Pincel. Os
+  ícones das ligações e vários ícones das ferramentas citados nos balões
+  (`100e`, `1012`, `1036`…) não estão no `.PIC`: as ligações usam ícones
+  desenhados à mão e as figuras ausentes são puladas.
 
 ## Oficina de Projetos
 
