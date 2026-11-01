@@ -1,11 +1,15 @@
 //! Laço principal com a SDL3: janela, ampliação, eventos e execução dos efeitos.
 
 use crate::audio::Mixer;
-use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, texts_dir};
+use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, texts_dir, users_dir};
 use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
-use engine::scenes::{Browser, Chooser, Floor, Gallery, Paint, Room, Splash, Street, Writer};
+use engine::scenes::room::DEFAULT_USER;
+use engine::scenes::{
+    Browser, Chooser, Entry, Floor, Gallery, Imaginopolis, Paint, Room, Splash, Story, Street,
+    Writer,
+};
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
 use sdl3::keyboard::{Keycode, Mod};
@@ -25,31 +29,43 @@ fn fail(msg: &str) -> i32 {
     1
 }
 
-fn make_scene(id: SceneId, cfg: &Config, assets: &Assets) -> Box<dyn Scene> {
+/// Usuário escolhido na Entrada (ou dado na configuração), para o `@` dos balões.
+#[derive(Debug, Clone, Default)]
+struct UserContext {
+    user: Option<String>,
+}
+
+impl UserContext {
+    fn name(&self) -> &str {
+        self.user.as_deref().unwrap_or(DEFAULT_USER)
+    }
+}
+
+fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) -> Box<dyn Scene> {
+    let room = |floor| {
+        Box::new(
+            Room::new(floor, cfg.click_sound.clone(), drawings_dir(), assets)
+                .with_user(user.name(), assets),
+        )
+    };
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets)),
         SceneId::Gallery => Box::new(Gallery::new(drawings_dir(), assets)),
-        SceneId::Building => Box::new(Room::new(
-            Floor::Lobby,
-            cfg.click_sound.clone(),
-            drawings_dir(),
-            assets,
-        )),
-        SceneId::Studio => Box::new(Room::new(
-            Floor::Studio,
-            cfg.click_sound.clone(),
-            drawings_dir(),
-            assets,
-        )),
-        SceneId::Projects => Box::new(Room::new(
-            Floor::Projects,
-            cfg.click_sound.clone(),
-            drawings_dir(),
-            assets,
-        )),
+        SceneId::Building => room(Floor::Lobby),
+        SceneId::Studio => room(Floor::Studio),
+        SceneId::Projects => room(Floor::Projects),
         SceneId::Project(kind) => Box::new(Paint::new_project(kind, drawings_dir(), assets)),
         SceneId::Chooser => Box::new(Chooser::new()),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
+        SceneId::Entry => {
+            let e = Entry::new(users_dir(), cfg.click_sound.clone(), assets);
+            Box::new(match &cfg.user {
+                Some(u) => e.with_user(u),
+                None => e,
+            })
+        }
+        SceneId::Story => Box::new(Story::new(cfg.click_sound.clone(), assets)),
+        SceneId::Imaginopolis => Box::new(Imaginopolis::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
         SceneId::Browser => Box::new(Browser::new()),
         SceneId::WriterSplash => Box::new(Splash::writer(cfg.click_sound.clone())),
@@ -188,9 +204,13 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     // texto digitado chega como `Event::TextInput` (já com acentos compostos)
     video.text_input().start(canvas.window());
 
+    let mut user = UserContext {
+        user: cfg.user.clone(),
+    };
     let mut stack: Vec<Box<dyn Scene>> = vec![make_scene(
         first_scene(args.browser, cfg.program),
         &cfg,
+        &user,
         &assets,
     )];
     let mut frame = Frame::new(SCREEN_W, SCREEN_H);
@@ -226,7 +246,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         fullscreen = !fullscreen;
                         let _ = canvas.window_mut().set_fullscreen(fullscreen);
                     } else if k == Keycode::F12 && cfg.dev && stack.len() == 1 {
-                        stack.push(make_scene(SceneId::Browser, &cfg, &assets));
+                        stack.push(make_scene(SceneId::Browser, &cfg, &user, &assets));
                     } else {
                         inputs.push(Input::Key { key, ctrl, alt });
                     }
@@ -283,7 +303,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                 Effect::ChangeScene(id) => {
                     let top = stack.last_mut().expect("cena");
                     print_logs(top.leave());
-                    *top = make_scene(id, &cfg, &assets);
+                    *top = make_scene(id, &cfg, &user, &assets);
                 }
                 Effect::Back => {
                     if stack.len() > 1 {
@@ -291,6 +311,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         print_logs(top.leave());
                     }
                 }
+                Effect::SetUser(u) => user.user = Some(u),
                 Effect::Log(s) => println!("{s}"),
                 Effect::Quit => running = false,
             }

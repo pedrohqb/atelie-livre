@@ -32,6 +32,8 @@ pub struct Config {
     pub click_sound: Option<SoundRef>,
     pub dev: bool,
     pub program: ProgramChoice,
+    /// Apelido do usuário: pula a Entrada do Fine Artist.
+    pub user: Option<String>,
 }
 
 impl Default for Config {
@@ -44,6 +46,7 @@ impl Default for Config {
             click_sound: None,
             dev: false,
             program: ProgramChoice::Ask,
+            user: None,
         }
     }
 }
@@ -66,6 +69,9 @@ pub struct Args {
     /// Programa a abrir: artist (Fine Artist) ou writer (Creative Writer).
     #[arg(long, value_enum)]
     pub program: Option<ProgramChoice>,
+    /// Apelido do usuário do Fine Artist (pula a Entrada).
+    #[arg(long)]
+    pub user: Option<String>,
     /// Encerra após N quadros (testes).
     #[arg(long, hide = true)]
     pub frames: Option<u32>,
@@ -106,6 +112,22 @@ pub fn texts_dir() -> Option<PathBuf> {
             .map(PathBuf::from)
     };
     texts_dir_from(env("XDG_DATA_HOME"), env("HOME"))
+}
+
+/// Pasta dos usuários do Fine Artist: `$XDG_DATA_HOME/atelie-livre/usuarios`,
+/// senão `~/.local/share/atelie-livre/usuarios`; `None` sem nenhum dos dois.
+pub fn users_dir_from(xdg_data: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
+    let base = xdg_data.or_else(|| home.map(|h| h.join(".local").join("share")))?;
+    Some(base.join("atelie-livre").join("usuarios"))
+}
+
+pub fn users_dir() -> Option<PathBuf> {
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    users_dir_from(env("XDG_DATA_HOME"), env("HOME"))
 }
 
 pub fn config_path() -> PathBuf {
@@ -165,6 +187,11 @@ pub fn parse_config(text: &str) -> (Config, Vec<String>) {
                 }
                 _ => false,
             },
+            "usuario" => value
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| cfg.user = Some(s.trim().to_string()))
+                .is_some(),
             "volume" => value
                 .as_integer()
                 .map(|v| cfg.volume = v.clamp(0, 100) as u8)
@@ -225,6 +252,9 @@ pub fn effective(mut cfg: Config, args: &Args) -> Config {
     }
     if let Some(p) = args.program {
         cfg.program = p;
+    }
+    if let Some(u) = &args.user {
+        cfg.user = Some(u.clone());
     }
     cfg
 }
@@ -338,6 +368,27 @@ mod tests {
         let (file, _) = parse_config("program = \"writer\"\n");
         let args = Args::parse_from(["atelie-livre", "--program", "artist"]);
         assert_eq!(effective(file, &args).program, ProgramChoice::Artist);
+    }
+
+    #[test]
+    fn user_from_file_and_args() {
+        let (c, w) = parse_config("usuario = \"ana\"\n");
+        assert!(w.is_empty());
+        assert_eq!(c.user, Some("ana".into()));
+        let (c, w) = parse_config("usuario = 3\n");
+        assert_eq!(c.user, None);
+        assert_eq!(w.len(), 1);
+        let args = Args::parse_from(["atelie-livre", "--user", "bia"]);
+        assert_eq!(effective(c, &args).user, Some("bia".into()));
+        assert_eq!(
+            users_dir_from(Some("/x".into()), Some("/h".into())),
+            Some(PathBuf::from("/x/atelie-livre/usuarios"))
+        );
+        assert_eq!(
+            users_dir_from(None, Some("/h".into())),
+            Some(PathBuf::from("/h/.local/share/atelie-livre/usuarios"))
+        );
+        assert_eq!(users_dir_from(None, None), None);
     }
 
     #[test]
