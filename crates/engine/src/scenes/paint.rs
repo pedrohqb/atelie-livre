@@ -6,6 +6,7 @@ use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
 use super::stickers::{Placed, Stickers};
+use super::transformers::Transformers;
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::paint::geom::{
@@ -101,6 +102,7 @@ pub enum Tool {
     Words,
     Sounds,
     Vacuum,
+    Transformers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,7 +187,7 @@ const TOOLS: [ToolDef; 10] = [
         w: 36,
         normal: (0x1045, 0x104b),
         active: (0x1065, 0x1067),
-        action: Action::Unavailable("transformadores"),
+        action: Action::Select(Tool::Transformers),
     },
     ToolDef {
         x: 412,
@@ -365,6 +367,7 @@ pub struct Paint {
     changed: bool,
     stickers: Stickers,
     sounds: Sounds,
+    transformers: Transformers,
     mouse: (i32, i32),
     /// Tempo acumulado, para o piscar do contorno dos objetos.
     time: f32,
@@ -412,6 +415,7 @@ impl Paint {
             changed: false,
             stickers: Stickers::new(assets),
             sounds: Sounds::new(assets),
+            transformers: Transformers::new(),
             mouse: (0, 0),
             time: 0.0,
             vacuum: VacuumMode::Cut,
@@ -479,11 +483,15 @@ impl Paint {
         self.changed = true;
     }
 
+    pub fn transformers(&self) -> &Transformers {
+        &self.transformers
+    }
+
     /// Objeto sob o ponteiro, se a ferramenta mexe em objetos (o contorno pisca).
     fn hovered_object(&self) -> Option<u32> {
         let handles = matches!(
             (self.tool, self.vacuum),
-            (Tool::Vacuum, VacuumMode::Stickers | VacuumMode::Copy)
+            (Tool::Vacuum, VacuumMode::Stickers | VacuumMode::Copy) | (Tool::Transformers, _)
         );
         if !handles || !inside(canvas_rect(), self.mouse.0, self.mouse.1) {
             return None;
@@ -696,7 +704,7 @@ impl Paint {
 
     fn option_count(&self) -> usize {
         match self.tool {
-            Tool::Stickers | Tool::Sounds => 0,
+            Tool::Stickers | Tool::Sounds | Tool::Transformers => 0,
             Tool::Brush => 12,
             Tool::Bucket => BUCKET_BUTTONS.len(),
             Tool::Words => WORDS_BUTTONS.len(),
@@ -917,6 +925,17 @@ impl Paint {
                     }
                 }
                 Tool::Vacuum => self.vacuum_press(cx, cy),
+                Tool::Transformers => {
+                    if self.transformers.press(
+                        cx,
+                        cy,
+                        &mut self.objects,
+                        &self.canvas,
+                        &mut self.history,
+                    ) {
+                        self.changed = true;
+                    }
+                }
                 Tool::Stickers | Tool::Sounds => {}
             }
             return;
@@ -939,6 +958,7 @@ impl Paint {
                     self.tool = tool;
                     self.stickers.reset();
                     self.sounds.reset();
+                    self.transformers.reset();
                 }
                 Action::Undo => {
                     if self.history.toggle(&mut self.canvas, &mut self.objects) {
@@ -958,6 +978,14 @@ impl Paint {
         }
         if let Some(k) = (0..SWATCHES).find(|&k| inside(pattern_rect(k), x, y)) {
             self.pattern = k;
+            return;
+        }
+        if self.tool == Tool::Transformers {
+            if let Some(log) = self.transformers.click_strip(x, y)
+                && let Some(msg) = log
+            {
+                fx.push(Effect::Log(msg.into()));
+            }
             return;
         }
         if self.tool == Tool::Brush {
@@ -980,7 +1008,7 @@ impl Paint {
                 Tool::Brush => self.set_brush(self.page, k),
                 Tool::Bucket => self.bucket_option = k,
                 Tool::Words => self.words_option = k,
-                Tool::Stickers | Tool::Sounds => {}
+                Tool::Stickers | Tool::Sounds | Tool::Transformers => {}
                 Tool::Vacuum => {
                     self.vacuum = VACUUM_MODES[k];
                     if self.vacuum == VacuumMode::Sounds {
@@ -1310,6 +1338,10 @@ impl Paint {
                 }
                 Some(self.words_option)
             }
+            Tool::Transformers => {
+                self.transformers.draw_strip(f, a);
+                None
+            }
             Tool::Vacuum => {
                 f.blit_masked(&a.image(&pic(0x1119)), &a.image(&pic(0x111b)), 4, 56);
                 for (k, id) in VACUUM_BUTTONS.iter().enumerate() {
@@ -1445,7 +1477,13 @@ impl Scene for Paint {
                 }
                 Input::MouseMove { x, y } => {
                     self.mouse = (x, y);
-                    self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1)
+                    self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
+                    if self
+                        .transformers
+                        .drag(x - ORIGIN.0, y - ORIGIN.1, &mut self.objects)
+                    {
+                        self.changed = true;
+                    }
                 }
                 Input::MouseUp {
                     button: MouseButton::Left,
@@ -1456,6 +1494,7 @@ impl Scene for Paint {
                     if self.vacuum_anchor.is_some() {
                         self.vacuum_release(x - ORIGIN.0, y - ORIGIN.1);
                     }
+                    self.transformers.release();
                 }
                 Input::Key {
                     key,
@@ -1484,6 +1523,9 @@ impl Scene for Paint {
         }
         self.spray_tick();
         self.sounds.update(dt);
+        if self.transformers.update(dt, &mut self.objects) {
+            self.changed = true;
+        }
         if let Some(placed) = self.stickers.update(dt) {
             self.place_sticker(placed);
         }
@@ -1506,6 +1548,9 @@ impl Scene for Paint {
         self.draw_columns(frame);
         self.draw_canvas(frame);
         self.draw_blink(frame);
+        if self.tool == Tool::Transformers {
+            self.transformers.draw_overlay(frame, &self.objects);
+        }
         if let Some(p) = &self.project {
             p.draw_overlay(frame, assets);
         }
@@ -1589,6 +1634,10 @@ mod tests {
             x,
             y,
         }
+    }
+
+    fn mv(x: i32, y: i32) -> Input {
+        Input::MouseMove { x, y }
     }
 
     fn up(x: i32, y: i32) -> Input {
@@ -1800,12 +1849,52 @@ mod tests {
     fn inactive_tool_logs() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
-        let fx = p.update(&[click(378, 30)], 0.0, &a);
+        let fx = p.update(&[click(430, 30)], 0.0, &a);
         assert!(
             fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("transformadores")))
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("super-ferramentas")))
         );
         assert_eq!(p.tool(), Tool::Brush);
+    }
+
+    #[test]
+    fn transformers_move_object_by_drag_and_strip_pages() {
+        use crate::scenes::transformers::Op;
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        let r = p.objects().get(id).unwrap().rect();
+        let o = p.objects().get(id).unwrap();
+        let (x, y) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        let (sx, sy) = (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y);
+        p.update(&[click(378, 30)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Transformers);
+        assert_eq!(p.transformers().op(), Op::Move);
+        p.update(
+            &[click(sx, sy), mv(sx + 20, sy + 5), up(sx + 20, sy + 5)],
+            0.0,
+            &a,
+        );
+        assert_eq!(
+            p.objects().get(id).unwrap().rect(),
+            (r.0 + 20, r.1 + 5, r.2, r.3)
+        );
+        // página 2, inverter lateral
+        p.update(&[click(510, 95)], 0.0, &a);
+        assert_eq!(p.transformers().page(), 2);
+        p.update(&[click(25 + 37 * 4 + 10, 70)], 0.0, &a);
+        assert_eq!(p.transformers().op(), Op::FlipH);
+        p.update(&[click(sx + 20, sy + 5), up(sx + 20, sy + 5)], 0.0, &a);
+        assert!(p.objects().get(id).unwrap().flip_h);
+        // o ovo desfaz a inversão
+        p.update(&[click(270, 30)], 0.0, &a);
+        assert!(!p.objects().get(id).unwrap().flip_h);
+        let mut f = Frame::new(640, 480);
+        p.update(&[mv(sx + 20, sy + 5)], 0.1, &a);
+        p.draw(&mut f, &a);
     }
 
     #[test]

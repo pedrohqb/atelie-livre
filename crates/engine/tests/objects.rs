@@ -9,6 +9,7 @@ use engine::paint::{ORIGIN, WHITE};
 use engine::scene::{Input, MouseButton, Scene};
 use engine::scenes::Paint;
 use engine::scenes::paint::{Tool, VacuumMode};
+use engine::scenes::transformers::{Op, PAGE1, PAGE2, option_rect};
 use std::path::PathBuf;
 
 fn empty_assets() -> (tempfile::TempDir, Assets) {
@@ -155,4 +156,111 @@ fn words_become_an_object_and_vacuum_removes_them() {
     let (sx, sy) = opaque_point(&p, o.id);
     p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
     assert_eq!(p.objects().len(), 0);
+}
+
+/// Escolhe a ferramenta Transformadores e a ação `op`.
+fn pick_transformer(p: &mut Paint, a: &Assets, op: Op) {
+    p.update(&[click(378, 30)], 0.0, a);
+    assert_eq!(p.tool(), Tool::Transformers);
+    let (page, k) = match PAGE1.iter().position(|b| b.op == op) {
+        Some(k) => (1, k),
+        None => (2, PAGE2.iter().position(|b| b.op == op).unwrap()),
+    };
+    while p.transformers().page() != page {
+        p.update(&[click(510, 95)], 0.0, a);
+    }
+    let r = option_rect(k);
+    p.update(&[click(r.0 + 10, r.1 + 10)], 0.0, a);
+    assert_eq!(p.transformers().op(), op);
+}
+
+#[test]
+fn moved_object_changes_png_and_json_reopens_at_new_place() {
+    let (_d, a) = empty_assets();
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+    let id = place_animal(&mut p, &a, 300, 300);
+    let before = p.composed();
+    let r = p.objects().get(id).unwrap().rect();
+    let (sx, sy) = opaque_point(&p, id);
+    pick_transformer(&mut p, &a, Op::Move);
+    p.update(&[click(sx, sy), mv(sx + 20, sy), up(sx + 20, sy)], 0.0, &a);
+    assert_eq!(
+        p.objects().get(id).unwrap().rect(),
+        (r.0 + 20, r.1, r.2, r.3)
+    );
+    assert_ne!(p.composed().px, before.px);
+    p.leave();
+    let flat = load_png(&dir.path().join("ultimo.png"), p.palette()).unwrap();
+    assert_eq!(flat.px, p.composed().px);
+    let q = Paint::new(Some(dir.path().to_path_buf()), &a);
+    assert_eq!(
+        q.objects().get(id).unwrap().rect(),
+        (r.0 + 20, r.1, r.2, r.3)
+    );
+}
+
+#[test]
+fn rotate_right_four_times_and_flip_twice_restore() {
+    let (_d, a) = empty_assets();
+    let mut p = Paint::new(None, &a);
+    let id = place_animal(&mut p, &a, 300, 300);
+    let before = p.objects().get(id).unwrap().clone();
+    let flat = p.composed();
+    pick_transformer(&mut p, &a, Op::RotateRight);
+    for _ in 0..4 {
+        let (cx, cy) = {
+            let o = p.objects().get(id).unwrap();
+            let (cx, cy) = o.center();
+            (ORIGIN.0 + cx, ORIGIN.1 + cy)
+        };
+        // o centro pode ser transparente: usa o primeiro pixel opaco se for
+        let (sx, sy) = if p.objects().hit(cx - ORIGIN.0, cy - ORIGIN.1).is_some() {
+            (cx, cy)
+        } else {
+            opaque_point(&p, id)
+        };
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+    }
+    assert_eq!(*p.objects().get(id).unwrap(), before);
+    assert_eq!(p.composed().px, flat.px);
+    for op in [Op::FlipH, Op::FlipV] {
+        pick_transformer(&mut p, &a, op);
+        let (sx, sy) = opaque_point(&p, id);
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+        assert_ne!(*p.objects().get(id).unwrap(), before);
+        let (sx, sy) = opaque_point(&p, id);
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+        assert_eq!(*p.objects().get(id).unwrap(), before);
+    }
+    assert_eq!(p.composed().px, flat.px);
+}
+
+#[test]
+fn linked_objects_move_together() {
+    let (_d, a) = empty_assets();
+    let mut p = Paint::new(None, &a);
+    let first = place_animal(&mut p, &a, 200, 300);
+    let second = place_animal(&mut p, &a, 400, 300);
+    assert_ne!(first, second);
+    pick_transformer(&mut p, &a, Op::Link);
+    let (x1, y1) = opaque_point(&p, first);
+    let (x2, y2) = opaque_point(&p, second);
+    p.update(
+        &[click(x1, y1), up(x1, y1), click(x2, y2), up(x2, y2)],
+        0.0,
+        &a,
+    );
+    assert_eq!(p.objects().group(first).len(), 2);
+    let r2 = p.objects().get(second).unwrap().rect();
+    pick_transformer(&mut p, &a, Op::Move);
+    p.update(
+        &[click(x1, y1), mv(x1 + 15, y1 - 10), up(x1 + 15, y1 - 10)],
+        0.0,
+        &a,
+    );
+    assert_eq!(
+        p.objects().get(second).unwrap().rect(),
+        (r2.0 + 15, r2.1 - 10, r2.2, r2.3)
+    );
 }
