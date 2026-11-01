@@ -53,6 +53,20 @@ que você já possui.
   tipo de letra (a "Pablo Graphos"); sons, inseto, mão, livro, página,
   imprimir e o prédio do Creative Writer ainda não existem.
 
+- Subprojeto 2f (Entrada): depois da abertura, o McZee pede para dizer
+  quem é você — a lista de usuários no quadro-negro com "Sou eu" e
+  "Primeira vez". O cadastro (nome e sobrenome, bicho preferido, apelido de
+  até 8 letras) usa os balões do original, com os avisos de nome vazio,
+  apelido inválido ou repetido. "Sou eu" oferece ir a Imaginópolis, mudar o
+  cadastro, ouvir a História do McZee (o álbum de fotos) ou ir direto ao
+  Ateliê de Pintura; em Imaginópolis a porta do Museu Mágico leva à rua, e
+  o McZee passa no carrinho da montanha-russa. O apelido aparece nos balões
+  das salas. Os cadastros ficam em `~/.local/share/atelie-livre/usuarios/`
+  (ou `$XDG_DATA_HOME/atelie-livre/usuarios/`), uma pasta por apelido com
+  um `perfil.toml`; apague a pasta para esquecer um usuário. `--user
+  APELIDO` (ou `usuario = "..."` no config) pula a Entrada. "Procurar" não
+  faz nada (não há disquetes), e a pasta de desenhos continua única.
+
 Os próximos passos (engine, Fine Artist, Creative Writer) estão descritos em
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
@@ -78,7 +92,8 @@ binário fica em `target/release/atelie-livre` e roda sem a SDL3 instalada.
 Teclas: **Alt+Enter** alterna tela cheia/janela; **Ctrl+Q** sai (Esc não
 fecha o programa, de propósito); **F12** abre o navegador de recursos se
 `dev = true`. Opções: `--window`, `--scale integer|fit`, `--browser`,
-`--program artist|writer`.
+`--program artist|writer`, `--user APELIDO` (pula a Entrada do Fine
+Artist).
 
 No navegador: ↑/↓ trocam a fonte, ←/→ (PageUp/PageDown, Home/End) percorrem
 os itens, Enter toca um som, Esc volta. Sobre uma imagem, a faixa mostra a
@@ -107,6 +122,7 @@ fullscreen = true
 volume = 80            # 0 a 100
 dev = false            # true habilita o F12
 program = "artist"     # ou "writer" (Creative Writer)
+usuario = "ana"        # opcional: pula a Entrada do Fine Artist
 click_sound = { program = "artist", id = 0x209 }   # opcional
 ```
 
