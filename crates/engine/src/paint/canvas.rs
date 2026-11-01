@@ -48,6 +48,12 @@ pub struct Canvas {
     pub w: u32,
     pub h: u32,
     pub px: Vec<u8>,
+    /// Recorte retangular `(x, y, w, h)` da pintura (quadrinho da história em
+    /// quadrinhos): fora dele nada pinta, cola nem preenche. `None` = quadro todo.
+    pub clip: Option<(i32, i32, u32, u32)>,
+    /// Máscara de recorte (botão/adesivo), um `bool` por pixel: só pinta onde é
+    /// `true`. Ignorada se o tamanho não bate com o quadro.
+    pub clip_mask: Option<Vec<bool>>,
 }
 
 impl Canvas {
@@ -56,6 +62,8 @@ impl Canvas {
             w,
             h,
             px: vec![WHITE; (w * h) as usize],
+            clip: None,
+            clip_mask: None,
         }
     }
 
@@ -64,20 +72,42 @@ impl Canvas {
             .then(|| y as usize * self.w as usize + x as usize)
     }
 
+    /// Índice do pixel se ele existe e está dentro do recorte (`clip` e `clip_mask`).
+    fn writable(&self, x: i32, y: i32) -> Option<usize> {
+        let i = self.index(x, y)?;
+        if let Some((cx, cy, cw, ch)) = self.clip
+            && !(x >= cx && y >= cy && x < cx + cw as i32 && y < cy + ch as i32)
+        {
+            return None;
+        }
+        if let Some(m) = &self.clip_mask
+            && m.len() == self.px.len()
+            && !m[i]
+        {
+            return None;
+        }
+        Some(i)
+    }
+
+    /// `true` se o pixel existe e a pintura pode escrever nele.
+    pub fn can_paint(&self, x: i32, y: i32) -> bool {
+        self.writable(x, y).is_some()
+    }
+
     pub fn get(&self, x: i32, y: i32) -> Option<u8> {
         self.index(x, y).map(|i| self.px[i])
     }
 
-    /// Escreve o índice `v` no pixel, sem tinta nem padrão (recortado nas bordas).
+    /// Escreve o índice `v` no pixel, sem tinta nem padrão (recortado nas bordas e no recorte).
     pub fn set(&mut self, x: i32, y: i32, v: u8) {
-        if let Some(i) = self.index(x, y) {
+        if let Some(i) = self.writable(x, y) {
             self.px[i] = v;
         }
     }
 
-    /// Pinta um pixel do quadro com a tinta (recortado nas bordas).
+    /// Pinta um pixel do quadro com a tinta (recortado nas bordas e no recorte).
     pub fn plot(&mut self, x: i32, y: i32, ink: &Ink) {
-        if let Some(i) = self.index(x, y) {
+        if let Some(i) = self.writable(x, y) {
             self.px[i] = ink.index_at(x + ORIGIN.0, y + ORIGIN.1);
         }
     }
@@ -96,18 +126,15 @@ impl Canvas {
             match cell {
                 Cell::Clear => {}
                 Cell::Ink => self.plot(x, y, ink),
-                Cell::White => {
-                    if let Some(i) = self.index(x, y) {
-                        self.px[i] = WHITE;
-                    }
-                }
+                Cell::White => self.set(x, y, WHITE),
             }
         }
     }
 
-    /// Preenche a região de vizinhança 4 com o mesmo índice do pixel `(x, y)`.
+    /// Preenche a região de vizinhança 4 com o mesmo índice do pixel `(x, y)`,
+    /// sem sair do recorte.
     pub fn fill(&mut self, x: i32, y: i32, ink: &Ink) {
-        let Some(start) = self.index(x, y) else {
+        let Some(start) = self.writable(x, y) else {
             return;
         };
         let target = self.px[start];
@@ -118,7 +145,7 @@ impl Canvas {
         while let Some((px, py)) = stack.pop() {
             region.push((px, py));
             for (nx, ny) in [(px - 1, py), (px + 1, py), (px, py - 1), (px, py + 1)] {
-                if let Some(i) = self.index(nx, ny)
+                if let Some(i) = self.writable(nx, ny)
                     && !seen[i]
                     && self.px[i] == target
                 {
@@ -300,6 +327,45 @@ mod tests {
         c.fill(0, 0, &pat);
         c.fill(-1, 0, &pat);
         assert_eq!(count(&c, WHITE), 2500);
+    }
+
+    #[test]
+    fn clip_rect_limits_plot_set_stamp_and_fill() {
+        let mut c = Canvas::new(10, 10);
+        c.clip = Some((2, 2, 4, 4));
+        c.plot(0, 0, &Ink::solid(BLACK));
+        c.set(9, 9, BLACK);
+        c.plot(3, 3, &Ink::solid(BLACK));
+        assert_eq!(c.get(0, 0), Some(WHITE));
+        assert_eq!(c.get(9, 9), Some(WHITE));
+        assert_eq!(c.get(3, 3), Some(BLACK));
+        c.stamp(&Shape::square(4), 2, 2, &Ink::solid(5));
+        assert_eq!(count(&c, 5), 4);
+        c.fill(4, 4, &Ink::solid(7));
+        // o balde não sai do recorte: 16 pixels menos os 4 do carimbo (que cobriu o preto)
+        assert_eq!(count(&c, 7), 12);
+        assert!(c.can_paint(2, 2));
+        assert!(!c.can_paint(6, 2));
+        c.clip = Some((0, 0, 0, 0));
+        c.fill(1, 1, &Ink::solid(9));
+        assert_eq!(count(&c, 9), 0);
+    }
+
+    #[test]
+    fn clip_mask_limits_painting_and_is_ignored_if_wrong_size() {
+        let mut c = Canvas::new(4, 4);
+        let mut m = vec![false; 16];
+        m[5] = true;
+        c.clip_mask = Some(m);
+        c.fill(0, 0, &Ink::solid(3));
+        assert_eq!(count(&c, 3), 0);
+        c.fill(1, 1, &Ink::solid(3));
+        assert_eq!(count(&c, 3), 1);
+        c.plot(2, 2, &Ink::solid(3));
+        assert_eq!(count(&c, 3), 1);
+        c.clip_mask = Some(vec![false; 3]);
+        c.plot(2, 2, &Ink::solid(3));
+        assert_eq!(count(&c, 3), 2);
     }
 
     #[test]

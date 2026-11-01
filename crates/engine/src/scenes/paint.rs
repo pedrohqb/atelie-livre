@@ -415,16 +415,28 @@ impl Paint {
         p
     }
 
-    /// Abre a tela como um projeto da Oficina (quadro novo).
+    /// Abre a tela como um projeto da Oficina: reabre o último trabalho desse
+    /// tipo (`ultimo-<tipo>.png`), se houver, senão um quadro novo.
     pub fn new_project(kind: ProjectKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
         let mut p = Paint::new(None, assets);
-        p.project = Some(match kind {
-            ProjectKind::Flipbook => {
-                Project::Flipbook(Box::new(Flipbook::open(drawings.as_deref(), assets)))
-            }
-            k => Project::new(k),
-        });
         p.drawings = drawings;
+        if kind == ProjectKind::Flipbook {
+            p.project = Some(Project::Flipbook(Box::new(Flipbook::open(
+                p.drawings.as_deref(),
+                assets,
+            ))));
+            return p;
+        }
+        if let Some(c) = p
+            .drawings
+            .as_ref()
+            .and_then(|d| load_png(&d.join(kind.last_name()), &p.pal))
+        {
+            p.canvas = c;
+        }
+        let project = Project::new(kind);
+        project.prepare(&mut p.canvas);
+        p.project = Some(project);
         p
     }
 
@@ -448,7 +460,11 @@ impl Paint {
         let name =
             crate::paint::store::timestamp_name(now_secs()).replace("desenho-", "impressao-");
         let path = dir.join(name);
-        if let Err(e) = crate::paint::store::save_png(&self.canvas, &self.pal, &path) {
+        let page = match &self.project {
+            Some(p) => p.print_page(&self.canvas, &self.pal),
+            None => self.canvas.clone(),
+        };
+        if let Err(e) = crate::paint::store::save_png(&page, &self.pal, &path) {
             return Effect::Log(format!(
                 "imprimir: não consegui gravar {}: {e}",
                 path.display()
@@ -745,6 +761,15 @@ impl Paint {
         self.finish_sticker();
         // qualquer clique encerra o texto que estava sendo digitado
         self.commit_words();
+        if let Some(p) = self.project.as_mut() {
+            if let Some(changed) = p.click(x, y, &mut self.canvas, &mut self.history) {
+                self.changed |= changed;
+                return;
+            }
+            if inside(canvas_rect(), x, y) {
+                p.clip_at(&mut self.canvas, x - ORIGIN.0, y - ORIGIN.1);
+            }
+        }
         if self.tool == Tool::Stickers {
             match self
                 .stickers
@@ -1317,9 +1342,15 @@ impl Scene for Paint {
             fb.draw_canvas(frame, assets);
             return;
         }
-        self.draw_options(frame, assets);
+        match &self.project {
+            Some(p) if p.asking() => p.draw_strip(frame, assets),
+            _ => self.draw_options(frame, assets),
+        }
         self.draw_columns(frame);
         self.draw_canvas(frame);
+        if let Some(p) = &self.project {
+            p.draw_overlay(frame, assets);
+        }
         // retângulo elástico do aspirador
         if self.vacuum_anchor.is_some()
             && let Some((x0, y0, w, h)) =
@@ -1358,7 +1389,18 @@ impl Scene for Paint {
         if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
             return vec![Effect::Log(format!("sons: {e}"))];
         }
-        let msg = match save_drawing(dir, &self.canvas, &self.pal, self.changed, now_secs()) {
+        let saved = match &self.project {
+            Some(p) => super::projects::save_picture(
+                dir,
+                p.kind(),
+                &self.canvas,
+                &self.pal,
+                self.changed,
+                now_secs(),
+            ),
+            None => save_drawing(dir, &self.canvas, &self.pal, self.changed, now_secs()),
+        };
+        let msg = match saved {
             Ok(()) => format!("desenho guardado em {}", dir.display()),
             Err(e) => e,
         };

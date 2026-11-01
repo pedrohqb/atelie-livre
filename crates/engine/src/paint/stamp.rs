@@ -48,15 +48,14 @@ impl Stamp {
 }
 
 impl Canvas {
-    /// Cola o bitmap com o canto superior esquerdo em `(x0, y0)` (coordenadas do quadro).
+    /// Cola o bitmap com o canto superior esquerdo em `(x0, y0)` (coordenadas do
+    /// quadro), respeitando o recorte.
     pub fn paste(&mut self, s: &Stamp, x0: i32, y0: i32) {
         for (k, p) in s.px.iter().enumerate() {
             let Some(v) = p else { continue };
             let x = x0 + (k as u32 % s.w) as i32;
             let y = y0 + (k as u32 / s.w) as i32;
-            if x >= 0 && y >= 0 && (x as u32) < self.w && (y as u32) < self.h {
-                self.px[y as usize * self.w as usize + x as usize] = *v;
-            }
+            self.set(x, y, *v);
         }
     }
 }
@@ -121,5 +120,19 @@ mod tests {
         assert_eq!(c.get(0, 0), Some(7));
         c.paste(&s, 100, -100);
         assert_eq!(c.px.iter().filter(|&&v| v != 0).count(), 2);
+    }
+
+    #[test]
+    fn paste_respects_clip() {
+        let mut c = Canvas::new(3, 3);
+        c.clip = Some((1, 1, 1, 1));
+        let s = Stamp {
+            w: 2,
+            h: 2,
+            px: vec![Some(5), Some(5), Some(5), Some(5)],
+        };
+        c.paste(&s, 0, 0);
+        assert_eq!(c.px.iter().filter(|&&v| v == 5).count(), 1);
+        assert_eq!(c.get(1, 1), Some(5));
     }
 }

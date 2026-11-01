@@ -90,10 +90,36 @@ seção 4. Resumo:
 
 ## Oficina de Projetos
 
-Os projetos da Maggie são modos da tela de pintura (mesmo quadro de 594×347
-em (23,109), mesma barra de ferramentas), com um rótulo próprio na barra
-inferior e um painel extra na faixa de opções. Desenho em
-[`docs/superpowers/specs/2026-10-31-projetos-design.md`](../superpowers/specs/2026-10-31-projetos-design.md).
+Os projetos da Maggie são modos da tela de pintura (spec
+[`2026-10-31-projetos-design.md`](../superpowers/specs/2026-10-31-projetos-design.md);
+geometria reconstruída, não medida — o Wine não chega a mostrar essas telas).
+O rótulo da barra inferior vira "Fazendo uma História em Quadrinhos" /
+"Fazendo um Botão" / "Fazendo um Adesivo" e a porta "Saída" volta ao andar
+dos Projetos. O nicho do McZee (x 533..580 da faixa) mostra o estado do
+projeto e, clicado, abre e fecha o painel do projeto na faixa de opções;
+qualquer outro clique fecha o painel e devolve a faixa às opções da ferramenta.
+
+- **História em quadrinhos**: ao abrir, a faixa pergunta quantos quadrinhos,
+  1 a 4 (o roteiro de ajuda `WHAT` 3e00 diz "até quatro painéis"), com os
+  dígitos `3a78`/`3a79` (1), `3a7b`/`3a7c`/`3a7d` (2), `3a7f`… (3) e
+  `3a83`… (4), o escolhido em cor. Leiautes no quadro de 594×347 com margem
+  de 6 px e calha de 8 px: 1 inteiro, 2 lado a lado, 3 colunas, 4 = 2×2;
+  molduras pretas de 3 px desenhadas por cima do quadro (não entram no PNG).
+  Pincel, lata, palavras e adesivos ficam recortados ao quadrinho onde o
+  clique começou; na calha nada pinta. Trocar o número não apaga nada.
+  Imprimir grava a página com as molduras.
+- **Botão ou adesivo**: a faixa mostra três cartões — "Botão redondo"
+  (círculo de 300 px), "Botão quadrado" (300×300, cantos de raio 30) e
+  "Adesivo" (360×260, raio 24) —, como no roteiro 3c00 ("Redondo ou
+  Quadrado"). Borda preta de 3 px e, nos botões, anel cinza de 12 px (a aba
+  de metal), tudo overlay; a pintura fica limitada ao interior e, ao trocar
+  a forma, o que ficaria fora vira branco (o ovo desfaz). Imprimir grava uma
+  folha de 827×1169 (210×297 mm a 100 ppp) com 2×3 botões ou 3×4 adesivos,
+  cada cópia reduzida para caber na célula.
+- **Arquivos**: ao sair, `ultimo-quadrinhos.png` / `ultimo-botao.png` /
+  `ultimo-adesivo.png` (reaberto na próxima vez) e, se mudou,
+  `quadrinhos-AAAAMMDD-HHMMSS.png` etc.; a impressão vai para
+  `impressao-AAAAMMDD-HHMMSS.png` como na pintura.
 
 ### Desenho animado
 
