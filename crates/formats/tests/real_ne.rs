@@ -168,6 +168,28 @@ fn every_sound_decodes() {
 }
 
 #[test]
+fn artist_sounds_loop_points() {
+    use formats::wave;
+    let Some(d) = support::read("ARTIST/ARTIST.SND") else {
+        return;
+    };
+    let ne = ne::parse(&d).unwrap();
+    let points = |id| {
+        wave::decode(ne.find("SND", id).unwrap().data)
+            .unwrap()
+            .loop_points
+    };
+    assert_eq!(points(0x21e), Some((0, 6933)));
+    assert_eq!(points(0x229), Some((6348, 18557)));
+    assert_eq!(points(0x213), None);
+    let looping = ne
+        .of_kind("SND")
+        .filter(|r| wave::decode(r.data).unwrap().loop_points.is_some())
+        .count();
+    assert_eq!(looping, 21);
+}
+
+#[test]
 fn standard_windows_resources_decode() {
     use formats::winres;
     for file in ["ARTIST.EXE", "WRITER.EXE"] {
