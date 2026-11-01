@@ -11,6 +11,20 @@ pub struct Element {
 
 pub const LOBBY_BG: u16 = 0x6a6b;
 pub const LOBBY: &[Element] = &[
+    // portas do elevador e o mostrador "SOBE" (medidos pelo contorno preto numa
+    // captura do original; as cores do saguão mudam a cada visita)
+    Element {
+        id: 0x6c0b,
+        mask: 0x6c11,
+        x: 208,
+        y: 72,
+    },
+    Element {
+        id: 0x6c23,
+        mask: 0x6c29,
+        x: 288,
+        y: 0,
+    },
     Element {
         id: 0x6c13,
         mask: 0x6c21,
