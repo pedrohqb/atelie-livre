@@ -116,13 +116,13 @@ impl Floor {
 /// Bloco `WHAT` com os balões das salas e índice do balão de chegada de cada andar.
 const ROOMS_WHAT: u16 = 0x100d;
 
-/// Nome usado no lugar do `@` dos balões (não há cadastro de usuário ainda).
-const USER_NAME: &str = "artista";
+/// Nome usado no lugar do `@` dos balões quando não há usuário escolhido.
+pub const DEFAULT_USER: &str = "artista";
 
 impl Floor {
     /// Balão de chegada ao andar: o do `WHAT` do original quando os dados
     /// estão instalados, senão o texto reserva.
-    fn balloon(self, assets: &Assets) -> Balloon {
+    fn balloon(self, assets: &Assets, user: &str) -> Balloon {
         let k = match self {
             Floor::Lobby => 1,
             Floor::Studio => 26,
@@ -132,7 +132,7 @@ impl Floor {
         let fallback = self.fallback_balloon();
         match assets.dialogs(Program::Artist, ROOMS_WHAT).get(k) {
             Some(r) if r.options().len() == fallback.options.len() => {
-                Balloon::from_record(r, fallback.x, fallback.y, USER_NAME)
+                Balloon::from_record(r, fallback.x, fallback.y, user)
             }
             _ => fallback,
         }
@@ -266,6 +266,8 @@ pub struct Room {
     rng: XorShift,
     character: Option<Character>,
     gags: GagPlayer,
+    /// Apelido do usuário, o `@` dos balões.
+    user: String,
 }
 
 impl Room {
@@ -288,14 +290,22 @@ impl Room {
             last_drawing,
             pal,
             drawings,
-            balloon: Some(floor.balloon(assets)),
+            balloon: Some(floor.balloon(assets, DEFAULT_USER)),
             floor,
             quitting: false,
             asking_button: false,
             rng,
             character,
             gags,
+            user: DEFAULT_USER.to_string(),
         }
+    }
+
+    /// Com o apelido do usuário no lugar do `@` dos balões.
+    pub fn with_user(mut self, user: &str, assets: &Assets) -> Room {
+        self.user = user.to_string();
+        self.balloon = Some(self.floor.balloon(assets, &self.user));
+        self
     }
 
     pub fn character(&self) -> Option<&Character> {
@@ -366,7 +376,7 @@ impl Room {
     fn set_floor(&mut self, floor: Floor, assets: &Assets) {
         self.floor = floor;
         self.hotspots = floor.hotspots();
-        self.balloon = Some(floor.balloon(assets));
+        self.balloon = Some(floor.balloon(assets, &self.user));
         self.character = floor.character(&mut self.rng);
         self.gags = GagPlayer::with_rng(
             floor.gag_scripts(),

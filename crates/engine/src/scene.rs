@@ -61,6 +61,12 @@ pub enum SceneId {
     /// Escolha do programa.
     Chooser,
     Splash,
+    /// Entrada: lista de usuários e cadastro.
+    Entry,
+    /// História do McZee (álbum de fotos).
+    Story,
+    /// Imaginópolis: a cidade vista de fora; a porta do museu leva à rua.
+    Imaginopolis,
     Street,
     /// Prédio: saguão e andares.
     Building,
@@ -88,6 +94,8 @@ pub enum Effect {
     ChangeScene(SceneId),
     /// Volta à cena anterior.
     Back,
+    /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
+    SetUser(String),
     Log(String),
     Quit,
 }

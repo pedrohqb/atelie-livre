@@ -1,4 +1,4 @@
-//! Abertura: tela de título do Fine Artist (clique ou 5 s levam à rua) ou do
+//! Abertura: tela de título do Fine Artist (clique ou 5 s levam à Entrada) ou do
 //! Creative Writer (leva ao Escritório). Enquanto espera, no Fine Artist
 //! tocam as animações do título: o pássaro atravessa a tela e depois os
 //! demais roteiros (McZee saindo do buraco com chapéus, porco, gafanhoto...)
@@ -38,7 +38,7 @@ impl Splash {
             done: false,
             program: Program::Artist,
             title: TITLE,
-            next: SceneId::Street,
+            next: SceneId::Entry,
             gags,
         }
     }
@@ -123,17 +123,17 @@ mod tests {
     }
 
     #[test]
-    fn splash_click_goes_to_street() {
+    fn splash_click_goes_to_entry() {
         let (_d, a) = empty_assets();
         let mut s = Splash::new(None);
         assert!(
             s.update(&[click()], 0.016, &a)
-                .contains(&Effect::ChangeScene(SceneId::Street))
+                .contains(&Effect::ChangeScene(SceneId::Entry))
         );
     }
 
     #[test]
-    fn splash_timeout_goes_to_street_once() {
+    fn splash_timeout_goes_to_entry_once() {
         let (_d, a) = empty_assets();
         let mut s = Splash::new(None);
         let mut changes = 0;
@@ -141,7 +141,7 @@ mod tests {
             changes += s
                 .update(&[], 1.0, &a)
                 .iter()
-                .filter(|e| **e == Effect::ChangeScene(SceneId::Street))
+                .filter(|e| **e == Effect::ChangeScene(SceneId::Entry))
                 .count();
         }
         assert_eq!(changes, 1);
