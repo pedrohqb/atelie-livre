@@ -2,6 +2,8 @@
 //! espiando por trás) sobre as nuvens da Entrada, uma foto e uma legenda por
 //! página, e o balão correspondente do `WHAT 4200`. Segue (ou Enter, ou um
 //! clique no balão) passa a página; Para sai para Imaginópolis, como o fim.
+//! Aberta pelo livro verde de uma sala ([`Story::over_room`]), aparece por
+//! cima da sala e Para (ou o fim) volta a ela.
 
 use super::entry::BACKGROUND;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
@@ -53,6 +55,8 @@ pub struct Story {
     page: usize,
     balloon: TextBalloon,
     done: bool,
+    /// Aberta por cima de uma sala: sem o fundo de nuvens; sai com `Back`.
+    over_room: bool,
 }
 
 impl Story {
@@ -62,7 +66,24 @@ impl Story {
             page: 0,
             balloon: Self::balloon(0, assets),
             done: false,
+            over_room: false,
         }
+    }
+
+    /// A história contada pelo livro verde de uma sala: desenhada por cima
+    /// dela, e Para ou o fim voltam à sala.
+    pub fn over_room(mut self) -> Story {
+        self.over_room = true;
+        self
+    }
+
+    fn leave_story(&mut self, fx: &mut Vec<Effect>) {
+        self.done = true;
+        fx.push(if self.over_room {
+            Effect::Back
+        } else {
+            Effect::ChangeScene(SceneId::Imaginopolis)
+        });
     }
 
     pub fn page(&self) -> usize {
@@ -95,8 +116,7 @@ impl Story {
             self.page += 1;
             self.balloon = Self::balloon(self.page, assets);
         } else {
-            self.done = true;
-            fx.push(Effect::ChangeScene(SceneId::Imaginopolis));
+            self.leave_story(fx);
         }
     }
 }
@@ -110,10 +130,7 @@ impl Scene for Story {
             }
             match self.balloon.handle(assets, i) {
                 Some(Button::Next) => self.next(&mut fx, assets),
-                Some(_) => {
-                    self.done = true;
-                    fx.push(Effect::ChangeScene(SceneId::Imaginopolis));
-                }
+                Some(_) => self.leave_story(&mut fx),
                 None => match i {
                     Input::Click {
                         button: MouseButton::Left,
@@ -131,14 +148,20 @@ impl Scene for Story {
         fx
     }
 
+    fn overlay(&self) -> bool {
+        self.over_room
+    }
+
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
-        frame.fill([136, 136, 230]);
-        let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
-        frame.blit(
-            &bg,
-            (SCREEN_W as i32 - bg.width as i32) / 2,
-            (SCREEN_H as i32 - bg.height as i32) / 2,
-        );
+        if !self.over_room {
+            frame.fill([136, 136, 230]);
+            let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+            frame.blit(
+                &bg,
+                (SCREEN_W as i32 - bg.width as i32) / 2,
+                (SCREEN_H as i32 - bg.height as i32) / 2,
+            );
+        }
         let (ax, ay) = ALBUM_POS;
         blit_pic_opaque(frame, assets, ALBUM, ax, ay);
         let (left, right) = PAGES[self.page];
@@ -203,6 +226,22 @@ mod tests {
         let r = s.balloon.button_rect(&a, Button::Stop).unwrap();
         let fx = s.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Imaginopolis)));
+    }
+
+    #[test]
+    fn book_story_returns_to_the_room() {
+        let (_d, a) = empty_assets();
+        let mut s = Story::new(None, &a).over_room();
+        assert!(s.overlay());
+        // por cima da sala: o fundo de nuvens não é desenhado
+        let mut f = Frame::new(640, 480);
+        f.fill([1, 2, 3]);
+        s.draw(&mut f, &a);
+        assert_eq!(f.pixel(2, 470)[..3], [1, 2, 3]);
+        let r = s.balloon.button_rect(&a, Button::Stop).unwrap();
+        let fx = s.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert!(fx.contains(&Effect::Back));
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
     }
 
     #[test]

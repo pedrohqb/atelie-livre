@@ -71,6 +71,12 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
             })
         }
         SceneId::Story => Box::new(Story::new(cfg.click_sound.clone(), assets)),
+        SceneId::BookStory => Box::new(Story::new(cfg.click_sound.clone(), assets).over_room()),
+        SceneId::Portfolio => Box::new(GalleryRoom::portfolio(
+            cfg.click_sound.clone(),
+            drawings_dir(),
+            assets,
+        )),
         SceneId::Imaginopolis => Box::new(Imaginopolis::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
         SceneId::Browser => Box::new(Browser::new()),
@@ -308,10 +314,16 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     cursor_factor = 0;
                 }
                 Effect::ChangeScene(id) => {
+                    // as cenas guardadas por baixo (Push) também saem
+                    while stack.len() > 1 {
+                        let mut s = stack.pop().expect("cena");
+                        print_logs(s.leave());
+                    }
                     let top = stack.last_mut().expect("cena");
                     print_logs(top.leave());
                     *top = make_scene(id, &cfg, &user, &assets);
                 }
+                Effect::Push(id) => stack.push(make_scene(id, &cfg, &user, &assets)),
                 Effect::Back => {
                     if stack.len() > 1 {
                         let mut top = stack.pop().expect("cena");
@@ -337,7 +349,11 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
             cursor_factor = factor;
         }
 
-        stack.last().expect("cena").draw(&mut frame, &assets);
+        let top = stack.last().expect("cena");
+        if top.overlay() && stack.len() > 1 {
+            stack[stack.len() - 2].draw(&mut frame, &assets);
+        }
+        top.draw(&mut frame, &assets);
         if let Err(e) = texture.update(None, frame.pixels(), (SCREEN_W * 4) as usize) {
             eprintln!("aviso: textura: {e}");
         }

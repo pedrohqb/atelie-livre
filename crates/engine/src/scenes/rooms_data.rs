@@ -1,5 +1,10 @@
 //! Elementos fixos das salas, medidos em capturas do original (tools/wine/compose.py).
-//! Gerado por tools/wine/rooms_gen.py; não editar à mão.
+//! Gerado por tools/wine/rooms_gen.py e depois acertado à mão: a Bolsa Mágica
+//! e o que sai dela (maleta 0x685b, livro 0x6863, varinha 0x686b, bolsa
+//! aberta 0x6873 ou fechada 0x6833) saíram daqui e são desenhados por
+//! `room_objects`, porque mudam com os cliques; a ponta do balão 0x0407 do
+//! saguão também saiu; o mastro dos andares 3 e 4 usa a imagem colorida
+//! 0x6823 (a 0x6828 é a versão de 1 bit).
 
 /// Imagem de `ARTIST.PIC`, máscara (ou 0) e posição na tela.
 pub struct Element {
@@ -44,28 +49,10 @@ pub const LOBBY: &[Element] = &[
         y: 0,
     },
     Element {
-        id: 0x685b,
-        mask: 0x6861,
-        x: 263,
-        y: 394,
-    },
-    Element {
-        id: 0x6873,
-        mask: 0x6879,
-        x: 97,
-        y: 410,
-    },
-    Element {
         id: 0x681b,
         mask: 0x6821,
         x: 144,
         y: 182,
-    },
-    Element {
-        id: 0x6863,
-        mask: 0x6869,
-        x: 356,
-        y: 367,
     },
     Element {
         id: 0x6c63,
@@ -91,18 +78,6 @@ pub const LOBBY: &[Element] = &[
         x: 513,
         y: 346,
     },
-    Element {
-        id: 0x686b,
-        mask: 0x6871,
-        x: 222,
-        y: 421,
-    },
-    Element {
-        id: 0x0407,
-        mask: 0x0000,
-        x: 54,
-        y: 323,
-    },
 ];
 
 pub const STUDIO_BG: u16 = 0x6c6b;
@@ -126,18 +101,6 @@ pub const STUDIO: &[Element] = &[
         y: 146,
     },
     Element {
-        id: 0x6873,
-        mask: 0x6879,
-        x: 129,
-        y: 414,
-    },
-    Element {
-        id: 0x6863,
-        mask: 0x6869,
-        x: 265,
-        y: 383,
-    },
-    Element {
         id: 0x6843,
         mask: 0x6849,
         x: 466,
@@ -154,12 +117,6 @@ pub const STUDIO: &[Element] = &[
         mask: 0x6841,
         x: 466,
         y: 328,
-    },
-    Element {
-        id: 0x686b,
-        mask: 0x6871,
-        x: 352,
-        y: 410,
     },
     Element {
         id: 0x6e7b,
@@ -196,13 +153,7 @@ pub const PROJECTS: &[Element] = &[
         y: 168,
     },
     Element {
-        id: 0x6833,
-        mask: 0x6839,
-        x: 146,
-        y: 392,
-    },
-    Element {
-        id: 0x6828,
+        id: 0x6823,
         mask: 0x6829,
         x: 573,
         y: 2,
@@ -255,13 +206,7 @@ pub const TRICKS: &[Element] = &[
         y: 89,
     },
     Element {
-        id: 0x6833,
-        mask: 0x6839,
-        x: 149,
-        y: 357,
-    },
-    Element {
-        id: 0x6828,
+        id: 0x6823,
         mask: 0x6829,
         x: 539,
         y: 0,

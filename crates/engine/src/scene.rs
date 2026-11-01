@@ -84,6 +84,12 @@ pub enum SceneId {
     Project(crate::scenes::projects::ProjectKind),
     /// Galeria de desenhos guardados.
     Gallery,
+    /// Pasta de trabalhos aberta pela maleta vermelha de uma sala (por cima
+    /// da sala; fechar volta a ela).
+    Portfolio,
+    /// História do McZee aberta pelo livro verde de uma sala (por cima da
+    /// sala; Para volta a ela).
+    BookStory,
     Browser,
     /// Abertura do Creative Writer.
     WriterSplash,
@@ -97,6 +103,10 @@ pub enum Effect {
     PlaySound(SoundRef),
     SetCursor(CursorRef),
     ChangeScene(SceneId),
+    /// Abre a cena por cima da atual, que fica guardada como está (sem
+    /// atualizar); `Back` volta a ela. Um `ChangeScene` na cena de cima
+    /// descarta também as de baixo.
+    Push(SceneId),
     /// Volta à cena anterior.
     Back,
     /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
@@ -111,6 +121,11 @@ pub trait Scene {
     /// Chamado antes de a cena ser trocada ou descartada e ao fechar o programa.
     fn leave(&mut self) -> Vec<Effect> {
         Vec::new()
+    }
+    /// A cena é desenhada por cima da de baixo (aberta com `Effect::Push`),
+    /// que aparece por trás dela.
+    fn overlay(&self) -> bool {
+        false
     }
 }
 

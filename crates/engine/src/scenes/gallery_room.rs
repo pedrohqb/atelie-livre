@@ -4,15 +4,22 @@
 //! para a lixeira; clique duplo abre o quadro na pintura. Medido na captura
 //! `scratch/orig_gallery1.png`/`orig_gallery2.png` (fora do repositório); o
 //! papel de parede de corações não está no `ARTIST.PIC` e é desenhado aqui.
+//!
+//! A Bolsa Mágica fica aberta no chão, como no original: a maleta vermelha
+//! abre a pasta, o livro verde conta a história do McZee e a Varinha Mágica,
+//! no buraco do rato, faz sair uma surpresa (`room_objects`). A pasta também
+//! abre sozinha por cima das salas ([`GalleryRoom::portfolio`]).
 
 use super::gags::{self, Character};
+use super::room_objects::{self as objects, BagPart, MagicBag, Target, snd};
 use crate::Frame;
+use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::paint::store::{LAST_NAME, load_picture, save_png, timestamp_name};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
 use crate::rng::XorShift;
-use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use formats::palette::Rgb;
 use std::path::{Path, PathBuf};
 
@@ -27,22 +34,23 @@ const PLATE: Rect = (32, 117, 140, 12);
 const THUMB_W: u32 = CANVAS_W / 4;
 const THUMB_H: u32 = CANVAS_H / 4;
 
-/// Elementos fixos: (cor, máscara, x, y).
-const ELEMENTS: [(u16, u16, i32, i32); 8] = [
+/// Elementos fixos: (cor, máscara, x, y). A Bolsa Mágica e o que sai dela
+/// (livro verde, maleta e varinha) vêm de `room_objects::GALLERY_BAG`.
+const ELEMENTS: [(u16, u16, i32, i32); 5] = [
     (0x681b, 0x6821, 16, 3),    // Tchau
     (0x6c87, 0x6c89, 430, 193), // impressora no quadro da parede
     (0x6c7f, 0x6c81, 527, 276), // seta "Saguão"
     (0x683b, 0x6841, 445, 348), // buraco do rato
     (0x6c83, 0x6c85, 523, 359), // lixeira
-    (0x6863, 0x6869, 235, 360), // pasta
-    (0x685b, 0x6861, 304, 391), // maleta
-    (0x6873, 0x6879, 95, 400),  // Bolsa Mágica
 ];
 const TCHAU: Rect = (16, 90, 56, 45);
 const PRINTER: Rect = (430, 193, 60, 74);
 const LOBBY_ARROW: Rect = (527, 276, 91, 46);
 const TRASH: Rect = (523, 359, 92, 108);
-const FOLDER: Rect = (235, 360, 85, 60);
+const MOUSE_HOLE: Rect = (445, 348, 54, 47);
+/// A maleta vermelha (a pasta de trabalhos).
+#[cfg(test)]
+const FOLDER: Rect = (304, 391, 99, 74);
 
 /// Pasta aberta: painel com 4×3 miniaturas e setas.
 const PANEL: Rect = (40, 40, 560, 360);
@@ -64,6 +72,8 @@ const TIP_REORGANIZE: usize = 8;
 const TIP_OPEN: usize = 9;
 const TIP_PRINT: usize = 10;
 const TIP_TRASH: usize = 11;
+/// "Wand - library": a varinha no buraco do rato da Galeria.
+const WAND_LIBRARY: usize = 57;
 
 const DOUBLE_CLICK: f32 = 0.4;
 /// Arquivo com os nomes dos quadros das três molduras.
@@ -172,6 +182,12 @@ pub struct GalleryRoom {
     balloon: Option<(Ask, Balloon)>,
     character: Option<Character>,
     mouse: (i32, i32),
+    /// Só a pasta, aberta pela maleta de uma sala (por cima dela).
+    overlay: bool,
+    bag: MagicBag,
+    surprise: Option<Animator>,
+    rng: XorShift,
+    wand_cursor: bool,
 }
 
 impl GalleryRoom {
@@ -214,9 +230,80 @@ impl GalleryRoom {
             balloon: None,
             character,
             mouse: (0, 0),
+            overlay: false,
+            bag: MagicBag::new(objects::GALLERY_BAG, true),
+            surprise: None,
+            rng,
+            wand_cursor: false,
         };
         g.ask(Ask::Welcome, WELCOME, assets);
         g
+    }
+
+    /// Só a pasta de trabalhos, aberta pela maleta vermelha de uma sala:
+    /// desenhada por cima da sala; fechar (ou clicar fora) volta a ela, e um
+    /// clique duplo abre o quadro na pintura.
+    pub fn portfolio(
+        click: Option<SoundRef>,
+        dir: Option<PathBuf>,
+        assets: &Assets,
+    ) -> GalleryRoom {
+        let mut g = GalleryRoom::new(click, dir, assets);
+        g.balloon = None;
+        g.overlay = true;
+        g.folder_open = true;
+        g
+    }
+
+    pub fn bag(&self) -> &MagicBag {
+        &self.bag
+    }
+
+    pub fn surprise_playing(&self) -> bool {
+        self.surprise.is_some()
+    }
+
+    fn use_bag(&mut self, part: BagPart, fx: &mut Vec<Effect>, assets: &Assets) {
+        match part {
+            BagPart::Bag => {
+                let open = self.bag.holding_wand || !self.bag.open;
+                self.bag.holding_wand = false;
+                self.bag.open = open;
+                fx.push(Effect::PlaySound(snd(if open {
+                    objects::SND_BAG_OPEN
+                } else {
+                    objects::SND_BAG_CLOSE
+                })));
+            }
+            BagPart::Suitcase => {
+                fx.push(Effect::PlaySound(snd(objects::SND_SUITCASE)));
+                self.folder_open = true;
+            }
+            BagPart::Book => {
+                fx.extend(objects::SND_BOOK.map(|id| Effect::PlaySound(snd(id))));
+                fx.push(Effect::Push(SceneId::BookStory));
+            }
+            BagPart::Wand => {
+                self.bag.holding_wand = true;
+                self.bag.open = false;
+                fx.push(Effect::PlaySound(snd(objects::SND_WAND_TAKE)));
+                self.ask(Ask::Tip, WAND_LIBRARY, assets);
+                if let Some((_, b)) = &mut self.balloon {
+                    b.options.clear();
+                }
+            }
+        }
+    }
+
+    fn sync_cursor(&mut self, fx: &mut Vec<Effect>) {
+        if self.bag.holding_wand != self.wand_cursor {
+            self.wand_cursor = self.bag.holding_wand;
+            fx.push(Effect::SetCursor(if self.wand_cursor {
+                objects::WAND_CURSOR
+            } else {
+                DEFAULT_CURSOR
+            }));
+        }
     }
 
     pub fn items(&self) -> &[Item] {
@@ -429,13 +516,17 @@ impl GalleryRoom {
             }
             let inside_balloon = b.contains(assets, x, y);
             self.balloon = None;
-            if inside_balloon {
+            // o balão da varinha deixa o clique seguir
+            if inside_balloon || !self.bag.holding_wand {
                 return;
             }
         }
         if self.folder_open {
             if inside(PANEL_CLOSE, x, y) {
                 self.folder_open = false;
+                if self.overlay {
+                    fx.push(Effect::Back);
+                }
                 return;
             }
             if inside(PANEL_PREV, x, y) {
@@ -462,11 +553,25 @@ impl GalleryRoom {
         if self.folder_open {
             if !inside(PANEL, x, y) {
                 self.folder_open = false;
+                if self.overlay {
+                    fx.push(Effect::Back);
+                }
             }
             return;
         }
-        if inside(FOLDER, x, y) {
-            self.folder_open = true;
+        if let Some(part) = self.bag.hit(x, y) {
+            self.use_bag(part, fx, assets);
+        } else if self.bag.holding_wand && inside(MOUSE_HOLE, x, y) {
+            // a varinha no buraco do rato: uma surpresa, e ela volta à bolsa
+            self.bag.holding_wand = false;
+            fx.push(Effect::PlaySound(snd(objects::SND_WAND_HOLE)));
+            match objects::GALLERY_SURPRISES.start(Target::Hole, &mut self.rng, assets) {
+                Some(mut a) => {
+                    fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
+                    self.surprise = Some(a);
+                }
+                None => self.bag.open = true,
+            }
         } else if inside(LOBBY_ARROW, x, y) {
             fx.push(Effect::ChangeScene(SceneId::Building));
         } else if inside(TCHAU, x, y) {
@@ -687,6 +792,13 @@ impl Scene for GalleryRoom {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         self.clock += dt;
         let mut fx = self.common.update(input);
+        if let Some(a) = &mut self.surprise {
+            fx.extend(a.update(dt).into_iter().map(Effect::PlaySound));
+            if a.is_finished() {
+                self.surprise = None;
+                self.bag.open = true;
+            }
+        }
         for i in input {
             match *i {
                 Input::Click {
@@ -695,13 +807,16 @@ impl Scene for GalleryRoom {
                     y,
                 } => {
                     self.mouse = (x, y);
-                    self.press(x, y, &mut fx, assets);
+                    if self.surprise.is_none() {
+                        self.press(x, y, &mut fx, assets);
+                    }
                 }
                 Input::MouseMove { x, y } => {
                     self.mouse = (x, y);
                     if let Some(d) = self.drag.as_mut() {
                         d.pos = (x, y);
-                        if (x - d.start.0).abs() + (y - d.start.1).abs() > 4 {
+                        // só a pasta (por cima de uma sala): não há parede para arrastar
+                        if !self.overlay && (x - d.start.0).abs() + (y - d.start.1).abs() > 4 {
                             d.moved = true;
                             // arrastando da pasta: ela se fecha para mostrar a parede
                             if matches!(d.from, Source::Folder(_)) {
@@ -718,10 +833,19 @@ impl Scene for GalleryRoom {
                 _ => {}
             }
         }
+        self.sync_cursor(&mut fx);
         fx
     }
 
+    fn overlay(&self) -> bool {
+        self.overlay
+    }
+
     fn draw(&self, f: &mut Frame, a: &Assets) {
+        if self.overlay {
+            self.draw_folder(f, a);
+            return;
+        }
         Self::draw_background(f);
         for (img, mask, x, y) in ELEMENTS {
             f.blit_masked(
@@ -749,8 +873,12 @@ impl Scene for GalleryRoom {
                 );
             }
         }
+        self.bag.draw(f, a);
         if let Some(c) = &self.character {
             c.draw(f, a);
+        }
+        if let Some(s) = &self.surprise {
+            s.draw(f, a);
         }
         if self.folder_open {
             self.draw_folder(f, a);
@@ -911,5 +1039,85 @@ mod tests {
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Building)));
         let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
         g.draw(&mut f, &a);
+    }
+
+    /// Só a pasta, aberta pela maleta de uma sala: por cima dela, clique
+    /// duplo abre o quadro e fechar volta à sala.
+    #[test]
+    fn portfolio_over_a_room() {
+        let (_d, dir, a) = setup(2);
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        assert!(g.overlay());
+        assert!(g.folder_open());
+        let c = GalleryRoom::folder_cell(0);
+        let (cx, cy) = (c.0 + 20, c.1 + 20);
+        // arrastar não tira a figura da pasta (não há parede aqui)
+        g.update(&[down(cx, cy), mv(cx + 40, cy), up(cx + 40, cy)], 0.1, &a);
+        assert!(g.folder_open());
+        let fx = g.update(
+            &[down(cx, cy), up(cx, cy), down(cx, cy), up(cx, cy)],
+            0.1,
+            &a,
+        );
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        let fx = g.update(
+            &[
+                down(PANEL_CLOSE.0 + 5, PANEL_CLOSE.1 + 5),
+                up(PANEL_CLOSE.0 + 5, PANEL_CLOSE.1 + 5),
+            ],
+            0.1,
+            &a,
+        );
+        assert!(fx.contains(&Effect::Back));
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        let fx = g.update(&[down(5, 5), up(5, 5)], 0.1, &a);
+        assert!(fx.contains(&Effect::Back));
+        // por cima da sala: só o painel é desenhado
+        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+        f.fill([1, 2, 3]);
+        g.draw(&mut f, &a);
+        assert_eq!(f.pixel(5, 470)[..3], [1, 2, 3]);
+    }
+
+    /// Bolsa aberta no chão da Galeria: livro conta a história, a varinha
+    /// vira o cursor e, no buraco do rato (sem dados), volta para a bolsa.
+    #[test]
+    fn gallery_bag_book_and_wand() {
+        let (_d, dir, a) = setup(0);
+        let mut g = room(dir.path(), &a);
+        assert!(g.bag().open);
+        let fx = g.update(&[down(270, 380), up(270, 380)], 0.1, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::BookStory)));
+        let fx = g.update(&[down(270, 450), up(270, 450)], 0.1, &a);
+        assert!(g.bag().holding_wand);
+        assert!(fx.contains(&Effect::SetCursor(objects::WAND_CURSOR)));
+        let fx = g.update(&[down(470, 370), up(470, 370)], 0.1, &a);
+        assert!(!g.bag().holding_wand);
+        assert!(g.bag().open);
+        assert!(fx.contains(&Effect::PlaySound(snd(objects::SND_WAND_HOLE))));
+    }
+
+    /// Com os dados reais: a surpresa do buraco do rato toca e, no fim, a
+    /// bolsa volta a ficar aberta com a varinha.
+    #[test]
+    fn gallery_mouse_hole_surprise_with_real_data() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = room(dir.path(), &a);
+        g.update(&[down(270, 450), up(270, 450)], 0.1, &a);
+        g.update(&[down(470, 370), up(470, 370)], 0.1, &a);
+        assert!(g.surprise_playing());
+        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+        g.update(&[], 0.5, &a);
+        g.draw(&mut f, &a);
+        crate::scenes::testutil::dump(&f, "gallery_hole");
+        for _ in 0..80 {
+            g.update(&[], 0.1, &a);
+        }
+        assert!(!g.surprise_playing());
+        assert!(g.bag().open && !g.bag().holding_wand);
     }
 }

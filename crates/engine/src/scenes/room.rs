@@ -3,18 +3,22 @@
 //! (medidos no original); as áreas clicáveis estão aqui. Em cada andar há um
 //! personagem parado à esquerda (McZee com uma fantasia sorteada no saguão e
 //! no Ateliê; Maggie nos andares 3 e 4) e, de tempos em tempos, uma animação
-//! ambiente do andar (`gags`).
+//! ambiente do andar (`gags`). Os objetos do chão (Bolsa Mágica, maleta,
+//! livro, Varinha Mágica) estão em `room_objects`; o elevador, em `elevator`.
 
+use super::elevator::{self, Elevator, Outcome};
 use super::gags::{self, Character, GagPlayer};
 use super::projects::ProjectKind;
+use super::room_objects::{self as objects, BagLayout, BagPart, MagicBag, Surprises, Target, snd};
 use super::rooms_data::{self, Element};
 use super::wizard::TrickKind;
+use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::paint::Canvas;
 use crate::paint::store::{LAST_NAME, load_png};
 use crate::rng::XorShift;
-use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
 use std::path::PathBuf;
@@ -41,6 +45,16 @@ enum Action {
     Quit,
     /// Pergunta "Botão ou adesivo?" num segundo balão.
     AskButton,
+    /// Mastro de bombeiro: sobe para o andar.
+    PoleUp(Floor),
+    /// Abertura do mastro no chão: desce para o andar.
+    PoleDown(Floor),
+    /// Buraco do rato (só faz algo com a Varinha Mágica).
+    MouseHole,
+    /// Portas do elevador, botão de chamar ou skate "ELEVADOR".
+    Elevator,
+    /// Skate "LÁ FORA" do saguão: volta para a rua.
+    Outside,
 }
 
 struct Hotspot {
@@ -53,7 +67,7 @@ fn inside(r: Rect, x: i32, y: i32) -> bool {
 }
 
 impl Floor {
-    fn background(self) -> u16 {
+    pub(crate) fn background(self) -> u16 {
         match self {
             Floor::Lobby => rooms_data::LOBBY_BG,
             Floor::Studio => rooms_data::STUDIO_BG,
@@ -80,18 +94,28 @@ impl Floor {
                 h((98, 58, 90, 18), Action::Floor(Floor::Projects)),
                 h((98, 78, 90, 18), Action::Floor(Floor::Studio)),
                 h((98, 98, 90, 18), Action::Go(SceneId::Gallery)),
-                h((210, 130, 260, 270), Action::Floor(Floor::Studio)),
+                h((513, 346, 54, 47), Action::MouseHole),
+                h((502, 411, 81, 66), Action::Outside),
+                h((480, 202, 36, 71), Action::Elevator),
+                h((210, 130, 260, 270), Action::Elevator),
                 h((146, 290, 48, 20), Action::Quit),
                 h((95, 316, 95, 52), Action::Go(SceneId::Gallery)),
+                h((594, 0, 26, 400), Action::PoleUp(Floor::Studio)),
             ],
             Floor::Studio => vec![
                 h((110, 176, 170, 100), Action::Go(SceneId::Paint)),
                 h((264, 63, 190, 145), Action::Go(SceneId::Gallery)),
-                h((575, 0, 24, 395), Action::Floor(Floor::Projects)),
+                h((466, 328, 54, 47), Action::MouseHole),
+                h((466, 407, 81, 66), Action::Elevator),
+                h((531, 390, 105, 43), Action::PoleDown(Floor::Lobby)),
+                h((575, 0, 24, 395), Action::PoleUp(Floor::Projects)),
                 h((474, 250, 46, 20), Action::Quit),
             ],
             Floor::Projects => vec![
-                h((573, 0, 24, 395), Action::Floor(Floor::Tricks)),
+                h((479, 289, 54, 47), Action::MouseHole),
+                h((466, 407, 81, 66), Action::Elevator),
+                h((529, 371, 105, 43), Action::PoleDown(Floor::Studio)),
+                h((573, 0, 24, 375), Action::PoleUp(Floor::Tricks)),
                 h((478, 185, 50, 20), Action::Quit),
                 h(
                     (40, 20, 170, 150),
@@ -104,7 +128,12 @@ impl Floor {
                 h((150, 170, 240, 110), Action::AskButton),
             ],
             Floor::Tricks => vec![
-                h((539, 0, 24, 395), Action::Floor(Floor::Lobby)),
+                h((576, 273, 54, 47), Action::MouseHole),
+                h((457, 409, 81, 66), Action::Elevator),
+                h((495, 355, 105, 43), Action::PoleDown(Floor::Projects)),
+                // no original o mastro sobe para um sótão escuro de onde se
+                // desce ao saguão; aqui vai direto ao saguão
+                h((539, 0, 24, 360), Action::PoleUp(Floor::Lobby)),
                 h((564, 114, 50, 20), Action::Quit),
                 h(
                     (330, 80, 190, 250),
@@ -267,7 +296,60 @@ impl Floor {
             Floor::Tricks => 4,
         }
     }
+
+    fn bag_layout(self) -> BagLayout {
+        match self {
+            Floor::Lobby => objects::LOBBY_BAG,
+            Floor::Studio => objects::STUDIO_BAG,
+            Floor::Projects => objects::PROJECTS_BAG,
+            Floor::Tricks => objects::TRICKS_BAG,
+        }
+    }
+
+    /// No original a bolsa já está aberta ao chegar ao Ateliê; nos outros
+    /// andares, fechada.
+    fn bag(self) -> MagicBag {
+        MagicBag::new(self.bag_layout(), self == Floor::Studio)
+    }
+
+    fn surprises(self) -> Surprises {
+        match self {
+            Floor::Lobby => objects::LOBBY_SURPRISES,
+            Floor::Studio => objects::STUDIO_SURPRISES,
+            Floor::Projects => objects::PROJECTS_SURPRISES,
+            Floor::Tricks => objects::TRICKS_SURPRISES,
+        }
+    }
+
+    /// Balão da Varinha Mágica (`WHAT 100d`): nos andares fala do mastro e
+    /// do buraco do rato.
+    fn wand_balloon(self, assets: &Assets, user: &str) -> Balloon {
+        let fallback = Balloon {
+            x: 0,
+            y: 0,
+            w: 168,
+            text: "Varinha Mágica\nQuando você clica no mastro de bombeiro ou no buraco do rato com a Varinha Mágica, coisas incríveis acontecem!".into(),
+            options: Vec::new(),
+        };
+        let mut b = Balloon::from_block(
+            &assets.dialogs(Program::Artist, ROOMS_WHAT),
+            WAND_FLOORS,
+            0,
+            0,
+            user,
+        )
+        .filter(|b| !b.text.is_empty())
+        .unwrap_or(fallback);
+        // a "Tecla de atalho" (Ctrl) não existe aqui
+        b.options.clear();
+        b.x = 120;
+        b.y = 235;
+        b
+    }
 }
+
+/// Balão "Wand - floors" do `WHAT 100d`.
+const WAND_FLOORS: usize = 59;
 
 /// Quadro no cavalete do Ateliê: o último desenho, reduzido a 1/4.
 const EASEL: (i32, i32) = (120, 179);
@@ -298,6 +380,14 @@ pub struct Room {
     gags: GagPlayer,
     /// Apelido do usuário, o `@` dos balões.
     user: String,
+    /// Bolsa Mágica do andar (e a Varinha Mágica).
+    bag: MagicBag,
+    /// Surpresa da Varinha Mágica em curso (mastro ou buraco do rato).
+    surprise: Option<Animator>,
+    /// Dentro do elevador.
+    elevator: Option<Elevator>,
+    /// O cursor atual é o da varinha.
+    wand_cursor: bool,
 }
 
 impl Room {
@@ -329,6 +419,10 @@ impl Room {
             character,
             gags,
             user: DEFAULT_USER.to_string(),
+            bag: floor.bag(),
+            surprise: None,
+            elevator: None,
+            wand_cursor: false,
         }
     }
 
@@ -352,10 +446,102 @@ impl Room {
         self.balloon.is_some()
     }
 
+    pub fn bag(&self) -> &MagicBag {
+        &self.bag
+    }
+
+    /// Há uma surpresa da Varinha Mágica em curso.
+    pub fn surprise_playing(&self) -> bool {
+        self.surprise.is_some()
+    }
+
+    pub fn in_elevator(&self) -> bool {
+        self.elevator.is_some()
+    }
+
+    /// Clique na Bolsa Mágica ou no que saiu dela.
+    fn use_bag(&mut self, part: BagPart, fx: &mut Vec<Effect>, assets: &Assets) {
+        match part {
+            BagPart::Bag => {
+                // com a varinha na mão, a bolsa a recebe de volta e se abre
+                let open = self.bag.holding_wand || !self.bag.open;
+                self.bag.holding_wand = false;
+                self.bag.open = open;
+                fx.push(Effect::PlaySound(snd(if open {
+                    objects::SND_BAG_OPEN
+                } else {
+                    objects::SND_BAG_CLOSE
+                })));
+            }
+            BagPart::Suitcase => {
+                fx.push(Effect::PlaySound(snd(objects::SND_SUITCASE)));
+                fx.push(Effect::Push(SceneId::Portfolio));
+            }
+            BagPart::Book => {
+                fx.extend(objects::SND_BOOK.map(|id| Effect::PlaySound(snd(id))));
+                fx.push(Effect::Push(SceneId::BookStory));
+            }
+            BagPart::Wand => {
+                self.bag.holding_wand = true;
+                self.bag.open = false;
+                fx.push(Effect::PlaySound(snd(objects::SND_WAND_TAKE)));
+                self.balloon = Some(self.floor.wand_balloon(assets, &self.user));
+            }
+        }
+    }
+
+    /// A varinha tocou o mastro ou o buraco do rato: a surpresa do andar.
+    /// Depois dela a bolsa se abre com a varinha dentro.
+    fn start_surprise(&mut self, target: Target, fx: &mut Vec<Effect>, assets: &Assets) {
+        self.bag.holding_wand = false;
+        fx.push(Effect::PlaySound(snd(match target {
+            Target::Pole => objects::SND_POLE_UP,
+            Target::Hole => objects::SND_WAND_HOLE,
+        })));
+        match self.floor.surprises().start(target, &mut self.rng, assets) {
+            Some(mut a) => {
+                fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
+                self.surprise = Some(a);
+            }
+            None => self.bag.open = true,
+        }
+    }
+
+    fn enter_elevator(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
+        fx.push(Effect::PlaySound(snd(if self.floor == Floor::Lobby {
+            elevator::SND_DOORS
+        } else {
+            objects::SND_SKATE
+        })));
+        fx.push(Effect::PlaySound(snd(elevator::SND_ARRIVE)));
+        let costume = self
+            .character
+            .as_ref()
+            .map(|c| c.image)
+            .filter(|i| gags::MCZEE_COSTUMES.contains(i));
+        self.elevator = Some(Elevator::new(self.floor, costume, assets, &self.user));
+        self.balloon = None;
+        self.bag.holding_wand = false;
+    }
+
     fn act(&mut self, action: Action, fx: &mut Vec<Effect>, assets: &Assets) {
         match action {
             Action::Go(id) => fx.push(Effect::ChangeScene(id)),
             Action::Floor(fl) => self.set_floor(fl, assets),
+            Action::PoleUp(fl) => {
+                fx.push(Effect::PlaySound(snd(objects::SND_POLE_UP)));
+                self.set_floor(fl, assets);
+            }
+            Action::PoleDown(fl) => {
+                fx.push(Effect::PlaySound(snd(objects::SND_POLE_DOWN)));
+                self.set_floor(fl, assets);
+            }
+            Action::MouseHole => {}
+            Action::Elevator => self.enter_elevator(fx, assets),
+            Action::Outside => {
+                fx.push(Effect::PlaySound(snd(objects::SND_SKATE)));
+                fx.push(Effect::ChangeScene(SceneId::Street));
+            }
             Action::Quit => {
                 // como no original: "O que você quer fazer?"
                 self.quitting = true;
@@ -396,6 +582,18 @@ impl Room {
         }
     }
 
+    /// Cursor da varinha enquanto ela está na mão; senão, a mão.
+    fn sync_cursor(&mut self, fx: &mut Vec<Effect>) {
+        if self.bag.holding_wand != self.wand_cursor {
+            self.wand_cursor = self.bag.holding_wand;
+            fx.push(Effect::SetCursor(if self.wand_cursor {
+                objects::WAND_CURSOR
+            } else {
+                DEFAULT_CURSOR
+            }));
+        }
+    }
+
     pub fn floor(&self) -> Floor {
         self.floor
     }
@@ -406,6 +604,8 @@ impl Room {
         self.balloon = Some(floor.balloon(assets, &self.user));
         self.character = floor.character(&mut self.rng);
         self.painting = floor.painting(&mut self.rng);
+        self.bag = floor.bag();
+        self.surprise = None;
         self.gags = GagPlayer::with_rng(
             floor.gag_scripts(),
             GAG_FIRST,
@@ -443,6 +643,30 @@ impl Scene for Room {
                 .into_iter()
                 .map(Effect::PlaySound),
         );
+        if let Some(a) = &mut self.surprise {
+            fx.extend(a.update(dt).into_iter().map(Effect::PlaySound));
+            if a.is_finished() {
+                // a varinha volta para a bolsa, que fica aberta
+                self.surprise = None;
+                self.bag.open = true;
+            }
+        }
+        if self.elevator.is_some() && self.balloon.is_none() {
+            let outcome = self
+                .elevator
+                .as_mut()
+                .and_then(|e| e.update(input, dt, assets, &mut fx));
+            match outcome {
+                Some(Outcome::Arrived(fl)) => {
+                    self.elevator = None;
+                    self.set_floor(fl, assets);
+                }
+                Some(Outcome::Quit) => self.act(Action::Quit, &mut fx, assets),
+                None => {}
+            }
+            self.sync_cursor(&mut fx);
+            return fx;
+        }
         for i in input {
             let Input::Click {
                 button: MouseButton::Left,
@@ -452,6 +676,10 @@ impl Scene for Room {
             else {
                 continue;
             };
+            // durante a surpresa da varinha os cliques esperam
+            if self.surprise.is_some() {
+                continue;
+            }
             if let Some(b) = &self.balloon {
                 if let Some(k) = b.hit(assets, x, y) {
                     if self.quitting {
@@ -478,23 +706,48 @@ impl Scene for Room {
                 if b.contains(assets, x, y) {
                     continue;
                 }
-                // clicar fora do balão só o fecha
+                // clicar fora do balão só o fecha; o da varinha deixa o
+                // clique seguir (ela já está na mão)
+                let pass = self.bag.holding_wand && b.options.is_empty();
                 self.balloon = None;
                 self.quitting = false;
                 self.asking_button = false;
+                if !pass {
+                    continue;
+                }
+            }
+            if self.elevator.is_some() {
                 continue;
+            }
+            if let Some(part) = self.bag.hit(x, y) {
+                self.use_bag(part, &mut fx, assets);
+                break;
             }
             let Some(hs) = self.hotspots.iter().find(|h| inside(h.rect, x, y)) else {
                 continue;
             };
             let action = hs.action.clone();
-            self.act(action, &mut fx, assets);
+            match (self.bag.holding_wand, action) {
+                (true, Action::PoleUp(_) | Action::PoleDown(_)) => {
+                    self.start_surprise(Target::Pole, &mut fx, assets)
+                }
+                (true, Action::MouseHole) => self.start_surprise(Target::Hole, &mut fx, assets),
+                (_, action) => self.act(action, &mut fx, assets),
+            }
             break;
         }
+        self.sync_cursor(&mut fx);
         fx
     }
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
+        if let Some(e) = &self.elevator {
+            e.draw(frame, assets);
+            if let Some(b) = &self.balloon {
+                b.draw(frame, assets);
+            }
+            return;
+        }
         frame.fill([0, 0, 0]);
         let bg = assets.image(&ImageRef::Pic(Program::Artist, self.floor.background()));
         frame.blit(
@@ -511,6 +764,7 @@ impl Scene for Room {
                 blit_white_transparent(frame, &img, e.x, e.y);
             }
         }
+        self.bag.draw(frame, assets);
         if let Some((img, mask)) = self.painting {
             frame.blit_masked(
                 &assets.image(&ImageRef::Pic(Program::Artist, img)),
@@ -540,6 +794,9 @@ impl Scene for Room {
         }
         // por cima de tudo (até do quadro no cavalete), menos dos balões
         self.gags.draw(frame, assets);
+        if let Some(a) = &self.surprise {
+            a.draw(frame, assets);
+        }
         if let Some(b) = &self.balloon {
             b.draw(frame, assets);
         }
@@ -711,5 +968,147 @@ mod tests {
             r.update(&input, 0.1, &a);
             assert!(!r.gags.is_playing(), "tocou no passo {k}");
         }
+    }
+    fn sounds(fx: &[Effect]) -> Vec<u16> {
+        fx.iter()
+            .filter_map(|e| match e {
+                Effect::PlaySound(SoundRef::Snd(_, id)) => Some(*id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Bolsa Mágica: abre e fecha; a maleta abre a pasta por cima da sala, o
+    /// livro conta a história e a varinha vira o cursor, com o balão dela.
+    #[test]
+    fn magic_bag_and_its_contents() {
+        let (_d, a) = empty_assets();
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        assert!(!r.bag().open);
+        r.update(&[click(300, 450)], 0.0, &a); // fecha o balão de chegada
+        let fx = r.update(&[click(150, 425)], 0.0, &a);
+        assert!(r.bag().open);
+        assert_eq!(sounds(&fx), [objects::SND_BAG_OPEN]);
+        let fx = r.update(&[click(310, 430)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Portfolio)));
+        assert_eq!(sounds(&fx), [objects::SND_SUITCASE]);
+        let fx = r.update(&[click(400, 400)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::BookStory)));
+        let fx = r.update(&[click(250, 445)], 0.0, &a);
+        assert!(r.bag().holding_wand);
+        assert!(!r.bag().open);
+        assert!(r.balloon_open());
+        assert!(fx.contains(&Effect::SetCursor(objects::WAND_CURSOR)));
+        assert_eq!(sounds(&fx), [objects::SND_WAND_TAKE]);
+        // a bolsa recebe a varinha de volta e se abre
+        let fx = r.update(&[click(150, 410)], 0.0, &a);
+        assert!(!r.bag().holding_wand);
+        assert!(r.bag().open);
+        assert!(fx.contains(&Effect::SetCursor(DEFAULT_CURSOR)));
+        let fx = r.update(&[click(150, 440)], 0.0, &a);
+        assert!(!r.bag().open);
+        assert_eq!(sounds(&fx), [objects::SND_BAG_CLOSE]);
+    }
+
+    /// Sem os roteiros, a varinha no buraco do rato só volta para a bolsa;
+    /// o clique atravessa o balão dela, como no original.
+    #[test]
+    fn wand_without_data_returns_to_the_bag() {
+        let (_d, a) = empty_assets();
+        let mut r = Room::new(Floor::Studio, None, None, &a);
+        assert!(r.bag().open, "no Ateliê a bolsa já chega aberta");
+        r.update(&[click(600, 470)], 0.0, &a);
+        r.update(&[click(370, 430)], 0.0, &a);
+        assert!(r.bag().holding_wand && r.balloon_open());
+        let fx = r.update(&[click(490, 350)], 0.0, &a);
+        assert!(!r.balloon_open());
+        assert!(!r.bag().holding_wand);
+        assert!(r.bag().open);
+        assert_eq!(sounds(&fx), [objects::SND_WAND_HOLE]);
+        assert!(fx.contains(&Effect::SetCursor(DEFAULT_CURSOR)));
+        assert_eq!(r.floor(), Floor::Studio);
+    }
+
+    /// Mastro sobe, abertura no chão desce, cada um com o seu som; skates
+    /// levam à rua (saguão) e ao elevador (andares).
+    #[test]
+    fn pole_hole_and_skates() {
+        let (_d, a) = empty_assets();
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        let fx = r.update(&[click(300, 450), click(606, 200)], 0.0, &a);
+        assert_eq!(r.floor(), Floor::Studio);
+        assert_eq!(sounds(&fx), [objects::SND_POLE_UP]);
+        let fx = r.update(&[click(300, 30), click(610, 412)], 0.0, &a);
+        assert_eq!(r.floor(), Floor::Lobby);
+        assert_eq!(sounds(&fx), [objects::SND_POLE_DOWN]);
+        let fx = r.update(&[click(300, 450), click(540, 445)], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Street)));
+        assert_eq!(sounds(&fx), [objects::SND_SKATE]);
+        // portas do elevador
+        let fx = r.update(&[click(330, 250)], 0.0, &a);
+        assert!(r.in_elevator());
+        assert_eq!(sounds(&fx), [elevator::SND_DOORS, elevator::SND_ARRIVE]);
+        let mut f = Frame::new(640, 480);
+        r.draw(&mut f, &a);
+        // skate "ELEVADOR" da Oficina, depois o andar 2 no painel
+        let mut r = Room::new(Floor::Projects, None, None, &a);
+        let fx = r.update(&[click(300, 450), click(500, 440)], 0.0, &a);
+        assert!(r.in_elevator());
+        assert_eq!(sounds(&fx), [objects::SND_SKATE, elevator::SND_ARRIVE]);
+        r.update(&[click(595, 212)], 0.0, &a);
+        for _ in 0..30 {
+            r.update(&[], 0.1, &a);
+        }
+        assert!(!r.in_elevator());
+        assert_eq!(r.floor(), Floor::Studio);
+        assert!(r.balloon_open(), "balão de chegada do Ateliê");
+    }
+
+    /// "Tchau" no elevador pergunta antes de sair.
+    #[test]
+    fn elevator_tchau_asks() {
+        let (_d, a) = empty_assets();
+        let mut r = Room::new(Floor::Tricks, None, None, &a);
+        r.update(&[click(300, 450), click(490, 440)], 0.0, &a);
+        assert!(r.in_elevator());
+        r.update(&[click(70, 110)], 0.0, &a);
+        assert!(r.balloon_open());
+        let (bx, by, _, _) = r.balloon.as_ref().unwrap().option_rect(&a, 0);
+        let fx = r.update(&[click(bx + 20, by + 3)], 0.0, &a);
+        assert!(fx.contains(&Effect::Quit));
+    }
+
+    /// Com os dados reais: a varinha no mastro do saguão faz um bicho descer
+    /// (ou subir) pelo mastro sem mudar de andar; cliques esperam; no fim a
+    /// bolsa está aberta com a varinha dentro.
+    #[test]
+    fn wand_surprise_on_the_pole_with_real_data() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        r.update(&[click(300, 450), click(150, 425)], 0.0, &a);
+        r.update(&[click(250, 445)], 0.0, &a);
+        let fx = r.update(&[click(606, 200)], 0.0, &a);
+        assert!(r.surprise_playing());
+        assert_eq!(r.floor(), Floor::Lobby);
+        assert!(sounds(&fx).contains(&objects::SND_POLE_UP));
+        let mut f = Frame::new(640, 480);
+        r.update(&[], 0.5, &a);
+        r.draw(&mut f, &a);
+        crate::scenes::testutil::dump(&f, "lobby_wand_pole");
+        // clique durante a surpresa não troca de andar
+        r.update(&[click(140, 66)], 0.0, &a);
+        assert_eq!(r.floor(), Floor::Lobby);
+        for _ in 0..40 {
+            r.update(&[], 0.1, &a);
+        }
+        assert!(!r.surprise_playing());
+        assert!(r.bag().open && !r.bag().holding_wand);
+        r.draw(&mut f, &a);
+        crate::scenes::testutil::dump(&f, "lobby_bag_open");
+        // a bolsa aberta no chão: a maleta vermelha em (300, 430)
+        let p = f.pixel(300, 430);
+        assert!(p[0] > 150 && p[1] < 80, "{p:?}");
     }
 }

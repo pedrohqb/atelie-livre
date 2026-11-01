@@ -2,6 +2,7 @@
 
 pub mod browser;
 pub mod chooser;
+pub mod elevator;
 pub mod entry;
 pub mod gags;
 pub mod gallery;
@@ -10,6 +11,7 @@ pub mod imaginopolis;
 pub mod paint;
 pub mod projects;
 pub mod room;
+pub mod room_objects;
 pub mod rooms_data;
 pub mod sounds;
 pub mod splash;
@@ -52,6 +54,21 @@ pub(crate) mod testutil {
                 None
             }
         }
+    }
+
+    /// Grava o quadro em `$ATELIE_DUMP/NOME.ppm` (para conferir telas contra
+    /// capturas do original); sem a variável, não faz nada.
+    #[allow(dead_code)]
+    pub fn dump(frame: &crate::Frame, name: &str) {
+        let Some(dir) = std::env::var_os("ATELIE_DUMP") else {
+            return;
+        };
+        let (w, h) = (frame.width(), frame.height());
+        let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
+        for p in frame.pixels().chunks(4) {
+            out.extend_from_slice(&p[..3]);
+        }
+        let _ = std::fs::write(PathBuf::from(dir).join(format!("{name}.ppm")), out);
     }
 
     /// Assets mínimos: um diretório temporário só com um ARTIST.EXE vazio de recursos.
