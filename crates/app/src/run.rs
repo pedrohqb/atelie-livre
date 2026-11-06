@@ -86,6 +86,31 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
 }
 
 /// Cena inicial: navegador, abertura do Creative Writer ou do Fine Artist.
+/// Cena pedida por `--scene` (ferramentas de teste).
+fn scene_by_name(name: &str) -> Option<SceneId> {
+    use engine::scenes::projects::ProjectKind;
+    use engine::scenes::wizard::TrickKind;
+    Some(match name {
+        "entry" => SceneId::Entry,
+        "story" => SceneId::Story,
+        "imaginopolis" => SceneId::Imaginopolis,
+        "street" => SceneId::Street,
+        "lobby" | "building" => SceneId::Building,
+        "studio" => SceneId::Studio,
+        "projects" => SceneId::Projects,
+        "tricks" => SceneId::TricksFloor,
+        "gallery" => SceneId::Gallery,
+        "paint" => SceneId::Paint,
+        "comics" => SceneId::Project(ProjectKind::Comics),
+        "button" => SceneId::Project(ProjectKind::Button),
+        "sticker" => SceneId::Project(ProjectKind::Sticker),
+        "flipbook" => SceneId::Project(ProjectKind::Flipbook),
+        "tricks-basic" => SceneId::Tricks(TrickKind::Basic),
+        "tricks-3d" => SceneId::Tricks(TrickKind::ThreeD),
+        _ => return None,
+    })
+}
+
 fn first_scene(browser: bool, program: ProgramChoice) -> SceneId {
     match (browser, program) {
         (true, _) => SceneId::Browser,
@@ -220,12 +245,12 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     let mut user = UserContext {
         user: cfg.user.clone(),
     };
-    let mut stack: Vec<Box<dyn Scene>> = vec![make_scene(
-        first_scene(args.browser, cfg.program),
-        &cfg,
-        &user,
-        &assets,
-    )];
+    let first = match args.scene.as_deref().map(scene_by_name) {
+        Some(Some(id)) => id,
+        Some(None) => return fail("cena desconhecida em --scene"),
+        None => first_scene(args.browser, cfg.program),
+    };
+    let mut stack: Vec<Box<dyn Scene>> = vec![make_scene(first, &cfg, &user, &assets)];
     let mut frame = Frame::new(SCREEN_W, SCREEN_H);
     let mut cursor_ref: Option<CursorRef> = None;
     let mut cursor: Option<Cursor> = None;
@@ -233,6 +258,8 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     let mut frames: u32 = 0;
     let mut last = Instant::now();
     let mut running = true;
+    // ATELIE_TRACE=1 imprime cada efeito (som, troca de cena) — usado pelos testes de varredura
+    let trace = std::env::var_os("ATELIE_TRACE").is_some();
 
     while running {
         let start = Instant::now();
@@ -306,6 +333,9 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
             eprintln!("aviso: som em laço: {e}");
         }
         for effect in effects {
+            if trace {
+                trace_effect(&effect);
+            }
             match effect {
                 Effect::PlaySound(r) => {
                     if let (Some(m), Some(pcm)) = (mixer.as_mut(), assets.sound(&r))
@@ -414,5 +444,19 @@ mod tests {
         );
         assert_eq!(first_scene(true, ProgramChoice::Writer), SceneId::Browser);
         assert_eq!(first_scene(false, ProgramChoice::Ask), SceneId::Chooser);
+    }
+}
+
+/// Linha de rastreio por efeito, para ferramentas externas (varredura de cliques).
+fn trace_effect(effect: &Effect) {
+    match effect {
+        Effect::PlaySound(r) => println!("TRACE som {r:?}"),
+        Effect::PlayLoop(r) => println!("TRACE laço {r:?}"),
+        Effect::StopLoop => println!("TRACE fim-laço"),
+        Effect::ChangeScene(id) => println!("TRACE cena {id:?}"),
+        Effect::Push(id) => println!("TRACE push {id:?}"),
+        Effect::Back => println!("TRACE back"),
+        Effect::Quit => println!("TRACE quit"),
+        _ => {}
     }
 }

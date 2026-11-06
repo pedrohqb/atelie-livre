@@ -75,6 +75,11 @@ pub struct Args {
     /// Encerra após N quadros (testes).
     #[arg(long, hide = true)]
     pub frames: Option<u32>,
+    /// Cena inicial (testes): entry, imaginopolis, street, lobby, studio,
+    /// projects, tricks, gallery, paint, story, comics, button, sticker,
+    /// flipbook, tricks-basic, tricks-3d.
+    #[arg(long, hide = true)]
+    pub scene: Option<String>,
 }
 
 pub fn config_path_from(xdg: Option<PathBuf>, home: Option<PathBuf>) -> PathBuf {
