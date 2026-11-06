@@ -1,7 +1,9 @@
 //! História do McZee: o álbum de fotos (`4201`, 495×314, com o McZee
 //! espiando por trás) sobre as nuvens da Entrada, uma foto e uma legenda por
-//! página, e o balão correspondente do `WHAT 4200`. Segue (ou Enter, ou um
-//! clique no balão) passa a página; Para sai para Imaginópolis, como o fim.
+//! página, e o balão correspondente do `WHAT 4200`. Segue (ou Enter, →,
+//! um clique no balão ou na página direita do álbum, com o rótulo "mais"
+//! `42c1`) passa a página; Volta (ou ←, PageUp, ou um clique na página
+//! esquerda) volta uma; Para sai para Imaginópolis, como o fim.
 //! Aberta pelo livro verde de uma sala ([`Story::over_room`]), aparece por
 //! cima da sala e Para (ou o fim) volta a ela.
 
@@ -16,6 +18,13 @@ pub const ALBUM: u16 = 0x4201;
 pub const ALBUM_POS: (i32, i32) = (72, 160);
 const LEFT_PHOTO: (i32, i32) = (37, 122);
 const RIGHT_FRAME: (i32, i32, i32, i32) = (277, 164, 167, 117);
+/// Páginas do álbum (dentro dele): clicar na direita passa, na esquerda volta.
+const LEFT_PAGE: (i32, i32, i32, i32) = (8, 92, 232, 216);
+const RIGHT_PAGE: (i32, i32, i32, i32) = (246, 92, 224, 216);
+/// Rótulo "mais" (`42c1`, 50×18) no canto da página direita, enquanto há
+/// página seguinte; `42ab` é a versão vazia.
+pub const MORE: u16 = 0x42c1;
+const MORE_POS: (i32, i32) = (408, 286);
 const STORY_WHAT: u16 = 0x4200;
 /// Posição e largura do balão (mais largo que no original para caber sobre o álbum).
 const BALLOON: (i32, i32, i32) = (16, 12, 460);
@@ -91,11 +100,14 @@ impl Story {
     }
 
     fn balloon(page: usize, assets: &Assets) -> TextBalloon {
-        let buttons = if page + 1 < PAGES.len() {
-            vec![Button::Stop, Button::Next]
-        } else {
-            vec![Button::Next]
-        };
+        let mut buttons = Vec::new();
+        if page > 0 {
+            buttons.push(Button::Back);
+        }
+        if page + 1 < PAGES.len() {
+            buttons.push(Button::Stop);
+        }
+        buttons.push(Button::Next);
         let text = assets
             .dialogs(Program::Artist, STORY_WHAT)
             .get(page)
@@ -119,6 +131,28 @@ impl Story {
             self.leave_story(fx);
         }
     }
+
+    fn back(&mut self, assets: &Assets) {
+        if self.page > 0 {
+            self.page -= 1;
+            self.balloon = Self::balloon(self.page, assets);
+        }
+    }
+
+    /// Página do álbum sob `(x, y)`: `Some(true)` na direita, `Some(false)` na esquerda.
+    fn album_page_at(x: i32, y: i32) -> Option<bool> {
+        let (ax, ay) = ALBUM_POS;
+        let (x, y) = (x - ax, y - ay);
+        let inside =
+            |r: (i32, i32, i32, i32)| x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3;
+        if inside(RIGHT_PAGE) {
+            Some(true)
+        } else if inside(LEFT_PAGE) {
+            Some(false)
+        } else {
+            None
+        }
+    }
 }
 
 impl Scene for Story {
@@ -130,17 +164,32 @@ impl Scene for Story {
             }
             match self.balloon.handle(assets, i) {
                 Some(Button::Next) => self.next(&mut fx, assets),
-                Some(_) => self.leave_story(&mut fx),
+                Some(Button::Back) => self.back(assets),
+                Some(Button::Stop) => self.leave_story(&mut fx),
                 None => match i {
                     Input::Click {
                         button: MouseButton::Left,
                         x,
                         y,
-                    } if self.balloon.contains(assets, *x, *y) => self.next(&mut fx, assets),
+                    } => {
+                        if self.balloon.contains(assets, *x, *y) {
+                            self.next(&mut fx, assets);
+                        } else {
+                            match Self::album_page_at(*x, *y) {
+                                Some(true) => self.next(&mut fx, assets),
+                                Some(false) => self.back(assets),
+                                None => {}
+                            }
+                        }
+                    }
                     Input::Key {
                         key: Key::Right | Key::PageDown,
                         ..
                     } => self.next(&mut fx, assets),
+                    Input::Key {
+                        key: Key::Left | Key::PageUp | Key::Backspace,
+                        ..
+                    } => self.back(assets),
                     _ => {}
                 },
             }
@@ -172,6 +221,9 @@ impl Scene for Story {
         let x = ax + fx + (fw - img.width as i32) / 2;
         let y = ay + fy + (fh - img.height as i32) / 2;
         blit_pic_opaque(frame, assets, right, x, y);
+        if self.page + 1 < PAGES.len() {
+            blit_pic_opaque(frame, assets, MORE, ax + MORE_POS.0, ay + MORE_POS.1);
+        }
         self.balloon.draw(frame, assets);
     }
 }
@@ -186,6 +238,14 @@ mod tests {
             button: MouseButton::Left,
             x,
             y,
+        }
+    }
+
+    fn key(key: Key) -> Input {
+        Input::Key {
+            key,
+            ctrl: false,
+            alt: false,
         }
     }
 
@@ -217,6 +277,36 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, Effect::ChangeScene(_)))
         );
+    }
+
+    #[test]
+    fn back_button_and_album_pages_turn_back_and_forth() {
+        let (_d, a) = empty_assets();
+        let mut s = Story::new(None, &a);
+        // na primeira página não há Volta; ← não faz nada
+        assert!(s.balloon.button_rect(&a, Button::Back).is_none());
+        s.update(&[key(Key::Left)], 0.0, &a);
+        assert_eq!(s.page(), 0);
+        // clique na página direita do álbum passa; na esquerda volta
+        let (ax, ay) = ALBUM_POS;
+        s.update(&[click(ax + 350, ay + 200)], 0.0, &a);
+        assert_eq!(s.page(), 1);
+        s.update(&[click(ax + 350, ay + 200)], 0.0, &a);
+        assert_eq!(s.page(), 2);
+        s.update(&[click(ax + 100, ay + 200)], 0.0, &a);
+        assert_eq!(s.page(), 1);
+        // o McZee atrás do álbum não vira página
+        s.update(&[click(ax + 420, ay + 30)], 0.0, &a);
+        assert_eq!(s.page(), 1);
+        // botão Volta e tecla ←
+        let r = s.balloon.button_rect(&a, Button::Back).unwrap();
+        let fx = s.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert_eq!(s.page(), 0);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+        s.update(&[key(Key::Right), key(Key::Right), key(Key::Left)], 0.0, &a);
+        assert_eq!(s.page(), 1);
+        s.update(&[key(Key::PageUp)], 0.0, &a);
+        assert_eq!(s.page(), 0);
     }
 
     #[test]
