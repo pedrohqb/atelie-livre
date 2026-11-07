@@ -183,7 +183,7 @@ impl Paint {
         }
         if self.bucket.open {
             if let Some(hit) = column_hit(x, y) {
-                self.column_click(hit, fx);
+                self.bucket_column_click(hit, fx);
                 return true;
             }
             // qualquer outro clique fecha a coluna; no quadro, só fecha
@@ -199,7 +199,7 @@ impl Paint {
         false
     }
 
-    fn column_click(&mut self, hit: ColumnHit, fx: &mut Vec<Effect>) {
+    fn bucket_column_click(&mut self, hit: ColumnHit, fx: &mut Vec<Effect>) {
         let b = &mut self.bucket;
         match hit {
             ColumnHit::Normal => {

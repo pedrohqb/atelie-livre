@@ -237,6 +237,60 @@ seção 4. Resumo:
   `ultimo.objetos.json` + `ultimo.fundo.png` (e as cópias com data) guardam
   os objetos e o fundo para reabrir editável (spec
   [objetos](../superpowers/specs/2026-10-31-objetos-design.md)).
+- **Ferramenta Palavra** (`WHAT` 1009; varredura em
+  `sweep/report/paint-text.md`): a faixa tem três elementos — **FORMA**
+  `13ff` (cinza `1400`) em (83, 59), **Oi!** `141f` (cinza `1420`, máscara
+  `1421`) em (229, 59) e o **rolo de dipitidus** `10af` (cinza `10cc`,
+  máscara `10cd`) em (375, 58), com o dipitidu escolhido na janela. Clicar no
+  quadro vazio **não faz nada** (como no original: as palavras só entram
+  pelos cavaletes e viram objetos). Com a Palavra, arrastar uma palavra,
+  balão ou dipitidu **move**; com **Shift**, muda a largura do balão (o texto
+  quebra de novo) ou o tamanho do dipitidu (proporcional); um clique sem
+  mover reabre o cavalete (ou o rolo, para trocar o dipitidu). Sons: abrir
+  cavalete `0224`, abrir lista `0233`, girar `021c`, OK `02ee` (o original
+  toca um dos três sons de 8748 bytes `0239`/`02e1`/`02ee`).
+  - **Cavalete de palavras com forma** (FORMA; modal em (88, 72)–(551, 407),
+    barras laranja de 5 px): prévia (93, 77, 453×219), campo de texto (93,
+    301, 272×49) com o nome do usuário já selecionado (digitar troca;
+    Backspace apaga), **+** `028d` (392, 308) e **−** `0289` (392, 329),
+    **girar** `0283` (462, 311) e `0287` (504, 311) — um clique gira 5°;
+    segurando, continua girando —, e os botões de 49×34 `0275` ABC (tipos de
+    letra), `027d` FORMA, `0279` AA (estilos), `027b` cores, `027f` padrões e
+    `0281` sombras em x = 101 + 57·k, y = 361 (máscara `0277`); **NÃO**
+    `0271` (464, 364) e **OK** `026d` (506, 365). Cada botão de baixo abre
+    uma coluna (com setas `02db`/`02df` quando não cabe): tipos de letra (a
+    "Pablo Graphos" do programa e as famílias TrueType/OpenType instaladas no
+    sistema, uma por família, só a face normal — `paint/ttf.rs` lê só as
+    tabelas `name` e `OS/2`), 11 formas (retângulo, arco embaixo, onda,
+    inflado, cresce, encolhe, zigue-zague, triângulo, triângulo para baixo,
+    arco e círculo; ícones desenhados), estilos (Normal, Negrito, Inclinado,
+    Contorno, MAIÚSCULAS, Vertical; ✓ `0295`), cores (as 38 da pintura e sete
+    combinações de duas ou três cores, que se alternam por letra), padrões
+    (os 38 da pintura; bit 1 = branco) e as oito sombras do original (Sem
+    sombra, normal, do amanhecer — deitada para a esquerda —, do anoitecer —
+    deitada para a direita, escura —, girar e sumir, girar em círculo — roda
+    de cópias em contorno —, convergente e tridimensional). O desenho é
+    `paint/shaped.rs`: máscara de cobertura do texto, envelope da forma (ou
+    enrolada em arco/círculo), cópias transformadas para as sombras e o
+    giro; tinta onde a cobertura passa da metade (sem meio-tom, como no
+    original). OK põe a palavra como objeto no meio do quadro (balão 1009
+    [15]); ao modificar, no mesmo centro. Tamanhos de + e −: 16, 24, 32, 48,
+    64, 80, 96, 128 (inicial), 160 e 200 px de linha. Enter = OK, Esc = NÃO.
+  - **Cavalete de balões de diálogo** (Oi!; (164, 122)–(474, 356)): prévia
+    do balão (ampliada 2× quando cabe), campo com "Oi!" selecionado, botões
+    `140b` AA (fonte normal = Pablo 16 pt ou pequena = 8 pt), `140f` forma do
+    balão (as seis do port: retângulo com rabicho, retângulo, oval com
+    rabicho, oval, pensamento e sem balão) e `1413` posição (esquerda,
+    centro, direita, com os textos "O texto vai ser alinhado…") em x = 197,
+    251, 305, y = 314; NÃO (395, 315), OK (431, 315). Enter não termina
+    ("não aperte Return"); texto com mais de 200 px quebra nessa largura. OK
+    põe o balão no meio do quadro (1009 [14]). O original tem também formas
+    de grito (espinhos) que o port ainda não desenha.
+  - **Rolo de dipitidus** (1009 [9], [10], [12]): clicar abre a coluna com os
+    quatro rabinhos de `B-MAG100.CHK` (`PICT` 16–19, os mesmos do rolo de
+    adesivos dos quadrinhos); escolher um fecha a coluna e o mostra no rolo;
+    o próximo clique no quadro o coloca centrado ali (um por escolha). O
+    original mostra uns nove; os dados só trazem quatro.
 - **Transformadores** (`1045`; ajuda `WHAT 1006`): faixa de duas páginas
   com tampa verde `14db` em (4, 57), botões de 32×32 em x = 25 + 37·k,
   y = 63 e a ponta `14ef`/`14f1` logo após o último botão. Página 1:
@@ -311,18 +365,11 @@ qualquer outro clique fecha o painel e devolve a faixa às opções da ferrament
   nada. Imprimir grava a página com as molduras. O original mostra um painel
   por vez, com botões de navegação e a cópia do painel N para N+1 (3e00
   [60]/[66]/[163]); o port mostra todos de uma vez e não tem cópia.
-- **Cavalete de história em quadrinhos** (ferramenta Palavra nos
-  quadrinhos; 3e00 [14]–[20]): a faixa da Palavra vira o cavalete, com a
-  fonte (Pablo 16 ou 8 pt), seis formas de balão — retângulo com rabicho (o
-  "Oi!" da pintura), retângulo, oval com rabicho, oval, pensamento e o
-  "espaço em branco" (sem balão) — e a posição das palavras (esquerda,
-  centro, direita). O texto é digitado como na pintura e o estilo muda ao
-  vivo; com largura definida, o texto quebra nas palavras. Arrastar um balão
-  colocado com a Palavra **move**; com **Shift** apertado, muda a largura (e
-  o texto quebra de novo); um clique sem mover reabre o texto para mudar.
-  Fora dos quadrinhos a Palavra continua com as duas opções do original
-  (texto solto e balão "Oi!"). Os balões ovais são geométricos; as silhuetas
-  de `B-MAG100.CHK` servem de referência.
+- **Cavalete de história em quadrinhos**: nos quadrinhos a Palavra é a
+  mesma da pintura (abaixo): o Oi! abre o Cavalete de balões de diálogo, que
+  é o "Comic easel" do original (`WHAT` 1009 [5]–[8]; os textos 3e00
+  [14]–[20] dizem o mesmo). Os balões ovais são geométricos; as silhuetas de
+  `B-MAG100.CHK` servem de referência.
 - **Dipitidus** (3e00 [22]): nos quadrinhos, a ferramenta de adesivos ganha,
   depois dos rolos de clip-art (e antes do rolo do usuário), o rolo
   "Dipitidus" com os quatro rabinhos de

@@ -131,31 +131,99 @@ fn thing_vacuum_removes_only_the_object_and_egg_restores() {
 
 #[test]
 fn words_become_an_object_and_vacuum_removes_them() {
+    use engine::scenes::paint::words::{OI_BTN, balloon_easel};
     let (_d, a) = empty_assets();
     let mut p = Paint::new(None, &a);
     p.update(&[click(228, 30)], 0.0, &a);
     assert_eq!(p.tool(), Tool::Words);
+    // o quadro vazio não reage à Palavra; o balão vem do cavalete do Oi!
+    p.update(&[click(200, 200), up(200, 200)], 0.0, &a);
+    assert!(p.objects().is_empty());
+    let (ox, oy) = (OI_BTN.0 + 10, OI_BTN.1 + 10);
+    let (kx, ky) = (balloon_easel::OK.0 + 5, balloon_easel::OK.1 + 5);
+    p.update(&[click(ox, oy), up(ox, oy)], 0.0, &a);
     p.update(
-        &[
-            click(200, 200),
-            Input::Text("Oi".into()),
-            Input::Key {
-                key: engine::scene::Key::Enter,
-                ctrl: false,
-                alt: false,
-            },
-        ],
+        &[Input::Text("Oi".into()), click(kx, ky), up(kx, ky)],
         0.0,
         &a,
     );
     assert_eq!(p.objects().len(), 1);
     let o = p.objects().items[0].clone();
-    assert_eq!((o.x, o.y), (200 - ORIGIN.0, 200 - ORIGIN.1));
     assert!(matches!(&o.source, engine::paint::Source::Words { text, .. } if text == "Oi"));
     p.update(&[click(328, 30), click(25 + 37 + 10, 70)], 0.0, &a);
     let (sx, sy) = opaque_point(&p, o.id);
     p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
     assert_eq!(p.objects().len(), 0);
+}
+
+#[test]
+fn words_roll_places_and_swaps_dipitidus_with_real_data() {
+    use engine::scenes::paint::words::ROLL;
+    let Some(a) = assets() else {
+        eprintln!("aviso: ATELIE_DATA não definida; teste com dados reais pulado");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+    p.update(&[click(228, 30)], 0.0, &a);
+    // a faixa usa os bitmaps reais: FORMA 13ff, Oi! 141f e o rolo 10af
+    for id in [0x13ff, 0x141f, 0x10af] {
+        assert!(a.has_image(&engine::assets::ImageRef::Pic(
+            engine::assets::Program::Artist,
+            id
+        )));
+    }
+    let (rx, ry) = (ROLL.0 + 40, ROLL.1 + 20);
+    p.update(&[click(rx, ry), up(rx, ry)], 0.0, &a);
+    assert!(p.tails_column_open());
+    let l = *p.tails_column().unwrap();
+    assert_eq!(l.n, 4);
+    let r = l.row_rect(2);
+    p.update(
+        &[click(r.0 + 10, r.1 + 10), up(r.0 + 10, r.1 + 10)],
+        0.0,
+        &a,
+    );
+    assert!(!p.tails_column_open());
+    p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
+    assert_eq!(p.objects().len(), 1);
+    let o = p.objects().items[0].clone();
+    assert_eq!(o.source, engine::paint::Source::Tail(2));
+    assert_eq!(o.center(), (300 - ORIGIN.0, 300 - ORIGIN.1));
+    // o próximo clique no quadro não põe outro
+    p.update(&[click(100, 300), up(100, 300)], 0.0, &a);
+    assert_eq!(p.objects().len(), 1);
+    // Shift+arrasto aumenta, mantendo a proporção
+    let (sx, sy) = opaque_point(&p, o.id);
+    p.update(
+        &[
+            Input::Shift(true),
+            click(sx, sy),
+            mv(sx + 20, sy),
+            up(sx + 20, sy),
+            Input::Shift(false),
+        ],
+        0.0,
+        &a,
+    );
+    let big = p.objects().get(o.id).unwrap().clone();
+    assert_eq!(big.w, o.w + 20);
+    assert!(big.h > o.h);
+    // clique sem mover abre o rolo para trocar o dipitidu
+    let (sx, sy) = opaque_point(&p, o.id);
+    p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+    assert!(p.tails_column_open());
+    let r = p.tails_column().unwrap().row_rect(0);
+    p.update(
+        &[click(r.0 + 10, r.1 + 10), up(r.0 + 10, r.1 + 10)],
+        0.0,
+        &a,
+    );
+    assert_eq!(p.objects().items[0].source, engine::paint::Source::Tail(0));
+    // grava e reabre
+    p.leave();
+    let q = Paint::new(Some(dir.path().to_path_buf()), &a);
+    assert_eq!(q.objects().items[0].source, engine::paint::Source::Tail(0));
 }
 
 /// Escolhe a ferramenta Transformadores e a ação `op`.

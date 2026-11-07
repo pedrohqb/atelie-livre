@@ -42,6 +42,8 @@ impl UserContext {
 }
 
 fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) -> Box<dyn Scene> {
+    // o nome da sessão é o texto inicial das palavras com forma
+    engine::scenes::paint::set_user_name(user.name());
     let room = |floor| {
         Box::new(
             Room::new(floor, cfg.click_sound.clone(), drawings_dir(), assets)

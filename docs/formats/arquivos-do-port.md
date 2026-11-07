@@ -24,7 +24,9 @@ JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
 "objetos": [
   {"id": 1, "x": 10, "y": 20, "w": 48, "h": 36, "inv_h": false, "inv_v": false, "giros": 0, "rolo": 0, "casa": 5},
   {"id": 2, "x": 60, "y": 20, "w": 30, "h": 30, "inv_h": false, "inv_v": false, "giros": 1, "corrente": 1, "png": "adesivo-20261031-120000-2.png"},
-  {"id": 3, "x": 100, "y": 100, "w": 80, "h": 40, "inv_h": false, "inv_v": false, "giros": 0, "texto": "Oi!", "balao": true, "cor": 1, "forma": "oval-rabicho", "alinha": "centro", "largura": 60, "fonte": "pequena"}
+  {"id": 3, "x": 100, "y": 100, "w": 80, "h": 40, "inv_h": false, "inv_v": false, "giros": 0, "texto": "Oi!", "balao": true, "cor": 1, "forma": "oval-rabicho", "alinha": "centro", "largura": 60, "fonte": "pequena"},
+  {"id": 4, "x": 150, "y": 90, "w": 300, "h": 140, "inv_h": false, "inv_v": false, "giros": 0, "palavra_forma": "Ana", "tipo": "Liberation Sans", "molde": "onda", "estilos": "negrito,contorno", "cores": "1,25", "padrao": 0, "sombra": "normal", "tamanho": 128, "giro": 15},
+  {"id": 5, "x": 200, "y": 160, "w": 40, "h": 28, "inv_h": false, "inv_v": false, "giros": 0, "dipitidu": 2}
 ]}
 ```
 
@@ -35,7 +37,21 @@ JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
   clip-art (29 = cenários de `C-MAG100.ART`), 30 = rabinhos de balão nos
   quadrinhos; o rolo do usuário, sempre o último, não aparece aqui: os
   adesivos dele são gravados como `png`); `png` (adesivo do usuário,
-  arquivo na pasta de desenhos); `texto` (palavra).
+  arquivo na pasta de desenhos); `palavra_forma` (palavra com forma);
+  `dipitidu` (casa do rolo de dipitidus da Palavra: rabinhos `PICT` 16–19 de
+  `B-MAG100.CHK`); `texto` (palavra ou balão).
+- Palavra com forma (Cavalete de palavras com forma, `paint/shaped.rs`): o
+  texto em `palavra_forma`; `tipo` (família instalada; vazio = "Pablo
+  Graphos"; se a família não existir na máquina, a imagem sai na do
+  programa), `molde` (`retangulo`, `arco-embaixo`, `onda`, `inflado`,
+  `cresce`, `encolhe`, `zigue-zague`, `triangulo`, `triangulo-baixo`,
+  `arco`, `circulo`), `estilos` (lista separada por vírgulas de `negrito`,
+  `inclinado`, `contorno`, `maiusculas`, `vertical`), `cores` (índices da
+  paleta separados por vírgula; mais de um = alternados por letra), `padrao`
+  (índice do padrão da pintura, 0 = cheio), `sombra` (`nenhuma`, `normal`,
+  `amanhecer`, `anoitecer`, `girar-sumir`, `girar-circulo`, `convergente`,
+  `tridimensional`), `tamanho` (altura da linha em pixels) e `giro` (graus,
+  anti-horário). A imagem é refeita ao abrir.
 - Palavra: `balao` (bool, sempre gravado) e `cor` (índice da paleta). Os
   campos do Cavalete de balões só aparecem quando fogem do texto solto ou do
   balão "Oi!": `forma` (`nenhum`, `retangulo-rabicho`, `retangulo`,

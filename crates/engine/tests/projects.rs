@@ -317,143 +317,40 @@ fn enter() -> Input {
     }
 }
 
-/// Opção `k` de uma faixa que começa em `x0` (como `option_rect` da pintura).
-fn opt(x0: i32, k: i32) -> (i32, i32) {
-    (x0 + 37 * k + 16, 63 + 16)
-}
-
 #[test]
-fn comics_easel_styles_moves_and_resizes_balloons() {
-    use engine::paint::{Align, BalloonShape, Source};
+fn comics_words_use_the_paint_easels() {
+    use engine::paint::{BalloonShape, Source};
+    use engine::scenes::paint::words::{OI_BTN, balloon_easel};
     let (_d, a) = empty_assets();
     let mut p = Paint::new_project(ProjectKind::Comics, None, &a);
     // fecha o painel dos dígitos (1 quadrinho) e escolhe a Palavra
     let r = digit_rect(0);
     p.update(&[click(r.0 + 10, r.1 + 10), click(228, 30)], 0.0, &a);
     assert_eq!(p.tool(), engine::scenes::paint::Tool::Words);
-    // cavalete: fonte pequena, oval com rabicho, centrado
-    let (fx, fy) = opt(25, 1);
-    let (sx, sy) = opt(25 + 2 * 37 + 8, 2);
-    let (ax, ay) = opt(25 + 2 * 37 + 8 + 6 * 37 + 8, 1);
-    p.update(&[click(fx, fy), click(sx, sy), click(ax, ay)], 0.0, &a);
-    // digita um balão
+    // o Oi! abre o Cavalete de balões (o mesmo da pintura); forma "pensamento"
+    let (ox, oy) = (OI_BTN.0 + 10, OI_BTN.1 + 10);
+    p.update(&[click(ox, oy), up(ox, oy)], 0.0, &a);
+    assert_eq!(p.words_easel(), Some(false));
+    let b = balloon_easel::button_rect(1);
+    p.update(&[click(b.0 + 5, b.1 + 5), up(b.0 + 5, b.1 + 5)], 0.0, &a);
+    p.update(&[Input::Text("Hmm".into())], 0.0, &a);
+    let ok = balloon_easel::OK;
+    // a lista aberta prende o clique: fecha e depois OK
     p.update(
-        &[
-            click(ORIGIN.0 + 100, ORIGIN.1 + 100),
-            text("Oi tudo bem"),
-            enter(),
-        ],
+        &[click(ok.0 + 5, ok.1 + 5), up(ok.0 + 5, ok.1 + 5)],
+        0.0,
+        &a,
+    );
+    p.update(
+        &[click(ok.0 + 5, ok.1 + 5), up(ok.0 + 5, ok.1 + 5)],
         0.0,
         &a,
     );
     assert_eq!(p.objects().len(), 1);
-    let o = p.objects().items[0].clone();
-    let Source::Words { style, text: t, .. } = &o.source else {
-        panic!("não é palavra");
-    };
-    assert_eq!(t, "Oi tudo bem");
-    assert_eq!(style.shape, BalloonShape::OvalTail);
-    assert_eq!(style.align, Align::Center);
-    assert!(style.small);
-    assert_eq!(style.width, 0);
-    // o texto fica onde foi o clique: o balão começa antes
-    assert!(o.x < 100 && o.y < 100);
-    let (ox, oy, ow, oh) = (o.x, o.y, o.w, o.h);
-    // arrastar o balão move, em vez de começar outro texto
-    let (gx, gy) = (ORIGIN.0 + 100, ORIGIN.1 + 100);
-    p.update(
-        &[click(gx, gy), mv(gx + 30, gy + 20), up(gx + 30, gy + 20)],
-        0.0,
-        &a,
-    );
-    assert_eq!(p.objects().len(), 1);
-    let o = p.objects().get(o.id).unwrap().clone();
-    assert_eq!((o.x, o.y), (ox + 30, oy + 20));
-    assert!(p.words_text().is_none());
-    // Shift+arrasto muda a largura: o texto quebra e o balão fica mais estreito e alto
-    let (gx, gy) = (gx + 30, gy + 20);
-    p.update(
-        &[
-            Input::Shift(true),
-            click(gx, gy),
-            mv(gx - 40, gy),
-            up(gx - 40, gy),
-            Input::Shift(false),
-        ],
-        0.0,
-        &a,
-    );
-    let o = p.objects().get(o.id).unwrap().clone();
-    let Source::Words { style, .. } = &o.source else {
-        panic!()
-    };
-    assert!(style.width > 0 && style.width < 80, "{}", style.width);
-    assert!(o.w < ow && o.h > oh, "{}x{} vs {ow}x{oh}", o.w, o.h);
-    // o ovo desfaz a largura
-    p.update(&[click(270, 30)], 0.0, &a);
-    let o2 = p.objects().get(o.id).unwrap().clone();
-    assert_eq!((o2.w, o2.h), (ow, oh));
-    p.update(&[click(270, 30), click(228, 30)], 0.0, &a);
-    // clicar sem mover reabre o texto no mesmo lugar e estilo; Backspace e Enter gravam
-    let o = p.objects().get(o.id).unwrap().clone();
-    let (cx, cy) = (ORIGIN.0 + o.x + o.w / 2, ORIGIN.1 + o.y + 8);
-    p.update(&[click(cx, cy), up(cx, cy)], 0.0, &a);
-    assert_eq!(p.objects().len(), 0);
-    assert_eq!(p.words_text(), Some("Oi tudo bem"));
-    p.update(&[text("!"), enter()], 0.0, &a);
-    assert_eq!(p.objects().len(), 1);
-    let n = p.objects().items[0].clone();
-    assert!(
-        matches!(&n.source, Source::Words { text, style, .. } if text == "Oi tudo bem!" && style.shape == BalloonShape::OvalTail && style.width == o_width(&o))
-    );
-    assert_eq!((n.x, n.y), (o.x, o.y));
-    // "espaço em branco": sem balão
-    let (bx, by) = opt(25 + 2 * 37 + 8, 5);
-    p.update(
-        &[
-            click(bx, by),
-            click(ORIGIN.0 + 300, ORIGIN.1 + 200),
-            text("x"),
-            enter(),
-        ],
-        0.0,
-        &a,
-    );
-    let last = p.objects().items.last().unwrap();
-    assert!(
-        matches!(&last.source, Source::Words { style, .. } if style.shape == BalloonShape::None)
-    );
-    assert_eq!((last.x, last.y), (300, 200));
-}
-
-fn o_width(o: &engine::paint::Object) -> u32 {
-    match &o.source {
-        engine::paint::Source::Words { style, .. } => style.width,
-        _ => 0,
-    }
-}
-
-#[test]
-fn plain_paint_keeps_two_word_options() {
-    let (_d, a) = empty_assets();
-    let mut p = Paint::new(None, &a);
-    p.update(&[click(228, 30)], 0.0, &a);
-    // opção 2 = balão "Oi!"; o cavalete não existe fora dos quadrinhos
-    let (x, y) = opt(25, 1);
-    p.update(
-        &[
-            click(x, y),
-            click(ORIGIN.0 + 50, ORIGIN.1 + 50),
-            text("a"),
-            enter(),
-        ],
-        0.0,
-        &a,
-    );
-    let o = &p.objects().items[0];
-    assert!(
-        matches!(&o.source, engine::paint::Source::Words { style, .. } if *style == engine::paint::WordsStyle::balloon())
-    );
+    assert!(matches!(
+        &p.objects().items[0].source,
+        Source::Words { text, style, .. } if text == "Hmm" && style.shape == BalloonShape::RectTail
+    ));
 }
 
 #[test]
