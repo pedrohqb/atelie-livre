@@ -52,9 +52,10 @@ const ARROW_DOWN: (i32, i32, i32, i32) = (504, 90, 16, 14);
 const FILM_Y: i32 = 99;
 const FILM_H: i32 = 368;
 const FILM_W: i32 = 42;
-/// Pontas do rolo: fazem parte do primeiro e do último rolo da página.
+/// Pontas do rolo: fazem parte do primeiro e do último rolo da página. A
+/// direita fica logo depois do último rolo (em x 383 com a página cheia).
 const CLIP_LEFT: Rect = (5, 62, 15, 33);
-const CLIP_RIGHT: Rect = (383, 62, 15, 33);
+const CLIP_RIGHT_W: i32 = 15;
 /// Cachorrinho (achar figuras) e Cavalete de adesivos ("Fazer o seu").
 pub const DOG: Rect = (410, 60, 35, 38);
 pub const EASEL: Rect = (462, 60, 33, 38);
@@ -176,25 +177,6 @@ pub fn stamp_thumb(st: &Stamp, pal: &[Rgb], side: u32) -> Image {
     Image {
         width: w,
         height: h,
-        rgba,
-    }
-}
-
-/// Ícone do rolo do usuário vazio: um quadrinho branco de contorno preto.
-fn empty_roll_icon() -> Image {
-    let side = 24u32;
-    let mut rgba = vec![255u8; (side * side * 4) as usize];
-    for y in 0..side {
-        for x in 0..side {
-            if x == 0 || y == 0 || x == side - 1 || y == side - 1 {
-                let o = ((y * side + x) * 4) as usize;
-                rgba[o..o + 3].copy_from_slice(&[0, 0, 0]);
-            }
-        }
-    }
-    Image {
-        width: side,
-        height: side,
         rgba,
     }
 }
@@ -420,8 +402,26 @@ impl Stickers {
         self.scroll = (item + 1).saturating_sub(cells);
     }
 
+    /// Rolos: bichos, clip-art e, se o usuário já fez algum adesivo, o dele.
     pub fn roll_count(&self) -> usize {
-        2 + self.clip.len()
+        1 + self.clip.len() + usize::from(!self.user.is_empty())
+    }
+
+    /// Quantos rolos a página atual mostra.
+    fn rolls_on_page(&self) -> usize {
+        self.roll_count()
+            .saturating_sub(self.page * ROLLS_PER_PAGE)
+            .clamp(1, ROLLS_PER_PAGE)
+    }
+
+    /// Borda direita do último rolo da página (onde fica a ponta direita).
+    fn rolls_end(&self) -> i32 {
+        SLOT_X0 + SLOT_W * self.rolls_on_page() as i32
+    }
+
+    /// Ponta direita do rolo, clicável.
+    fn clip_right(&self) -> Rect {
+        (self.rolls_end() - 4, 62, CLIP_RIGHT_W, 33)
     }
 
     /// Pedido feito pelo último clique (Cachorrinho ou Cavalete).
@@ -680,15 +680,11 @@ impl Stickers {
             self.request = Some(Request::Easel);
             return Some(None);
         }
-        let slot = (0..ROLLS_PER_PAGE)
+        let slot = (0..self.rolls_on_page())
             .find(|&k| inside(slot_rect(k), x, y))
             .or_else(|| inside(CLIP_LEFT, x, y).then_some(0))
-            .or_else(|| {
-                inside(CLIP_RIGHT, x, y).then(|| {
-                    // ponta direita: o último rolo que a página tem
-                    (self.roll_count() - self.page * ROLLS_PER_PAGE).min(ROLLS_PER_PAGE) - 1
-                })
-            });
+            // ponta direita: o último rolo que a página tem
+            .or_else(|| inside(self.clip_right(), x, y).then(|| self.rolls_on_page() - 1));
         if let Some(k) = slot {
             let roll = self.page * ROLLS_PER_PAGE + k;
             if roll < self.roll_count() {
@@ -803,7 +799,7 @@ impl Stickers {
         blit_part(f, &left, &left_mask, 9, STRIP_Y, (0, 14));
         let right = a.image(&pic(0x10ab));
         let right_mask = a.image(&pic(0x10ad));
-        let end = SLOT_X0 + SLOT_W * ROLLS_PER_PAGE as i32;
+        let end = self.rolls_end();
         blit_part(f, &right, &right_mask, end - 52, STRIP_Y, (52, 64));
         for k in 0..ROLLS_PER_PAGE {
             let roll = self.page * ROLLS_PER_PAGE + k;
@@ -820,13 +816,8 @@ impl Stickers {
             let icon = if roll == 0 {
                 Some(a.image(&pic(THUMBS[0])))
             } else if roll == self.user_roll() {
-                // rolo do usuário: o último adesivo feito, ou o cavalete
-                Some(
-                    self.user
-                        .last()
-                        .map(|u| u.preview.clone())
-                        .unwrap_or_else(|| Rc::new(empty_roll_icon())),
-                )
+                // rolo do usuário: o último adesivo feito
+                self.user.last().map(|u| u.preview.clone())
             } else {
                 self.clip.get(roll - 1).and_then(|c| c.icon.clone())
             };
@@ -847,8 +838,8 @@ impl Stickers {
             ARROW_DOWN.0,
             ARROW_DOWN.1,
         );
-        // adesivos animados e "faça o seu" (ainda sem ação)
-        f.blit(&a.image(&pic(0x025d)), 409, 63);
+        // Cachorrinho (achar figuras) e Cavalete ("Fazer o seu")
+        f.blit_masked(&a.image(&pic(0x025d)), &a.image(&pic(0x0263)), 409, 63);
         f.blit(&a.image(&pic(0x123f)), 456, 59);
         f.rect(504, 75, 16, 12, BLACK);
         f.rect(505, 76, 14, 10, WHITE);

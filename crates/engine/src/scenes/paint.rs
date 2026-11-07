@@ -3958,7 +3958,11 @@ mod tests {
         p.update(&[mv(hx, hy)], 0.0, &a);
         assert_eq!(p.hovered_object(), Some(id));
         let d = 5 * zoom::FACTOR;
-        p.update(&[click(hx, hy), mv(hx + d, hy + d), up(hx + d, hy + d)], 0.0, &a);
+        p.update(
+            &[click(hx, hy), mv(hx + d, hy + d), up(hx + d, hy + d)],
+            0.0,
+            &a,
+        );
         let o = p.objects().get(id).unwrap();
         assert_eq!((o.x, o.y), (x0 + 5, y0 + 5));
     }
@@ -4010,13 +4014,25 @@ mod tests {
     fn roll_ends_open_first_and_last_roll_of_the_page() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
+        // sem bibliotecas e sem adesivos feitos só há o rolo dos bichos
+        assert_eq!(p.stickers().roll_count(), 1);
+        let st = crate::paint::stamp::Stamp {
+            w: 4,
+            h: 4,
+            px: vec![Some(0); 16],
+        };
+        let pal = p.pal.clone();
+        p.stickers.add_user("adesivo-x.png".into(), st, &pal);
+        assert_eq!(p.stickers().roll_count(), 2);
         p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
         p.update(&[click(12, 78)], 0.0, &a);
         assert!(p.stickers().film_open());
         assert_eq!(p.stickers().roll(), 0);
-        // sem bibliotecas só há o rolo dos bichos e o do usuário: a ponta
-        // direita abre o último rolo da página
+        p.update(&[click(12, 78)], 0.0, &a);
+        // a ponta direita fica logo depois do último rolo (x 127..142) e o abre
         p.update(&[click(390, 78)], 0.0, &a);
+        assert!(!p.stickers().film_open());
+        p.update(&[click(135, 78)], 0.0, &a);
         assert!(p.stickers().film_open());
         assert_eq!(p.stickers().roll(), p.stickers().user_roll());
     }

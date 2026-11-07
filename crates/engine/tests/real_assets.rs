@@ -501,6 +501,7 @@ fn sticker_help_balloons_follow_the_original() {
     p.update(&[click(425, 78)], 0.0, &a);
     assert_eq!(p.help().map(|h| h.index), Some(12));
     assert!(p.finder().is_some());
-    // o rolo de cenários (CARO 28) é o segundo da página 5
-    assert_eq!(p.stickers().roll_count(), 1 + 29 + 1);
+    // o rolo de cenários (CARO 28) é o segundo da página 5; o do usuário só
+    // aparece depois que ele faz um adesivo
+    assert_eq!(p.stickers().roll_count(), 1 + 29);
 }

@@ -136,8 +136,10 @@ seção 4. Resumo:
   [2d](../superpowers/specs/2026-10-31-adesivos-2-design.md)); tira amarela
   pontilhada, 8 casas de 34×34 a cada 41 px. O `CARO` 28 de `C-MAG100.ART`
   é o rolo de cenários (Caverna, Fazenda, Selva…), o segundo da página 5,
-  ao lado do rolo de reciclagem. As pontas do rolo (x≈12 e x≈390) fazem
-  parte do primeiro e do último rolo da página. Som de abrir um rolo:
+  ao lado do rolo de reciclagem. As pontas do rolo fazem parte do primeiro e
+  do último rolo da página; a esquerda fica em x≈12 e a direita logo depois
+  do último rolo (x≈390 com a página cheia). O Cachorrinho `025d` usa a
+  máscara `0263`. Som de abrir um rolo:
   `0233`.
 - **Adesivos colocados** (ferramenta Seleciona-adesivos com a mão vazia): o
   contorno do adesivo sob o ponteiro pisca e arrastá-lo o move (uma ação do
@@ -159,8 +161,8 @@ seção 4. Resumo:
   NÃO fecha e reabre o balão Seleciona-adesivos. OK corta o desenho ao que
   foi pintado (o branco ligado à borda fica transparente, o de dentro não),
   grava `adesivo-AAAAMMDD-HHMMSS.png` na pasta de desenhos e abre a tira do
-  rolo do usuário (último rolo da faixa, miniaturas de até 30 px; ícone =
-  último adesivo feito) na casa nova. Ao modificar um adesivo colocado, OK
+  rolo do usuário (último rolo da faixa, que só aparece depois do primeiro
+  adesivo feito; miniaturas de até 30 px; ícone = último adesivo feito) na casa nova. Ao modificar um adesivo colocado, OK
   troca a imagem do objeto (mesmo centro; a origem passa a `png`).
 - **Cachorrinho** (ícone `025d` em (409, 63); `scenes/paint/find_pictures.rs`):
   diálogo modal verde (120, 111)–(526, 368) com o resto da tela em cinza.
