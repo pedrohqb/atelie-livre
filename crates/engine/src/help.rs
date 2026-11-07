@@ -128,6 +128,8 @@ impl HelpBalloon {
     /// couber.
     pub fn follow_beside(&self, index: usize) -> Option<HelpBalloon> {
         let mut b = self.follow(index)?;
+        // o rabicho é do balão principal (quem fala)
+        b.tail = None;
         let left = self.x - b.w - GAP_BESIDE;
         b.x = if left >= 5 {
             left
