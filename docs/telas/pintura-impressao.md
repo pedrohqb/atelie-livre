@@ -64,6 +64,12 @@ pasta de desenhos, a 144 pixels por polegada (1584×1224), e todas vão juntas
 para `lp -n <cópias> -o fit-to-page <arquivos>`. A variável `ATELIE_LP` troca
 o programa (testes).
 
+A prévia de impressão da Galeria (`scenes/gallery_print.rs`, o "imprimir
+depressa" do quadro arrastado para a impressora) usa as mesmas constantes
+(`paint::print::machine`: registros, McZee em (541,4), folha, balões, Rex em
+(209,167), sons `02ec`/`02eb`/`02fe`, 1,5 s mínimos) e a mesma chamada
+`paint::print::spawn_lp`.
+
 ### Fundos de impressão (`0MAG100.BOR`)
 
 Os fundos são os chunks `IBGF` de `SHARED/STUFF/0MAG100.BOR` (11, de "PD -

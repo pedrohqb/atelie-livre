@@ -316,6 +316,56 @@ pub fn lp_args(copies: u8, files: &[PathBuf]) -> Vec<OsString> {
     v
 }
 
+/// Constantes da tela de impressão do McZee, comuns à máquina da pintura
+/// (`scenes/paint/print_machine.rs`) e à prévia da Galeria
+/// (`scenes/gallery_print.rs`). Medidas nas capturas do original.
+pub mod machine {
+    /// Bloco `WHAT` da máquina de impressão e os registros usados.
+    pub const WHAT_MACHINE: u16 = 0x4c00;
+    pub const REC_WELCOME: usize = 0;
+    pub const REC_BACKGROUND: usize = 1;
+    pub const REC_TOO_MANY: usize = 3;
+    pub const REC_PICK_BACKGROUND: usize = 4;
+    pub const REC_STRETCH: usize = 6;
+    pub const REC_POSTER_BACKGROUND: usize = 7;
+    pub const REC_COLOR: usize = 8;
+    pub const REC_COPIES: usize = 10;
+    pub const REC_READY: usize = 11;
+    pub const REC_PRINTING: usize = 12;
+    pub const REC_DONE: usize = 14;
+    /// Avisos do Rex (bloco `100f`): não imprimiu, cancelado.
+    pub const WHAT_ERRORS: u16 = 0x100f;
+    pub const REC_CANT_PRINT: usize = 19;
+    pub const REC_CANCELED: usize = 20;
+    /// McZee no alto à direita (máscara duas figuras adiante, `4c01`).
+    pub const MCZEE: (u16, i32, i32) = (0x4403, 541, 4);
+    /// Folha da prévia, com a borda preta de 1 px.
+    pub const PAGE: (i32, i32, i32, i32) = (26, 98, 385, 296);
+    /// Canto superior direito dos balões do McZee e posição dos avisos do Rex.
+    pub const BALLOON_RIGHT: i32 = 590;
+    pub const BALLOON_TOP: i32 = 63;
+    pub const ALERT_POS: (i32, i32) = (209, 167);
+    /// Tempo mínimo do balão "Eu ainda estou imprimindo…".
+    pub const MIN_PRINTING: f32 = 1.5;
+    /// Sons: Pára, Segue (que imprime) e o "Epa!" do Rex.
+    pub const SND_STOP: u16 = 0x02ec;
+    pub const SND_NEXT: u16 = 0x02eb;
+    pub const SND_ALERT: u16 = 0x02fe;
+}
+
+/// Chama o programa de impressão (`lp`, ou o dos testes) com as folhas.
+pub fn spawn_lp(
+    command: &str,
+    copies: u8,
+    files: &[PathBuf],
+) -> std::io::Result<std::process::Child> {
+    std::process::Command::new(command)
+        .args(lp_args(copies, files))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+}
+
 /// Grava a folha como PNG RGB.
 pub fn save_sheet(s: &Rgb8, path: &std::path::Path) -> std::io::Result<()> {
     let file = std::io::BufWriter::new(std::fs::File::create(path)?);

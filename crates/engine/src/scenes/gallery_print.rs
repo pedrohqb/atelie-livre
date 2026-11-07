@@ -16,38 +16,18 @@ use crate::text_balloon::{Button, Part, TextBalloon, blit_pic};
 use crate::{Frame, paint::store::save_png};
 use formats::palette::Rgb;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 
 type Rect = (i32, i32, i32, i32);
 
-const WHAT_MACHINE: u16 = 0x4c00;
-const REC_READY: usize = 11;
-const REC_PRINTING: usize = 12;
-const REC_DONE: usize = 14;
-const WHAT_ERRORS: u16 = 0x100f;
-const REC_CANT_PRINT: usize = 19;
-const REC_CANCELED: usize = 20;
+use crate::paint::print::machine::*;
 
 /// Janela: moldura preta/laranja, faixa cinza em cima, área branca.
 const WINDOW: Rect = (16, 28, 610, 434);
 const GRAY_BAR: (i32, i32) = (33, 87);
-/// Folha (com a borda preta) e o desenho pela metade, centrado nela.
-const PAGE: Rect = (26, 98, 385, 296);
-/// McZee no alto à direita (máscara duas figuras adiante).
-const MCZEE: (u16, i32, i32) = (0x4403, 541, 4);
-/// Canto superior direito dos balões do McZee e posição dos avisos do Rex.
-const BALLOON_RIGHT: i32 = 590;
-const BALLOON_TOP: i32 = 63;
-const ALERT_POS: (i32, i32) = (209, 167);
 /// Faixa de progresso no canto inferior esquerdo e o bicho que anda nela.
 const STRIP: Rect = (22, 430, 200, 26);
 const WALKER: u16 = 0x25d;
-/// Tempo mínimo do balão "Eu ainda estou imprimindo…".
-pub const MIN_PRINTING: f32 = 1.5;
-
-const SND_STOP: u16 = 0x2ec;
-const SND_NEXT: u16 = 0x2eb;
-const SND_ALERT: u16 = 0x2fe;
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -197,12 +177,7 @@ impl PrintPreview {
             self.result = Some(false);
             return;
         }
-        match Command::new(&self.command)
-            .arg(&path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
+        match crate::paint::print::spawn_lp(&self.command, 1, std::slice::from_ref(&path)) {
             Ok(c) => {
                 fx.push(Effect::Log(format!("imprimindo {}", path.display())));
                 self.child = Some(c);

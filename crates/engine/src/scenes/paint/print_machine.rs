@@ -20,34 +20,13 @@ use crate::text_balloon::{
 };
 use formats::what::Record;
 
-const WHAT_MACHINE: u16 = 0x4c00;
-const REC_WELCOME: usize = 0;
-const REC_BACKGROUND: usize = 1;
-const REC_TOO_MANY: usize = 3;
-const REC_PICK_BACKGROUND: usize = 4;
-const REC_STRETCH: usize = 6;
-const REC_POSTER_BACKGROUND: usize = 7;
-const REC_COLOR: usize = 8;
-const REC_COPIES: usize = 10;
-const REC_READY: usize = 11;
-const REC_PRINTING: usize = 12;
-const REC_DONE: usize = 14;
-/// Avisos do Rex no bloco `WHAT_ERRORS` (100f).
-const REC_CANT_PRINT: usize = 19;
-const REC_CANCELED: usize = 20;
+use crate::paint::print::machine::WHAT_ERRORS;
+use crate::paint::print::machine::*;
 
-/// McZee no alto à direita (máscara duas figuras adiante, `4c01`).
-const MCZEE: (u16, i32, i32) = (0x4403, 540, 2);
 const MCZEE_RECT: (i32, i32, i32, i32) = (545, 2, 90, 158);
 /// Botão FUNDO (ilha) na faixa cinza.
 const FUNDO: (u16, i32, i32) = (0x10df, 35, 37);
 const FUNDO_RECT: (i32, i32, i32, i32) = (35, 37, 120, 42);
-/// Folha da prévia (com a borda preta de 1 px).
-const PAGE: (i32, i32, i32, i32) = (26, 98, 385, 297);
-/// Canto superior direito dos balões do McZee e posição dos avisos do Rex.
-const BALLOON_RIGHT: i32 = 590;
-const BALLOON_TOP: i32 = 63;
-const ALERT_POS: (i32, i32) = (210, 167);
 /// Miniaturas dos fundos na faixa, à direita do FUNDO, e as setas.
 const THUMB_X0: i32 = 176;
 const THUMB: (i32, i32) = (60, 44);
@@ -57,11 +36,6 @@ const THUMB_LEFT: (i32, i32, i32, i32) = (162, 44, 12, 30);
 const THUMB_RIGHT: (i32, i32, i32, i32) = (176 + 5 * 66, 44, 12, 30);
 /// Biblioteca dos fundos de impressão (`IBGF`).
 const BACKGROUNDS_LIBRARY: &str = "0MAG100.BOR";
-/// Tempo mínimo do balão "Eu ainda estou imprimindo…".
-const MIN_PRINTING: f32 = 1.5;
-/// Sons: Segue que imprime e o "Epa!" do Rex.
-const SND_PRINT_GO: u16 = 0x02eb;
-const SND_ERROR: u16 = 0x02fe;
 
 const GRAY: [u8; 3] = [140, 140, 140];
 const GREEN_RED: [u8; 3] = [250, 0, 57];
@@ -481,7 +455,7 @@ impl PrintMachine {
                 match pr::parse_copies(&text) {
                     Some(n) => {
                         self.options.copies = n;
-                        fx.push(sfx::play(SND_PRINT_GO));
+                        fx.push(sfx::play(SND_NEXT));
                         return Out::Print;
                     }
                     None => {
@@ -491,7 +465,7 @@ impl PrintMachine {
                 }
             }
             Stage::Ready => {
-                fx.push(sfx::play(SND_PRINT_GO));
+                fx.push(sfx::play(SND_NEXT));
                 return Out::Print;
             }
             Stage::Printing => {}
@@ -579,7 +553,10 @@ impl PrintMachine {
 
     fn button(&mut self, b: Button, fx: &mut Vec<Effect>, a: &Assets) -> Out {
         match b {
-            Button::Stop => Out::Close,
+            Button::Stop => {
+                fx.push(sfx::play(SND_STOP));
+                Out::Close
+            }
             Button::Back => {
                 self.back(a);
                 Out::Stay
@@ -661,11 +638,7 @@ impl PrintMachine {
         let Some(first) = self.files.first().cloned() else {
             return self.fail(fx, assets);
         };
-        let child = std::process::Command::new(&self.lp)
-            .args(pr::lp_args(self.options.copies, &self.files))
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
+        let child = pr::spawn_lp(&self.lp, self.options.copies, &self.files);
         match child {
             Ok(c) => {
                 fx.push(Effect::Log(format!(
@@ -693,7 +666,7 @@ impl PrintMachine {
         self.job = None;
         // como no original, o "Epa!" aparece por cima do "Eu ainda estou imprimindo…"
         self.go(Stage::Printing, assets);
-        fx.push(sfx::play(SND_ERROR));
+        fx.push(sfx::play(SND_ALERT));
         self.open_alert(Alert::CantPrint, assets);
     }
 
@@ -1115,7 +1088,7 @@ mod tests {
         // sem lp: grava as quatro folhas e mostra o "Epa!"
         p.print_machine_mut().unwrap().lp = "/nao/existe/lp".into();
         let fx = p.update(&[key(Key::Enter)], 0.0, &a);
-        assert!(fx.contains(&sfx::play(SND_PRINT_GO)));
+        assert!(fx.contains(&sfx::play(SND_NEXT)));
         assert_eq!(stage(&p), Stage::Printing);
         settle(&mut p, &a);
         let m = p.print_machine().unwrap();
