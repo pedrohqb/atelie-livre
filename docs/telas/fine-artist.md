@@ -209,7 +209,8 @@ remontagem "usável primeiro". Código em
   um contorno vermelho); régua TEMPO (`02f7`, 207×58, desenhada em x 86 com
   os 10 px de parafusos de cima cortados), cursor `3a65` sobre o trilho
   amarelo com 5 paradas a cada 38 px entre a tartaruga (`3a69`) e o coelho
-  (`3a6f`): 4000 / 2000 / 1000 / 500 / 250 ms por figura, padrão 1000;
+  (`3a6f`): 4000 / 2000 / 1000 / 500 / 250 ms por figura, padrão 1000
+  (clique ou arrasto no trilho; a tartaruga e o coelho vão às pontas);
   botões desenhados (cartões brancos, Pablo 8 pt): **Pasta** (300,59),
   **<** / **>** (364 e 388), **Efeito** (414,59, mostra o efeito do espaço
   escolhido e cicla ao clicar), **Som** (300,82), **Legenda** (344,82),

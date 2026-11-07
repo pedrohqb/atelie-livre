@@ -89,6 +89,9 @@ const RULER_X: i32 = 86;
 pub const TRACK: Rect = (RULER_X + 17, 65, 172, 19);
 pub const TRACK_STOP0: i32 = TRACK.0 + 8;
 pub const TRACK_STEP: i32 = 38;
+/// Tartaruga (`3a69`) e coelho (`3a6f`) nas pontas da régua: mais lento / mais rápido.
+pub const TURTLE: Rect = (RULER_X + 26, 86, 30, 18);
+pub const RABBIT: Rect = (RULER_X + 146, 86, 34, 18);
 pub const FOLDER_BTN: Rect = (300, 59, 60, 20);
 pub const PREV_BTN: Rect = (364, 59, 22, 20);
 pub const NEXT_BTN: Rect = (388, 59, 22, 20);
@@ -344,6 +347,8 @@ pub struct Flipbook {
     /// Mensagem curta mostrada na faixa (ex.: "Primeiro preencha os espaços!").
     notice: Option<(String, f32)>,
     drag: Option<Drag>,
+    /// Arrastando o cursor da régua TEMPO.
+    ruler_drag: bool,
     /// Último clique numa figura: espaço e tempo decorrido.
     last_click: Option<(usize, f32)>,
     editing: Option<Editing>,
@@ -368,6 +373,7 @@ impl Default for Flipbook {
             changed: false,
             notice: None,
             drag: None,
+            ruler_drag: false,
             last_click: None,
             editing: None,
         }
@@ -975,8 +981,16 @@ impl Flipbook {
             return Vec::new();
         }
         if inside(TRACK, x, y) {
-            let k = ((x - TRACK_STOP0 + TRACK_STEP / 2) / TRACK_STEP).clamp(0, 4);
-            self.set_speed(k as usize);
+            self.set_speed(Self::speed_at(x));
+            self.ruler_drag = true;
+            return Vec::new();
+        }
+        if inside(TURTLE, x, y) {
+            self.set_speed(0);
+            return Vec::new();
+        }
+        if inside(RABBIT, x, y) {
+            self.set_speed(SPEEDS_MS.len() - 1);
             return Vec::new();
         }
         if inside(PREV_BTN, x, y) {
@@ -1186,9 +1200,23 @@ impl Flipbook {
         Vec::new()
     }
 
-    /// Mouse em movimento: a figura clicada passa a ser arrastada depois de
-    /// [`DRAG_START`] px (da pasta, a pasta fecha para mostrar os espaços).
+    /// Parada da régua mais perto de `x`.
+    fn speed_at(x: i32) -> usize {
+        ((x - TRACK_STOP0 + TRACK_STEP / 2) / TRACK_STEP).clamp(0, SPEEDS_MS.len() as i32 - 1)
+            as usize
+    }
+
+    /// Mouse em movimento: o cursor da régua segue o mouse ("Arraste para
+    /// definir a velocidade"); a figura clicada passa a ser arrastada depois
+    /// de [`DRAG_START`] px (da pasta, a pasta fecha para mostrar os espaços).
     pub fn mouse_move(&mut self, x: i32, y: i32) {
+        if self.ruler_drag {
+            let k = Self::speed_at(x);
+            if k != self.speed {
+                self.set_speed(k);
+            }
+            return;
+        }
         let Some(d) = self.drag.as_mut() else {
             return;
         };
@@ -1203,6 +1231,7 @@ impl Flipbook {
     /// Botão solto: a figura arrastada cai noutro espaço (troca, ou move se
     /// vazio) ou na pasta fechada (sai do desenho animado).
     pub fn mouse_up(&mut self, x: i32, y: i32) {
+        self.ruler_drag = false;
         let Some(d) = self.drag.take() else {
             return;
         };
@@ -2243,6 +2272,19 @@ mod tests {
         assert_eq!(fb.interval_ms(), 250);
         fb.click(TRACK_STOP0, TRACK.1 + 5, None, &a);
         assert_eq!(fb.interval_ms(), 4000);
+        // arrastar na régua: o cursor segue o mouse até soltar
+        fb.mouse_move(TRACK_STOP0 + 2 * TRACK_STEP, TRACK.1 + 5);
+        assert_eq!(fb.interval_ms(), 1000);
+        fb.mouse_move(TRACK_STOP0 + 3 * TRACK_STEP + 100, TRACK.1 + 5);
+        assert_eq!(fb.interval_ms(), 250);
+        fb.mouse_up(TRACK_STOP0 + 3 * TRACK_STEP, TRACK.1 + 5);
+        fb.mouse_move(TRACK_STOP0, TRACK.1 + 5);
+        assert_eq!(fb.interval_ms(), 250);
+        // tartaruga e coelho
+        fb.click(TURTLE.0 + 5, TURTLE.1 + 5, None, &a);
+        assert_eq!(fb.interval_ms(), 4000);
+        fb.click(RABBIT.0 + 5, RABBIT.1 + 5, None, &a);
+        assert_eq!(fb.interval_ms(), 250);
     }
 
     #[test]
