@@ -99,8 +99,13 @@ pub struct PrintBackground {
     pub full: Rgb8,
 }
 
+/// Folhas gravadas pela thread de montagem, ou o erro.
+type Rendered = Result<Vec<PathBuf>, String>;
+
 /// Impressão em andamento.
 struct Job {
+    /// Montagem e gravação das folhas, numa thread (não trava a tela).
+    render: Option<std::sync::mpsc::Receiver<Rendered>>,
     child: Option<std::process::Child>,
     t: f32,
     /// Resultado do `lp`, quando terminou.
@@ -618,34 +623,44 @@ impl PrintMachine {
         }
     }
 
-    /// Monta as folhas, grava os PNG em `dir` e chama o `lp`.
+    /// Monta as folhas e grava os PNG em `dir` numa thread; o `lp` é chamado
+    /// quando elas ficam prontas (em `tick`).
     fn start_print(&mut self, dir: Option<&Path>, fx: &mut Vec<Effect>, assets: &Assets) {
         self.files.clear();
         let Some(dir) = dir else {
             fx.push(Effect::Log("imprimir: sem pasta de desenhos".into()));
             return self.fail(fx, assets);
         };
-        let sheets = Composer::new(&self.picture, self.background_image(), self.options).sheets();
+        let dir = dir.to_path_buf();
+        let picture = self.picture.clone();
+        let background = self.background_image().cloned();
+        let options = self.options;
         let stamp = crate::paint::store::timestamp(now_secs());
-        let names = pr::sheet_names(&stamp, sheets.len());
-        if let Err(e) = std::fs::create_dir_all(dir) {
-            fx.push(Effect::Log(format!(
-                "imprimir: não consegui criar {}: {e}",
-                dir.display()
-            )));
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(render_files(
+                &dir,
+                &picture,
+                background.as_ref(),
+                options,
+                &stamp,
+            ));
+        });
+        self.job = Some(Job {
+            render: Some(rx),
+            child: None,
+            t: 0.0,
+            ok: None,
+        });
+        self.go(Stage::Printing, assets);
+    }
+
+    /// Folhas prontas: chama o `lp`.
+    fn spawn_lp(&mut self, files: Vec<PathBuf>, fx: &mut Vec<Effect>, assets: &Assets) {
+        self.files = files;
+        let Some(first) = self.files.first().cloned() else {
             return self.fail(fx, assets);
-        }
-        for (s, n) in sheets.iter().zip(&names) {
-            let path = dir.join(n);
-            if let Err(e) = pr::save_sheet(s, &path) {
-                fx.push(Effect::Log(format!(
-                    "imprimir: não consegui gravar {}: {e}",
-                    path.display()
-                )));
-                return self.fail(fx, assets);
-            }
-            self.files.push(path);
-        }
+        };
         let child = std::process::Command::new(&self.lp)
             .args(pr::lp_args(self.options.copies, &self.files))
             .stdout(std::process::Stdio::null())
@@ -657,20 +672,17 @@ impl PrintMachine {
                     "imprimindo {} folha(s), {} cópia(s): {}",
                     self.files.len(),
                     self.options.copies,
-                    self.files[0].display()
+                    first.display()
                 )));
-                self.job = Some(Job {
-                    child: Some(c),
-                    t: 0.0,
-                    ok: None,
-                });
-                self.go(Stage::Printing, assets);
+                if let Some(job) = self.job.as_mut() {
+                    job.child = Some(c);
+                }
             }
             Err(_) => {
                 fx.push(Effect::Log(format!(
                     "sem impressora ({}): o desenho ficou em {}",
                     self.lp,
-                    self.files[0].display()
+                    first.display()
                 )));
                 self.fail(fx, assets);
             }
@@ -679,6 +691,8 @@ impl PrintMachine {
 
     fn fail(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
         self.job = None;
+        // como no original, o "Epa!" aparece por cima do "Eu ainda estou imprimindo…"
+        self.go(Stage::Printing, assets);
         fx.push(sfx::play(SND_ERROR));
         self.open_alert(Alert::CantPrint, assets);
     }
@@ -695,6 +709,24 @@ impl PrintMachine {
     }
 
     fn tick(&mut self, dt: f32, fx: &mut Vec<Effect>, assets: &Assets) {
+        let Some(job) = self.job.as_mut() else { return };
+        if let Some(rx) = &job.render {
+            use std::sync::mpsc::TryRecvError;
+            let got = match rx.try_recv() {
+                Ok(r) => r,
+                Err(TryRecvError::Empty) => return,
+                Err(TryRecvError::Disconnected) => Err("a montagem das folhas parou".into()),
+            };
+            job.render = None;
+            match got {
+                Ok(files) => self.spawn_lp(files, fx, assets),
+                Err(e) => {
+                    fx.push(Effect::Log(format!("imprimir: {e}")));
+                    self.fail(fx, assets);
+                }
+            }
+            return;
+        }
         let Some(job) = self.job.as_mut() else { return };
         if dt.is_finite() && dt > 0.0 {
             job.t += dt;
@@ -755,6 +787,20 @@ impl PrintMachine {
                     p.px[(y * p.w + x) as usize],
                 );
             }
+        }
+        // contorno da figura na folha (só na tela; o fundo traz a moldura dele)
+        let (tw, th) = pr::total_size(self.options.stretch);
+        let (sx, sy) = (p.w as f32 / tw as f32, p.h as f32 / th as f32);
+        let r = pr::placement(self.options.stretch, self.picture.w, self.picture.h);
+        if self.background.is_none() {
+            f.frame_rect(
+                px + 1 + (r.0 * sx) as i32,
+                py + 1 + (r.1 * sy) as i32,
+                (r.2 * sx).round() as i32,
+                (r.3 * sy).round() as i32,
+                1,
+                BLACK,
+            );
         }
         if self.options.stretch == Stretch::Poster {
             f.rect(px + pw / 2 - 1, py, 2, ph, BLACK);
@@ -852,6 +898,28 @@ fn blit_fit(f: &mut Frame, img: &crate::Image, r: (i32, i32, i32, i32)) {
             }
         }
     }
+}
+
+/// Monta as folhas e grava `impressao-<carimbo>[-k].png` em `dir`.
+fn render_files(
+    dir: &Path,
+    picture: &Rgb8,
+    background: Option<&Rgb8>,
+    options: Options,
+    stamp: &str,
+) -> Rendered {
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("não consegui criar {}: {e}", dir.display()))?;
+    let sheets = Composer::new(picture, background, options).sheets();
+    let names = pr::sheet_names(stamp, sheets.len());
+    let mut files = Vec::new();
+    for (s, n) in sheets.iter().zip(&names) {
+        let path = dir.join(n);
+        pr::save_sheet(s, &path)
+            .map_err(|e| format!("não consegui gravar {}: {e}", path.display()))?;
+        files.push(path);
+    }
+    Ok(files)
 }
 
 impl Paint {
@@ -986,6 +1054,20 @@ mod tests {
         p.update(&[click(x, y)], 0.0, a);
     }
 
+    /// Deixa a impressão andar (thread das folhas e `lp`) até um aviso ou o fim.
+    fn settle(p: &mut Paint, a: &Assets) {
+        let start = std::time::Instant::now();
+        while start.elapsed().as_secs() < 60 {
+            let m = p.print_machine().unwrap();
+            if m.alert().is_some() || m.stage == Stage::Done {
+                return;
+            }
+            p.update(&[], 0.05, a);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("a impressão não terminou");
+    }
+
     fn stage(p: &Paint) -> Stage {
         p.print_machine().unwrap().stage
     }
@@ -1034,7 +1116,8 @@ mod tests {
         p.print_machine_mut().unwrap().lp = "/nao/existe/lp".into();
         let fx = p.update(&[key(Key::Enter)], 0.0, &a);
         assert!(fx.contains(&sfx::play(SND_PRINT_GO)));
-        assert!(fx.contains(&sfx::play(SND_ERROR)));
+        assert_eq!(stage(&p), Stage::Printing);
+        settle(&mut p, &a);
         let m = p.print_machine().unwrap();
         assert_eq!(m.options.copies, 3);
         assert_eq!(m.alert(), Some(Alert::CantPrint));
@@ -1063,14 +1146,11 @@ mod tests {
         p.print_machine_mut().unwrap().lp = "true".into();
         press(&mut p, &a, Button::Next);
         assert_eq!(stage(&p), Stage::Printing);
-        assert_eq!(p.print_machine().unwrap().files.len(), 1);
         let mut f = Frame::new(640, 480);
         p.draw(&mut f, &a);
-        for _ in 0..40 {
-            p.update(&[], 0.1, &a);
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        settle(&mut p, &a);
         assert_eq!(stage(&p), Stage::Done);
+        assert_eq!(p.print_machine().unwrap().files.len(), 1);
         press(&mut p, &a, Button::Stop);
         assert!(p.print_machine().is_none());
 

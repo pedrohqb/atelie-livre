@@ -19,7 +19,8 @@ os padrões das colunas continuam trocando.
 Tela modal por cima da pintura (que fica esmaecida): moldura laranja em
 (18,30)–(590,458), faixa cinza no alto com o botão **FUNDO** (`10df`, ilha,
 em (35,37)), área branca com a **prévia da folha** em (26,98), 385×297 (a
-folha carta deitada, 11 × 8,5 polegadas) e o **McZee** (`4403`, máscara
+folha carta deitada, 11 × 8,5 polegadas, com o contorno da figura quando
+não há fundo) e o **McZee** (`4403`, máscara
 `4c01`) em (540,2). Os balões do McZee ficam com o canto direito em x 590 e
 o topo em y 63, com o rabicho para a boca dele; botões Volta / Pára / Segue
 (`040f`, `0417`, `0413`). Clique fora dos botões dá beep (`0217`); Esc é
@@ -34,13 +35,13 @@ Pára (imprimindo, cancela); Enter é Segue.
 | Cor | `4c00[8]` | Volta, Pára, Segue | em cores (ou tons de cinza, conforme a impressora) / em branco e preto sem tons de cinza |
 | Cópias | `4c00[10]` | Volta, Pára, Segue | caixa com "1" selecionado; de 1 a 10, senão o aviso `4c00[3]` |
 | Pronto | `4c00[11]` | Pára, Segue | só "imprimir depressa" (sons `0212` + `02f6`) |
-| Imprimindo | `4c00[12]` | — | até o `lp` terminar (no mínimo 1,5 s); Esc cancela (`100f[20]`) |
+| Imprimindo | `4c00[12]` | — | as folhas são montadas e gravadas numa thread; depois, até o `lp` terminar (no mínimo 1,5 s); Esc cancela (`100f[20]`) |
 | Terminei | `4c00[14]` | Pára | volta à pintura |
 
 O botão FUNDO leva aos fundos em qualquer passo de escolha. Pôster com fundo
 abre `4c00[7]` ("Eu não consigo imprimir um pôster com fundo!") e o fundo
 sai. Se o `lp` não existir ou falhar, o "Epa!" do Rex (`100f[19]`, som
-`02fe`); qualquer clique fecha a máquina, e o Imprimir continua escolhido.
+`02fe`) por cima do "Eu ainda estou imprimindo…"; qualquer clique fecha a máquina, e o Imprimir continua escolhido.
 Pára fecha a máquina sem imprimir.
 
 ### Folhas impressas

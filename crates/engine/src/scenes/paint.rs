@@ -3460,7 +3460,12 @@ mod tests {
             ctrl: false,
             alt: false,
         };
-        let fx = p.update(&[enter], 0.0, &a);
+        let mut fx = p.update(&[enter], 0.0, &a);
+        let start = std::time::Instant::now();
+        while p.print_machine().unwrap().alert().is_none() && start.elapsed().as_secs() < 60 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            fx.extend(p.update(&[], 0.05, &a));
+        }
         assert!(
             fx.iter()
                 .any(|e| matches!(e, Effect::Log(s) if s.contains("impressao-")))

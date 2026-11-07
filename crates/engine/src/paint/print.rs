@@ -187,19 +187,16 @@ impl<'a> Composer<'a> {
     /// esquerda para a direita e de cima para baixo.
     pub fn sheets(&self) -> Vec<Rgb8> {
         let (cols, rows) = self.options.stretch.sheets();
-        let (w, h) = (PAGE_W * SCALE, PAGE_H * SCALE);
+        let step = 1.0 / SCALE as f32;
         let mut out = Vec::new();
         for r in 0..rows {
             for c in 0..cols {
-                let mut s = Rgb8::new(w, h);
-                for y in 0..h {
-                    let py = (r * PAGE_H) as f32 + (y as f32 + 0.5) / SCALE as f32;
-                    for x in 0..w {
-                        let px = (c * PAGE_W) as f32 + (x as f32 + 0.5) / SCALE as f32;
-                        s.px[(y * w + x) as usize] = self.color_at(px, py);
-                    }
-                }
-                out.push(s);
+                out.push(self.render(
+                    (c * PAGE_W) as f32,
+                    (r * PAGE_H) as f32,
+                    (step, step),
+                    (PAGE_W * SCALE, PAGE_H * SCALE),
+                ));
             }
         }
         out
@@ -208,16 +205,75 @@ impl<'a> Composer<'a> {
     /// Prévia de todas as folhas reduzida a `w`×`h` pixels.
     pub fn preview(&self, w: u32, h: u32) -> Rgb8 {
         let (tw, th) = total_size(self.options.stretch);
-        let mut s = Rgb8::new(w, h);
-        for y in 0..h {
-            let py = (y as f32 + 0.5) * th as f32 / h as f32;
-            for x in 0..w {
-                let px = (x as f32 + 0.5) * tw as f32 / w as f32;
-                s.px[(y * w + x) as usize] = self.color_at(px, py);
+        self.render(
+            0.0,
+            0.0,
+            (tw as f32 / w as f32, th as f32 / h as f32),
+            (w, h),
+        )
+    }
+
+    /// Imagem de `size` pixels a partir do ponto `(x0, y0)`, um pixel a cada
+    /// `step` pontos: o mesmo que [`Composer::color_at`] no centro de cada
+    /// pixel, com as colunas e linhas de origem calculadas uma vez só.
+    fn render(&self, x0: f32, y0: f32, step: (f32, f32), size: (u32, u32)) -> Rgb8 {
+        let (w, h) = size;
+        let xs: Vec<f32> = (0..w).map(|i| x0 + (i as f32 + 0.5) * step.0).collect();
+        let ys: Vec<f32> = (0..h).map(|i| y0 + (i as f32 + 0.5) * step.1).collect();
+        let pic = self.picture;
+        let (pic_x, pic_y) = (
+            axis(&xs, self.place.0, self.place.2, pic.w),
+            axis(&ys, self.place.1, self.place.3, pic.h),
+        );
+        let bg = self.background.map(|b| {
+            (
+                b,
+                axis(&xs, self.area.0, self.area.2, b.w),
+                axis(&ys, self.area.1, self.area.3, b.h),
+            )
+        });
+        let mut out = Rgb8::new(w, h);
+        for (y, py) in pic_y.iter().enumerate() {
+            let row = &mut out.px[y * w as usize..(y + 1) * w as usize];
+            if let Some((b, bx, by)) = &bg
+                && let Some(by) = by[y]
+            {
+                for (o, bx) in row.iter_mut().zip(bx) {
+                    if let Some(bx) = bx {
+                        *o = b.at(*bx, by);
+                    }
+                }
+            }
+            if let Some(py) = *py {
+                for (o, px) in row.iter_mut().zip(&pic_x) {
+                    if let Some(px) = px {
+                        let p = pic.at(*px, py);
+                        if bg.is_none() || p != WHITE {
+                            *o = p;
+                        }
+                    }
+                }
+            }
+            if self.options.mono {
+                for o in row.iter_mut() {
+                    *o = to_mono(*o);
+                }
             }
         }
-        s
+        out
     }
+}
+
+/// Coluna (ou linha) da imagem de `len` pixels esticada sobre `[r0, r0 + rlen)`
+/// para cada coordenada; `None` fora dela.
+fn axis(coords: &[f32], r0: f32, rlen: f32, len: u32) -> Vec<Option<u32>> {
+    coords
+        .iter()
+        .map(|&c| {
+            (len > 0 && c >= r0 && c < r0 + rlen)
+                .then(|| ((((c - r0) / rlen) * len as f32) as u32).min(len - 1))
+        })
+        .collect()
 }
 
 /// Pixel da imagem esticada para `r` no ponto `(x, y)`, se dentro dela.
@@ -266,6 +322,8 @@ pub fn save_sheet(s: &Rgb8, path: &std::path::Path) -> std::io::Result<()> {
     let mut enc = png::Encoder::new(file, s.w, s.h);
     enc.set_color(png::ColorType::Rgb);
     enc.set_depth(png::BitDepth::Eight);
+    // folha quase toda branca: a compressão rápida basta e não trava a tela
+    enc.set_compression(png::Compression::Fast);
     let mut w = enc.write_header().map_err(std::io::Error::other)?;
     w.write_image_data(&s.bytes())
         .map_err(std::io::Error::other)?;
@@ -350,6 +408,37 @@ mod tests {
         assert_eq!((prev.w, prev.h), (385, 297));
         assert_eq!(prev.at(0, 0), WHITE);
         assert_eq!(prev.at(30, 30), [0, 0, 255]);
+    }
+
+    #[test]
+    fn fast_render_matches_color_at() {
+        let mut pic = picture();
+        for (k, p) in pic.px.iter_mut().enumerate() {
+            if k % 7 == 0 {
+                *p = [(k % 251) as u8, 0, 90];
+            }
+        }
+        let mut bg = Rgb8::new(5, 3);
+        bg.px[4] = [9, 200, 9];
+        for stretch in Stretch::ALL {
+            for background in [None, Some(&bg)] {
+                let o = Options {
+                    stretch,
+                    mono: stretch == Stretch::Fill,
+                    copies: 1,
+                };
+                let c = Composer::new(&pic, background, o);
+                let prev = c.preview(97, 61);
+                let (tw, th) = total_size(stretch);
+                for y in 0..61 {
+                    for x in 0..97 {
+                        let px = (x as f32 + 0.5) * (tw as f32 / 97.0);
+                        let py = (y as f32 + 0.5) * (th as f32 / 61.0);
+                        assert_eq!(prev.at(x, y), c.color_at(px, py), "{stretch:?} {x},{y}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
