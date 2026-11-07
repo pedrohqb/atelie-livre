@@ -1,6 +1,7 @@
 //! Núcleo da pintura: quadro, tinta, formas, traço, preenchimento, histórico e arquivos.
 
 pub mod brush;
+pub mod bucket_fx;
 pub mod canvas;
 pub mod geom;
 pub mod objects;
