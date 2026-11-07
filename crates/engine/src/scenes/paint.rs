@@ -649,8 +649,8 @@ impl Paint {
 
     /// Abre o balão de ajuda do registro `index` do bloco `WHAT` (se existir).
     fn open_help(&mut self, block: u16, index: usize, assets: &Assets) {
-        // na lição quem fala é a Maggie
-        if self.wizard.is_some() {
+        // na lição quem fala é a Maggie (menos enquanto deixa trabalhar sozinho)
+        if self.wizard.as_ref().is_some_and(|w| !w.paused()) {
             return;
         }
         self.open_help_at(block, index, HELP_POS, assets);
@@ -861,29 +861,73 @@ impl Paint {
         let Some(w) = &self.wizard else {
             return Vec::new();
         };
-        let b = w.balloon(assets, "");
+        let Some(b) = w.balloon(assets, "") else {
+            return Vec::new();
+        };
         let y = b.y + b.height(assets) + 4;
         let mut out = Vec::new();
         let mut x = b.x + 12;
-        if w.has_back() && !w.stopping() {
+        let asking = w.stopping() || w.quitting();
+        if w.has_back() && !asking {
             out.push((WizardEvent::Back, (x, y), BTN_BACK));
             x += 41;
         }
-        if !w.stopping() {
+        if !asking {
             out.push((WizardEvent::Stop, (x, y), BTN_STOP));
             x += 41;
         }
-        if w.has_next() && !w.stopping() {
+        if w.has_next() && !asking {
             out.push((WizardEvent::Next, (x, y), BTN_NEXT));
         }
         out
+    }
+
+    /// Índice em `TOOLS` da ferramenta escolhida e a página da faixa dela.
+    fn strip_state(&self) -> (usize, u8) {
+        let tool = TOOLS
+            .iter()
+            .position(|t| t.action == Action::Select(self.tool))
+            .unwrap_or(0);
+        let page = match self.tool {
+            Tool::Brush => self.page,
+            Tool::Transformers => self.transformers.page(),
+            _ => 1,
+        };
+        (tool, page)
     }
 
     /// Clique durante a lição: balão, botões, painel da Maggie e McZee são
     /// do assistente (devolve `true`); o resto segue para a pintura.
     fn wizard_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) -> bool {
         let Some(w) = &self.wizard else { return false };
-        let b = w.balloon(assets, "");
+        // a dica aberta por cima do balão: ligação segue, clique fora fecha
+        if let Some(h) = self.help.take() {
+            if h.contains(assets, x, y) {
+                self.help = match h.link_at(assets, x, y) {
+                    Some(target) => h.follow(target).or(Some(h)),
+                    None => Some(h),
+                };
+                return true;
+            }
+        }
+        if w.paused() {
+            // trabalhando por conta própria: só o McZee chama a Maggie de volta
+            if inside(NICHE, x, y) {
+                self.wizard_event(WizardEvent::McZee, fx, assets);
+                return true;
+            }
+            return false;
+        }
+        let Some(b) = w.balloon(assets, "") else {
+            return false;
+        };
+        if let Some(target) = b.link_hit(assets, x, y) {
+            // dica (lâmpada): abre o registro ligado ao lado do balão
+            let block = w.step().record.0;
+            let pos = (b.x + b.w + 6, b.y);
+            self.open_help_at(block, target, pos, assets);
+            return true;
+        }
         let mut ev = b.hit(assets, x, y).map(WizardEvent::Option);
         if ev.is_none() {
             ev = self
@@ -913,15 +957,65 @@ impl Paint {
         let Some(w) = self.wizard.as_mut() else {
             return;
         };
-        match w.on_event(e) {
-            WizardOutcome::Stay => {}
-            WizardOutcome::Entered(_) => {
-                if let Some(id) = w.step().your_area {
-                    self.paint_guide_picture(id, assets);
-                }
+        let before = w.current();
+        let out = w.on_event(e);
+        let entered = match out {
+            WizardOutcome::Entered(_) => true,
+            WizardOutcome::Print | WizardOutcome::Save(_) | WizardOutcome::Discard => {
+                w.current() != before
             }
+            _ => false,
+        };
+        if entered {
+            self.help = None;
+            if let Some(id) = self.wizard.as_ref().and_then(|w| w.step().your_area) {
+                self.paint_guide_picture(id, assets);
+            }
+        }
+        match out {
+            WizardOutcome::Stay | WizardOutcome::Entered(_) => {}
             WizardOutcome::FreePaint => self.wizard = None,
             WizardOutcome::Leave(id) => fx.push(Effect::ChangeScene(id)),
+            WizardOutcome::Print => fx.push(self.print()),
+            WizardOutcome::Save(name) => fx.push(self.save_trick_named(&name)),
+            WizardOutcome::Discard => {
+                self.discard = true;
+                fx.push(Effect::Log("lição: figura jogada fora".into()));
+            }
+            WizardOutcome::OpenFolder => fx.push(Effect::Push(SceneId::Portfolio)),
+        }
+    }
+
+    /// Grava a figura da lição com o nome digitado: `<nome>.png` e
+    /// `<nome>.mag` (com esse título) na pasta de desenhos, sem mexer no
+    /// último desenho; se o nome já existe, acrescenta um número.
+    fn save_trick_named(&mut self, name: &str) -> Effect {
+        use crate::paint::store;
+        let Some(dir) = &self.drawings else {
+            return Effect::Log("sem pasta de desenhos: figura não guardada".into());
+        };
+        let stem = store::name_stem(name).unwrap_or_else(|| "figura".into());
+        let mut chosen = stem.clone();
+        let mut n = 2;
+        while dir.join(format!("{chosen}.png")).exists() {
+            chosen = format!("{stem}-{n}");
+            n += 1;
+        }
+        let flat = self.composed();
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            return Effect::Log(format!("não consegui criar {}: {e}", dir.display()));
+        }
+        let png = dir.join(format!("{chosen}.png"));
+        let mag = dir.join(format!("{chosen}.mag"));
+        let saved = store::save_png(&flat, &self.pal, &png)
+            .and_then(|()| store::save_mag_titled(&flat, &self.pal, &mag, name.trim()));
+        match saved {
+            Ok(()) => {
+                // já guardada com nome: ao sair não grava a cópia `truque-…`
+                self.changed = false;
+                Effect::Log(format!("figura guardada em {}", png.display()))
+            }
+            Err(e) => Effect::Log(format!("não consegui gravar {}: {e}", png.display())),
         }
     }
 
@@ -956,34 +1050,71 @@ impl Paint {
         if self.wizard.is_none() {
             return;
         }
+        let (tool, page) = self.strip_state();
         if let Some(i) = TOOLS
             .iter()
             .position(|t| inside((t.x - 5, 5, t.w + 11, 50), x, y))
         {
             self.wizard_event(WizardEvent::Tool(i), fx, assets);
+        } else if self.tool == Tool::Supertools && inside(crate::scenes::supertools::SWITCH, x, y) {
+            self.wizard_event(WizardEvent::Switch, fx, assets);
         } else if (63..95).contains(&y) && (25..500).contains(&x) && (x - 25) % 37 < 32 {
             self.wizard_event(
-                WizardEvent::OptionButton(((x - 25) / 37) as usize),
+                WizardEvent::OptionButton {
+                    tool,
+                    page,
+                    k: ((x - 25) / 37) as usize,
+                },
                 fx,
                 assets,
             );
         }
+        // "clique na seta até ver…": a página certa apareceu
+        let (tool, page) = self.strip_state();
+        self.wizard_event(WizardEvent::PageShown(tool, page), fx, assets);
     }
 
     fn draw_wizard(&self, f: &mut Frame, a: &Assets) {
         let Some(w) = &self.wizard else { return };
-        w.draw_panel(f, a);
         let blink = (self.wizard_t * 3.0) as i32 % 2 == 0;
+        w.draw_panel(f, a, blink);
         let color = if blink { [255, 238, 76] } else { BLACK };
+        let tool_frame = |f: &mut Frame, i: usize| {
+            if let Some(t) = TOOLS.get(i) {
+                f.frame_rect(t.x - 6, 4, t.w + 13, 52, 3, color);
+            }
+        };
+        let (cur_tool, cur_page) = self.strip_state();
         match w.target() {
-            Some(Target::Tool(i)) => {
-                if let Some(t) = TOOLS.get(i) {
-                    f.frame_rect(t.x - 6, 4, t.w + 13, 52, 3, color);
+            Some(Target::Tool(i)) => tool_frame(f, i),
+            // o botão da faixa só com a faixa certa aberta; senão, a
+            // ferramenta (ou a seta de página) é o que pisca
+            Some(Target::Option { tool, page, k }) => {
+                if tool != cur_tool {
+                    tool_frame(f, tool);
+                } else if page.is_some_and(|p| p != cur_page) {
+                    let r = ARROW_DOWN;
+                    f.frame_rect(r.0 - 3, r.1 - 3, r.2 + 6, r.3 + 6, 3, color);
+                } else {
+                    let r = option_rect(25, k);
+                    f.frame_rect(r.0 - 3, r.1 - 3, r.2 + 6, r.3 + 6, 3, color);
                 }
             }
-            Some(Target::Option(k)) => {
-                let r = option_rect(25, k);
-                f.frame_rect(r.0 - 3, r.1 - 3, r.2 + 6, r.3 + 6, 3, color);
+            Some(Target::Page(tool, _)) => {
+                if tool != cur_tool {
+                    tool_frame(f, tool);
+                } else {
+                    let r = ARROW_DOWN;
+                    f.frame_rect(r.0 - 3, r.1 - 3, r.2 + 6, r.3 + 6, 3, color);
+                }
+            }
+            Some(Target::Switch) => {
+                if cur_tool != super::tricks_3d::TOOL_SUPERTOOLS {
+                    tool_frame(f, super::tricks_3d::TOOL_SUPERTOOLS);
+                } else {
+                    let r = crate::scenes::supertools::SWITCH;
+                    f.frame_rect(r.0 - 3, r.1 - 3, r.2 + 6, r.3 + 6, 3, color);
+                }
             }
             Some(Target::Panel) | Some(Target::PanelArea(_)) => {
                 let (x, y, pw, ph) = MAGGIE_PANEL;
@@ -992,9 +1123,15 @@ impl Paint {
             None => {}
         }
         let fallback = self.trick.map_or("", |t| t.label());
-        w.balloon(a, fallback).draw(f, a);
+        if let Some(b) = w.balloon(a, fallback) {
+            b.draw(f, a);
+        }
         for (_, (x, y), (img, _mono)) in self.wizard_buttons(a) {
             f.blit(&a.image(&pic(img)), x, y);
+        }
+        // a dica aberta pela lâmpada fica por cima do balão da lição
+        if let Some(h) = &self.help {
+            h.draw(f, a);
         }
     }
 
@@ -2557,7 +2694,13 @@ impl Scene for Paint {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
         self.wizard_t += dt;
+        if let Some(w) = self.wizard.as_mut() {
+            w.tick(dt);
+        }
         self.sfx.update(dt);
+        let typing = self.wizard.as_ref().is_some_and(|w| w.typing())
+            && self.exit_dialog.is_none()
+            && self.rename.is_none();
         for i in input {
             if self.dialog.is_some() && !matches!(i, Input::Click { .. } | Input::MouseMove { .. })
             {
@@ -2623,6 +2766,25 @@ impl Scene for Paint {
                     self.release_words_object();
                     self.transformers.release();
                     self.supertools.release();
+                }
+                Input::Key {
+                    key,
+                    ctrl: false,
+                    alt: false,
+                } if typing => {
+                    let ev = match key {
+                        Key::Enter => Some(WizardEvent::Enter),
+                        Key::Backspace => Some(WizardEvent::Backspace),
+                        _ => None,
+                    };
+                    if let Some(ev) = ev {
+                        self.wizard_event(ev, &mut fx, assets);
+                    }
+                }
+                Input::Text(ref t) if typing => {
+                    for c in t.chars() {
+                        self.wizard_event(WizardEvent::Typed(c), &mut fx, assets);
+                    }
                 }
                 Input::Key {
                     key,
@@ -2750,7 +2912,9 @@ impl Scene for Paint {
         if self.map_open {
             self.draw_map(frame, assets);
         }
-        if let Some(h) = &self.help {
+        if let Some(h) = &self.help
+            && self.wizard.is_none()
+        {
             h.draw(frame, assets);
         }
         if let Some((b, _)) = &self.talk {
@@ -2801,7 +2965,7 @@ impl Scene for Paint {
         }
         if self.trick.is_some() {
             // a lição grava só o que foi desenhado, sem mexer no último desenho
-            if !self.changed {
+            if !self.changed || self.discard {
                 return Vec::new();
             }
             let flat = self.composed();

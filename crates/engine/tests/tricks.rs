@@ -34,12 +34,17 @@ fn click(p: &mut Paint, a: &Assets, x: i32, y: i32) -> Vec<Effect> {
 }
 
 fn option(p: &mut Paint, a: &Assets, k: usize) -> Vec<Effect> {
-    let r = p.wizard().unwrap().balloon(a, "").option_rect(a, k);
+    let r = p
+        .wizard()
+        .unwrap()
+        .balloon(a, "")
+        .unwrap()
+        .option_rect(a, k);
     click(p, a, r.0 + 6, r.1 + 4)
 }
 
 fn next(p: &mut Paint, a: &Assets) -> Vec<Effect> {
-    let b = p.wizard().unwrap().balloon(a, "");
+    let b = p.wizard().unwrap().balloon(a, "").unwrap();
     let y = b.y + b.height(a) + 4;
     // Segue é o último botão: Volta (se houver), Pára, Segue a cada 41 px
     let n = if p.wizard().unwrap().has_back() { 2 } else { 1 };

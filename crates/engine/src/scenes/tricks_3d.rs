@@ -3,7 +3,7 @@
 //! não mostra a lição); as figuras de cada passo são as cenas de 312×272
 //! (`3e0b`…`4088`) e os quadros de 177×148 (`40bb`…`4111`) da mesa.
 
-use super::wizard::{Advance, Goto, Step, Target, Wizard};
+use super::wizard::{Advance, Goto, PanelAnim, Step, Target, Wizard};
 use crate::scene::SceneId;
 
 const BLOCK: u16 = 0x4000;
@@ -17,7 +17,8 @@ pub const TOOL_SUPERTOOLS: usize = 8;
 pub const OPT_VP: usize = 5;
 pub const OPT_VP_LINE: usize = 6;
 pub const OPT_VP_PUSH: usize = 7;
-/// Botão "Linha" da página 5 do pincel.
+/// Página e botão "Linha" do pincel.
+pub const LINE_BRUSH_PAGE: u8 = 5;
 pub const OPT_LINE_BRUSH: usize = 0;
 /// "Grudar ou desgrudar" na página 2 dos Transformadores.
 pub const OPT_LINK: usize = 3;
@@ -30,6 +31,11 @@ const SCENE_EYE_HIGH: u16 = 0x4053;
 const SCENE_EYE_TOP: u16 = 0x4059;
 const SCENE_BOXES: u16 = 0x4061;
 const SCENE_BOWLS: u16 = 0x4083;
+// recortes das cenas (com máscara em `id + 8`), para as animações do painel
+/// A tigela de cereais da frente (141×54), em (27, 218) na cena `4083`.
+const SPRITE_BOWL: u16 = 0x4069;
+/// A embalagem de leite com a vaca e os detalhes (76×152), em (20, 73).
+const SPRITE_MILK_DETAIL: u16 = 0x40a3;
 // quadros da mesa (177×148)
 const TABLE_HORIZON: u16 = 0x40bb;
 const TABLE_EDGE: u16 = 0x40c8;
@@ -46,7 +52,16 @@ fn step(k: usize, maggie: Option<u16>, advance: Advance) -> Step {
         maggie,
         your_area: None,
         advance,
+        anim: None,
     }
+}
+
+fn supertool(k: usize) -> Advance {
+    Advance::Click(Target::Option {
+        tool: TOOL_SUPERTOOLS,
+        page: None,
+        k,
+    })
 }
 
 /// Os passos; os índices dos balões são os do bloco `4000`.
@@ -66,10 +81,18 @@ pub fn steps() -> Vec<Step> {
         step(50, None, Advance::Next),
         // 2: Desenhar pode ser uma coisa mágica
         step(3, Some(SCENE_DEPTH), Advance::Next),
-        // 3: com/sem profundidade (as opções trocam a figura; Segue continua)
-        step(4, Some(SCENE_FLAT), Advance::Next),
-        // 4: como você dá a idéia de profundidade — ponto de vista
-        step(6, Some(SCENE_EYE_MIDDLE), Advance::Next),
+        // 3: com/sem profundidade (os botões trocam a figura; Segue continua)
+        step(
+            4,
+            Some(SCENE_FLAT),
+            Advance::Pictures(vec![SCENE_DEPTH, SCENE_FLAT]),
+        ),
+        // 4: como você dá a idéia de profundidade — ponto de vista (três botões)
+        step(
+            6,
+            Some(SCENE_EYE_MIDDLE),
+            Advance::Pictures(vec![SCENE_EYE_MIDDLE, SCENE_EYE_HIGH, SCENE_EYE_TOP]),
+        ),
         // 5: um pouco mais para cima
         step(9, Some(SCENE_EYE_HIGH), Advance::Next),
         // 6: bem lá em cima
@@ -80,38 +103,57 @@ pub fn steps() -> Vec<Step> {
             Some(SCENE_BOXES),
             Advance::Click(Target::PanelArea((170, 40, 140, 160))),
         ),
-        // 8: sobreposição — clique na tigela mais perto (embaixo, à esquerda)
-        step(
-            29,
-            Some(SCENE_BOWLS),
-            Advance::Click(Target::PanelArea((0, 150, 170, 122))),
-        ),
+        // 8: sobreposição — clique na tigela mais perto (embaixo, à esquerda);
+        // ela desliza para a frente do leite
+        Step {
+            anim: Some(PanelAnim {
+                sprite: SPRITE_BOWL,
+                from: (27, 218),
+                to: (0, 150),
+                wipe: false,
+                secs: 1.0,
+            }),
+            ..step(
+                29,
+                Some(SCENE_BOWLS),
+                Advance::Click(Target::PanelArea((0, 150, 170, 122))),
+            )
+        },
         // 9: detalhe — clique na tigela com menos detalhes
         step(
             36,
             Some(SCENE_BOWLS),
             Advance::Click(Target::PanelArea((120, 80, 120, 80))),
         ),
-        // 10: clique na embalagem de leite
-        step(
-            42,
-            Some(SCENE_BOWLS),
-            Advance::Click(Target::PanelArea((0, 40, 110, 130))),
-        ),
-        // 11: resumo dos truques
-        step(44, Some(SCENE_DEPTH), Advance::Next),
+        // 10: clique na embalagem de leite; os detalhes aparecem aos poucos
+        Step {
+            anim: Some(PanelAnim {
+                sprite: SPRITE_MILK_DETAIL,
+                from: (20, 73),
+                to: (20, 73),
+                wipe: true,
+                secs: 1.5,
+            }),
+            ..step(
+                42,
+                Some(SCENE_BOWLS),
+                Advance::Click(Target::PanelArea((0, 40, 110, 130))),
+            )
+        },
+        // 11: resumo dos truques (a embalagem detalhada fica até o Segue)
+        step(44, Some(SCENE_BOWLS), Advance::Next),
         // 12: ferramentas especiais?
         step(
             47,
-            None,
-            Advance::Choice(vec![(0, Goto::Step(13)), (1, Goto::Step(40))]),
+            Some(SCENE_DEPTH),
+            Advance::Choice(vec![(0, Goto::Step(13)), (1, Goto::Step(49))]),
         ),
         // 13: primeiro, a linha do horizonte
         step(48, Some(TABLE_HORIZON), Advance::Next),
         // 14: clique nas Super-ferramentas
         step(49, None, Advance::Click(Target::Tool(TOOL_SUPERTOOLS))),
         // 15: clique na ferramenta Ponto de fuga
-        step(52, None, Advance::Click(Target::Option(OPT_VP))),
+        step(52, None, supertool(OPT_VP)),
         // 16: clique na sua área para posicionar
         step(53, Some(TABLE_HORIZON), Advance::PaintThenNext),
         // 17: o círculo pequeno é o ponto de fuga
@@ -122,63 +164,132 @@ pub fn steps() -> Vec<Step> {
             None,
             Advance::Choice(vec![(0, Goto::Step(19)), (1, Goto::Step(21))]),
         ),
-        // 19: interruptor mágico
-        step(61, None, Advance::Next),
+        // 19: interruptor mágico — desligue
+        step(61, None, Advance::Click(Target::Switch)),
         // 20: ligue de novo
-        step(62, None, Advance::Next),
+        step(62, None, Advance::Click(Target::Switch)),
         // 21: clique no Pincel
         step(63, None, Advance::Click(Target::Tool(TOOL_BRUSH))),
         // 22: a borda da mesa
         step(64, Some(TABLE_EDGE), Advance::Next),
-        // 23: clique no pincel Linha
-        step(66, None, Advance::Click(Target::Option(OPT_LINE_BRUSH))),
-        // 24: desenhe uma linha como esta
+        // 23: clique até ver o pincel Linha (página 5)
+        step(
+            65,
+            None,
+            Advance::Click(Target::Page(TOOL_BRUSH, LINE_BRUSH_PAGE)),
+        ),
+        // 24: clique no pincel Linha
+        step(
+            66,
+            None,
+            Advance::Click(Target::Option {
+                tool: TOOL_BRUSH,
+                page: Some(LINE_BRUSH_PAGE),
+                k: OPT_LINE_BRUSH,
+            }),
+        ),
+        // 25: desenhe uma linha como esta
         step(67, Some(TABLE_EDGE), Advance::PaintThenNext),
-        // 25: já temos uma mesa
+        // 26: já temos uma mesa
         step(70, Some(TABLE_EDGE), Advance::Next),
-        // 26: Seleciona-adesivos
+        // 27: Seleciona-adesivos
         step(71, None, Advance::Click(Target::Tool(TOOL_STICKERS))),
-        // 27: ache o rolo do café da manhã
+        // 28: ache o rolo do café da manhã
         step(73, Some(TABLE_STICKERS), Advance::Next),
-        // 28: coloque os adesivos iguais aos meus
+        // 29: coloque os adesivos iguais aos meus
         step(77, Some(TABLE_STICKERS), Advance::Maggie),
-        // 29: mudar o ponto de fuga?
+        // 30: mudar o ponto de fuga?
         step(
             100,
             None,
-            Advance::Choice(vec![(0, Goto::Step(30)), (1, Goto::Step(32))]),
+            Advance::Choice(vec![(0, Goto::Step(31)), (1, Goto::Step(34))]),
         ),
-        // 30: clique na ferramenta Ponto de fuga
-        step(102, None, Advance::Click(Target::Option(OPT_VP))),
-        // 31: arraste acima da mesa
+        // 31: clique aqui (Super-ferramentas)
+        step(101, None, Advance::Click(Target::Tool(TOOL_SUPERTOOLS))),
+        // 32: clique na ferramenta Ponto de fuga
+        step(102, None, supertool(OPT_VP)),
+        // 33: arraste acima da mesa
         step(103, Some(TABLE_STICKERS), Advance::Maggie),
-        // 32: arrume os adesivos
+        // 34: arrume os adesivos
         step(126, Some(TABLE_STICKERS), Advance::Maggie),
-        // 33: linhas guia do ponto de fuga
+        // 35: linhas guia do ponto de fuga
         step(137, Some(TABLE_GUIDE_1), Advance::Next),
-        // 34: volte às Super-ferramentas
+        // 36: volte às Super-ferramentas
         step(138, None, Advance::Click(Target::Tool(TOOL_SUPERTOOLS))),
-        // 35: ferramenta Linha do ponto de fuga
-        step(140, None, Advance::Click(Target::Option(OPT_VP_LINE))),
-        // 36: primeira linha guia
+        // 37: ferramenta Linha do ponto de fuga
+        step(140, None, supertool(OPT_VP_LINE)),
+        // 38: primeira linha guia
         step(142, Some(TABLE_GUIDE_1), Advance::Maggie),
-        // 37: as outras linhas guia
+        // 39: as outras linhas guia
         step(144, Some(TABLE_GUIDES), Advance::Maggie),
-        // 38: Aproximar do PF
-        step(146, None, Advance::Click(Target::Option(OPT_VP_PUSH))),
-        // 39: a parte de trás da embalagem de leite
+        // 40: Aproximar do PF
+        step(146, None, supertool(OPT_VP_PUSH)),
+        // 41: a parte de trás da embalagem de leite
         step(148, Some(TABLE_BACK), Advance::Maggie),
-        // 40: pronto para os lados — fim da lição (volta ao andar)
+        // 42: os lados da embalagem (sem o Cavalete de adesivos: desenhe com o pincel)
+        step(168, Some(TABLE_SIDES), Advance::Maggie),
+        // 43: Uau! terminar sozinho / com os passos do leite como guia / próximo passo
         step(
-            168,
-            Some(TABLE_SIDES),
+            188,
+            Some(TABLE_DONE),
             Advance::Choice(vec![
-                (0, Goto::Step(41)),
+                (0, Goto::FreePaint),
+                (1, Goto::Step(27)),
+                (2, Goto::Step(44)),
+            ]),
+        ),
+        // 44: pronto para ver sem as linhas guia?
+        step(
+            187,
+            Some(TABLE_DONE),
+            Advance::Choice(vec![(0, Goto::Step(45)), (1, Goto::Step(47))]),
+        ),
+        // 45: clique nas Super-ferramentas
+        step(189, None, Advance::Click(Target::Tool(TOOL_SUPERTOOLS))),
+        // 46: Interruptor mágico na posição desligado
+        step(190, None, Advance::Click(Target::Switch)),
+        // 47: cores e padrões da mesa e da parede
+        step(191, Some(SCENE_DEPTH), Advance::Maggie),
+        // 48: salvar?
+        step(
+            194,
+            None,
+            Advance::Choice(vec![(0, Goto::Step(50)), (1, Goto::DiscardThen(52))]),
+        ),
+        // 49: "Não, obrigado" às ferramentas: Tudo pronto!
+        step(
+            230,
+            None,
+            Advance::Choice(vec![
+                (0, Goto::Step(1)),
                 (1, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
-        // 41: olhe os lados prontos
-        step(170, Some(TABLE_DONE), Advance::Maggie),
+        // 50: digite um nome
+        step(196, None, Advance::TypeName),
+        // 51: imprimir?
+        step(
+            198,
+            None,
+            Advance::Choice(vec![(0, Goto::PrintThen(53)), (1, Goto::Step(53))]),
+        ),
+        // 52: imprimir antes de ir para o lixo?
+        step(
+            199,
+            None,
+            Advance::Choice(vec![(0, Goto::PrintThen(53)), (1, Goto::Step(53))]),
+        ),
+        // 53: Oba! o que fazer em seguida: nova figura / tornar 3-D um desenho
+        // existente (abre a pasta) / voltar ao andar
+        step(
+            202,
+            None,
+            Advance::Choice(vec![
+                (0, Goto::Step(1)),
+                (1, Goto::Folder),
+                (2, Goto::Scene(SceneId::TricksFloor)),
+            ]),
+        ),
     ]
 }
 
@@ -197,7 +308,7 @@ mod tests {
             assert_eq!(s.record.0, 0x4000);
             assert!(s.record.1 < 250, "{}", s.record.1);
         }
-        assert_eq!(steps().len(), 42);
+        assert_eq!(steps().len(), 54);
     }
 
     #[test]
@@ -222,5 +333,90 @@ mod tests {
             assert_eq!(w.on_event(E::Next), O::Entered(k));
         }
         assert_eq!(w.on_event(E::Panel(200, 100)), O::Entered(8));
+    }
+
+    /// Avança até o passo `target` pelo caminho "sim" de cada passo.
+    fn drive(w: &mut Wizard, target: usize) {
+        while w.current() != target {
+            let s = w.current();
+            let ev = match w.step().advance.clone() {
+                Advance::Choice(_) => E::Option(0),
+                Advance::Next | Advance::Pictures(_) | Advance::PaintThenNext => E::Next,
+                Advance::Click(Target::Tool(t)) => E::Tool(t),
+                Advance::Click(Target::Option { tool, page, k }) => E::OptionButton {
+                    tool,
+                    page: page.unwrap_or(1),
+                    k,
+                },
+                Advance::Click(Target::Page(t, p)) => E::PageShown(t, p),
+                Advance::Click(Target::Switch) => E::Switch,
+                Advance::Click(Target::PanelArea(r)) => E::Panel(r.0 + r.2 / 2, r.1 + r.3 / 2),
+                Advance::Click(Target::Panel) | Advance::FindShapes(_) => E::Panel(200, 200),
+                Advance::Maggie => E::McZee,
+                Advance::TypeName => E::Enter,
+            };
+            w.on_event(ev);
+            assert_ne!(w.current(), s, "preso no passo {s}");
+        }
+    }
+
+    #[test]
+    fn line_brush_needs_page_5_and_vanishing_point_needs_the_supertools() {
+        let mut w = wizard();
+        drive(&mut w, 24);
+        assert_eq!(w.step().record.1, 66);
+        let line = |page| E::OptionButton {
+            tool: TOOL_BRUSH,
+            page,
+            k: OPT_LINE_BRUSH,
+        };
+        assert_eq!(w.on_event(line(1)), O::Stay);
+        assert_eq!(w.on_event(line(LINE_BRUSH_PAGE)), O::Entered(25));
+        // passo 32: a faixa dos adesivos aberta não vale
+        drive(&mut w, 32);
+        assert_eq!(w.step().record.1, 102);
+        assert_eq!(
+            w.on_event(E::OptionButton {
+                tool: TOOL_STICKERS,
+                page: 1,
+                k: OPT_VP
+            }),
+            O::Stay
+        );
+        assert_eq!(
+            w.on_event(E::OptionButton {
+                tool: TOOL_SUPERTOOLS,
+                page: 1,
+                k: OPT_VP
+            }),
+            O::Entered(33)
+        );
+    }
+
+    #[test]
+    fn the_end_is_guided_and_every_step_has_a_way_out() {
+        for s in steps() {
+            if let Advance::Choice(opts) = &s.advance {
+                assert!(!opts.is_empty(), "{}", s.record.1);
+            }
+        }
+        let mut w = wizard();
+        drive(&mut w, 42);
+        // 168: Maggie → 188 → próximo passo → 187 → sim → Super-ferramentas → interruptor
+        assert_eq!(w.on_event(E::McZee), O::Entered(43));
+        assert_eq!(w.on_event(E::Option(2)), O::Entered(44));
+        assert_eq!(w.on_event(E::Option(0)), O::Entered(45));
+        assert_eq!(w.on_event(E::Tool(TOOL_SUPERTOOLS)), O::Entered(46));
+        assert_eq!(w.on_event(E::Switch), O::Entered(47));
+        assert_eq!(w.on_event(E::McZee), O::Entered(48));
+        // salvar: nome, imprimir, o que fazer em seguida
+        assert_eq!(w.on_event(E::Option(0)), O::Entered(50));
+        w.on_event(E::Typed('m'));
+        assert_eq!(w.on_event(E::Enter), O::Save("m".into()));
+        assert_eq!(w.current(), 51);
+        assert_eq!(w.on_event(E::Option(0)), O::Print);
+        assert_eq!(w.current(), 53);
+        assert_eq!(w.on_event(E::Option(1)), O::OpenFolder);
+        assert_eq!(w.on_event(E::Option(2)), O::Leave(SceneId::TricksFloor));
     }
 }
