@@ -6,7 +6,7 @@ use formats::fnt::Font;
 use formats::render::{Palettes, bitmap_to_rgba};
 use formats::wave::Pcm;
 use formats::{chnk, fnt, glob, ne, pkbm, wave, winres};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::ops::Range;
@@ -43,7 +43,12 @@ pub enum ImageRef {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SoundRef {
     Snd(Program, u16),
-    Library { file: String, index: usize },
+    Library {
+        file: String,
+        index: usize,
+    },
+    /// Arquivo `.wav` do usuário (Cachorrinho, Gravador).
+    File(PathBuf),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -119,7 +124,13 @@ pub struct Assets {
     cursors: RefCell<HashMap<CursorRef, Option<Cursor>>>,
     warned: RefCell<HashSet<String>>,
     fonts: Vec<Rc<Font>>,
+    /// Volume atual dos sons (0–100), mostrado no controle de volume do
+    /// Seleciona-sons; a plataforma o ajusta pela configuração.
+    volume: Cell<u8>,
 }
+
+/// Volume inicial (o mesmo padrão da configuração do app).
+pub const DEFAULT_VOLUME: u8 = 80;
 
 /// Quadriculado magenta e preto de 4 px, usado no lugar de imagens ausentes.
 pub fn placeholder(w: u32, h: u32) -> Image {
@@ -289,7 +300,24 @@ impl Assets {
             cursors: RefCell::new(HashMap::new()),
             warned: RefCell::new(HashSet::new()),
             fonts,
+            volume: Cell::new(DEFAULT_VOLUME),
         })
+    }
+
+    /// Volume dos sons (0–100).
+    pub fn volume(&self) -> u8 {
+        self.volume.get()
+    }
+
+    /// Guarda o volume (limitado a 100); quem toca os sons é a plataforma
+    /// (`Effect::SetVolume`).
+    pub fn set_volume(&self, v: u8) {
+        self.volume.set(v.min(100));
+    }
+
+    /// Esquece o som guardado em cache (um arquivo regravado com o mesmo nome).
+    pub fn forget_sound(&self, r: &SoundRef) {
+        self.sounds.borrow_mut().remove(r);
     }
 
     /// Pasta `MSKIDS` de onde os dados foram abertos.
@@ -507,7 +535,10 @@ impl Assets {
                 None
             }
         };
-        self.sounds.borrow_mut().insert(r.clone(), s.clone());
+        // um arquivo do usuário pode aparecer depois (gravação em andamento)
+        if s.is_some() || !matches!(r, SoundRef::File(_)) {
+            self.sounds.borrow_mut().insert(r.clone(), s.clone());
+        }
         s
     }
 
@@ -523,6 +554,10 @@ impl Assets {
                 let lib = self.libraries.get(file).ok_or("biblioteca ausente")?;
                 let item = lib.sounds.get(*index).ok_or("índice inexistente")?;
                 &lib.data[item.range.clone()]
+            }
+            SoundRef::File(path) => {
+                let data = std::fs::read(path).map_err(|e| e.to_string())?;
+                return wave::decode(&data).map_err(|e| e.to_string());
             }
         };
         wave::decode(data).map_err(|e| e.to_string())

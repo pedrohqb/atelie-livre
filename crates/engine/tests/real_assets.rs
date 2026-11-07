@@ -396,14 +396,17 @@ fn sounds_tool_lists_mag100_categories() {
         y,
     };
     p.update(&[c(170, 30)], 0.0, &a);
-    assert_eq!(p.sounds().categories(), 4); // Agudo, Dinossauro, AnimalDeFazenda, Maluco
+    // MAG100.SND e MAX100.SND: Grave, Agudo, Dinossauro… (3 por página)
+    assert_eq!(p.sounds().categories(), 8);
     p.update(&[c(20, 70)], 0.0, &a); // primeira categoria abre a lista
     assert!(p.sounds().list_open());
-    p.update(&[c(100, 112 + 2 + 15 + 3)], 0.0, &a); // primeiro som
-    assert!(p.sounds().chosen().is_some());
-    let fx = p.update(&[c(300, 300)], 0.0, &a);
+    let fx = p.update(&[c(60, 97 + 23 + 12)], 0.0, &a); // primeiro som (Sol2)
     assert!(fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
-    assert_eq!(p.sounds().spots.len(), 1);
+    assert!(p.sounds().hand().is_some());
+    // no fundo do quadro o som não fica solto: só o balão de ajuda
+    let fx = p.update(&[c(300, 300)], 0.0, &a);
+    assert!(!fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
+    assert!(p.objects().is_empty());
 }
 
 #[test]

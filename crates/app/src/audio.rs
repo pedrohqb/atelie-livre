@@ -1,5 +1,6 @@
 //! Mistura de sons: um fluxo de áudio da SDL3 por som em reprodução, mais um
-//! som em laço (traços do pincel, aspirador) alimentado aos poucos.
+//! som em laço (traços do pincel, aspirador) alimentado aos poucos. Também
+//! grava do microfone (Gravador do Seleciona-sons) num `.wav`.
 
 use engine::Pcm;
 use sdl3::AudioSubsystem;
@@ -8,6 +9,45 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 const MAX_STREAMS: usize = 8;
+/// Taxa da gravação do microfone (a dos sons do Fine Artist).
+const RECORD_RATE: u32 = 22_050;
+/// Limite de amostras de uma gravação (30 s; o Gravador para em 10 s).
+const RECORD_MAX: usize = RECORD_RATE as usize * 30;
+
+/// Gravação do microfone em andamento.
+pub struct Recording {
+    _device: AudioDevice,
+    stream: AudioStreamOwner,
+    samples: Vec<i16>,
+}
+
+impl Recording {
+    /// Recolhe o que o microfone mandou; chamar a cada quadro.
+    pub fn tick(&mut self) {
+        let mut buf = [0i16; 4096];
+        while self.samples.len() < RECORD_MAX {
+            match self.stream.read_i16_samples(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let room = RECORD_MAX - self.samples.len();
+                    self.samples.extend_from_slice(&buf[..n.min(room)]);
+                }
+            }
+        }
+    }
+
+    /// Para e grava o `.wav` (PCM de 16 bits, mono).
+    pub fn finish(mut self, path: &std::path::Path) -> std::io::Result<()> {
+        self.tick();
+        let pcm = Pcm {
+            sample_rate: RECORD_RATE,
+            channels: 1,
+            samples: std::mem::take(&mut self.samples),
+            loop_points: None,
+        };
+        std::fs::write(path, engine::encode_pcm16(&pcm))
+    }
+}
 
 /// Fração de segundo que o laço mantém na fila; pouco, para soltar o botão
 /// e ouvir logo o fim do som.
@@ -148,6 +188,38 @@ impl Mixer {
             self.streams.pop_front();
         }
         self.streams.push_back(stream);
+    }
+
+    /// Volume (0–100) dos sons seguintes e dos que estão tocando.
+    pub fn set_volume(&mut self, volume: u8) {
+        self.gain = volume.min(100) as f32 / 100.0;
+        for s in self
+            .streams
+            .iter()
+            .chain(self.looping.iter().map(|(_, s)| s))
+        {
+            let _ = s.set_gain(self.gain);
+        }
+    }
+
+    /// Começa a gravar do microfone padrão (mono, 22 050 Hz, 16 bits).
+    pub fn start_recording(&self) -> Result<Recording, String> {
+        let spec = AudioSpec::new(Some(RECORD_RATE as i32), Some(1), Some(AudioFormat::S16LE));
+        let device = self
+            .audio
+            .open_recording_device(&spec)
+            .map_err(|e| e.to_string())?;
+        let stream = self
+            .audio
+            .new_stream(None, Some(&spec))
+            .map_err(|e| e.to_string())?;
+        device.bind_stream(&stream).map_err(|e| e.to_string())?;
+        stream.resume().map_err(|e| e.to_string())?;
+        Ok(Recording {
+            _device: device,
+            stream,
+            samples: Vec::new(),
+        })
     }
 
     /// Toca o som uma vez.

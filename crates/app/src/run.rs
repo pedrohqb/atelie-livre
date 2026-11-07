@@ -208,6 +208,9 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         Ok(v) => v,
         Err(e) => return fail(&format!("vídeo: {e}")),
     };
+    assets.set_volume(cfg.volume);
+    // gravação do microfone em andamento (Gravador do Seleciona-sons)
+    let mut recording: Option<crate::audio::Recording> = None;
     let mut mixer = match Mixer::new(&sdl, cfg.volume) {
         Ok(m) => Some(m),
         Err(e) => {
@@ -364,6 +367,9 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         {
             eprintln!("aviso: som em laço: {e}");
         }
+        if let Some(r) = recording.as_mut() {
+            r.tick();
+        }
         for effect in effects {
             if trace {
                 trace_effect(&effect);
@@ -393,6 +399,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     cursor_factor = 0;
                 }
                 Effect::ChangeScene(id) => {
+                    recording = None;
                     // o laço é da cena que sai (traço interrompido)
                     if let Some(m) = mixer.as_mut() {
                         m.stop_loop();
@@ -414,6 +421,27 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     if stack.len() > 1 {
                         let mut top = stack.pop().expect("cena");
                         print_logs(top.leave());
+                    }
+                }
+                Effect::SetVolume(v) => {
+                    assets.set_volume(v);
+                    if let Some(m) = mixer.as_mut() {
+                        m.set_volume(v);
+                    }
+                }
+                Effect::RecordStart => {
+                    recording = None;
+                    match mixer.as_ref().map(|m| m.start_recording()) {
+                        Some(Ok(r)) => recording = Some(r),
+                        Some(Err(e)) => eprintln!("aviso: microfone: {e}"),
+                        None => eprintln!("aviso: sem áudio, nada a gravar"),
+                    }
+                }
+                Effect::RecordStop(path) => {
+                    if let Some(r) = recording.take()
+                        && let Err(e) = r.finish(&path)
+                    {
+                        eprintln!("aviso: gravação {}: {e}", path.display());
                     }
                 }
                 Effect::SetUser(u) => user.user = Some(u),
@@ -472,6 +500,9 @@ fn trace_effect(effect: &Effect) {
         Effect::ChangeScene(id) => println!("TRACE cena {id:?}"),
         Effect::Push(id) => println!("TRACE push {id:?}"),
         Effect::Back => println!("TRACE back"),
+        Effect::SetVolume(v) => println!("TRACE volume {v}"),
+        Effect::RecordStart => println!("TRACE gravar"),
+        Effect::RecordStop(p) => println!("TRACE gravar-fim {}", p.display()),
         Effect::Quit => println!("TRACE quit"),
         _ => {}
     }

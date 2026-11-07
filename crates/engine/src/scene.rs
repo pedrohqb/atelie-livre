@@ -126,6 +126,13 @@ pub enum Effect {
     Push(SceneId),
     /// Volta à cena anterior.
     Back,
+    /// Volume dos sons (0–100), do controle de volume do Seleciona-sons.
+    SetVolume(u8),
+    /// Começa a gravar do microfone (Gravador do Seleciona-sons).
+    RecordStart,
+    /// Para a gravação e grava o que foi captado neste `.wav` (nada, se não
+    /// havia gravação ou microfone).
+    RecordStop(std::path::PathBuf),
     /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
     SetUser(String),
     Log(String),

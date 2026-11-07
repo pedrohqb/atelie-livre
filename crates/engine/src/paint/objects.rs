@@ -760,6 +760,12 @@ pub fn to_json(recs: &[Record], fingerprint: u64) -> String {
             Some(SoundRef::Snd(_, id)) => {
                 line.push_str(&format!(", \"som\": \"\", \"som_indice\": {id}"));
             }
+            Some(SoundRef::File(path)) => {
+                line.push_str(&format!(
+                    ", \"som_arquivo\": {}",
+                    json_str(&path.to_string_lossy())
+                ));
+            }
             None => {}
         }
         match &r.source {
@@ -909,11 +915,19 @@ pub fn parse_json(text: &str) -> Option<(u64, Vec<Record>)> {
         } else {
             continue;
         };
-        let sound = match (field(line, "som"), num("som_indice")) {
-            (Some(file), Some(index)) if !file.is_empty() => Some(SoundRef::Library {
+        let sound = match (
+            field(line, "som"),
+            num("som_indice"),
+            field(line, "som_arquivo"),
+        ) {
+            (Some(file), Some(index), _) if !file.is_empty() => Some(SoundRef::Library {
                 file,
                 index: index.max(0) as usize,
             }),
+            // arquivo do usuário (Cachorrinho, Gravador): só um texto não vazio
+            (_, _, Some(path)) if !path.is_empty() && line.contains("\"som_arquivo\": \"") => {
+                Some(SoundRef::File(path.into()))
+            }
             _ => None,
         };
         recs.push(Record {
@@ -1022,6 +1036,27 @@ mod store_tests {
         assert_eq!((w.text.as_str(), w.font.as_str()), ("x", ""));
         assert_eq!(w.shape, WordShape::Plain);
         assert_eq!(w.colors, vec![1]);
+    }
+
+    #[test]
+    fn json_keeps_file_sounds_and_skips_bad_ones() {
+        let mut objs = Objects::default();
+        let a = objs.place(Rc::new(stamp()), 1, 2, Source::Roll { roll: 0, item: 5 });
+        let b = objs.place(Rc::new(stamp()), 3, 4, Source::Roll { roll: 0, item: 6 });
+        objs.get_mut(a).unwrap().sound =
+            Some(SoundRef::File("/home/ana/Música/Ação \"1\".wav".into()));
+        objs.get_mut(b).unwrap().sound = Some(SoundRef::File("".into()));
+        let text = to_json(&objs.records(), 1);
+        let (_, back) = parse_json(&text).unwrap();
+        assert_eq!(back[0].sound, objs.get(a).unwrap().sound);
+        // caminho vazio não vira som
+        assert_eq!(back[1].sound, None);
+        // campo de som de tipo estranho não derruba o objeto
+        let (_, recs) = parse_json(
+            "{\"quadro\": \"1\",\n\"objetos\": [\n{\"id\": 1, \"x\": 0, \"y\": 0, \"w\": 1, \"h\": 1, \"som_arquivo\": 7, \"png\": \"a.png\"}\n]}",
+        )
+        .unwrap();
+        assert_eq!(recs.len(), 1);
     }
 
     #[test]

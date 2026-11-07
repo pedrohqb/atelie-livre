@@ -9,6 +9,7 @@ mod front;
 pub mod menu;
 pub mod print_machine;
 pub mod rename;
+mod sound_tool;
 pub mod vacuum;
 pub mod words;
 pub mod zoom;
@@ -578,6 +579,7 @@ impl Paint {
                 p.supertools.guides = g;
             }
         }
+        p.sounds_attach_legacy();
         if FIRST_HELP.swap(false, Ordering::Relaxed) {
             p.open_help(WHAT_BRUSH, 1, assets);
         }
@@ -1630,41 +1632,8 @@ impl Paint {
         }
         if self.tool == Tool::Sounds {
             // som preso a um objeto: colocar no adesivo clicado, ou tocar o dele
-            if inside(canvas_rect(), x, y)
-                && let Some(id) = {
-                    let (cx, cy) = self.canvas_pt(x, y);
-                    self.objects.hit(cx, cy)
-                }
-            {
-                if let Some((_, snd)) = self.sounds.take_chosen() {
-                    self.history.record_all(&self.canvas, &self.objects);
-                    if let Some(o) = self.objects.get_mut(id) {
-                        o.sound = Some(snd.clone());
-                    }
-                    fx.push(Effect::PlaySound(snd));
-                    self.changed = true;
-                    return;
-                }
-                if let Some(snd) = self.objects.get(id).and_then(|o| o.sound.clone()) {
-                    fx.push(Effect::PlaySound(snd));
-                    return;
-                }
-            }
-            match self.sounds.click(x, y) {
-                Some(Some(snd)) => {
-                    fx.push(Effect::PlaySound(snd));
-                    self.changed = true;
-                    return;
-                }
-                Some(None) => {
-                    if inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y) {
-                        fx.push(sfx::play(sfx::PAGE_ARROW));
-                    } else if !inside(canvas_rect(), x, y) {
-                        fx.push(sfx::play(sfx::SOUND_CATEGORY));
-                    }
-                    return;
-                }
-                None => self.sounds.reset(),
+            if self.sounds_click(x, y, fx, assets) {
+                return;
             }
         }
         if self.bucket_click(x, y, fx, assets) {
@@ -2417,6 +2386,7 @@ impl Scene for Paint {
             w.tick(dt);
         }
         self.sfx.update(dt);
+        fx.extend(self.sounds_tick(dt));
         let typing = self.wizard.as_ref().is_some_and(|w| w.typing())
             && self.exit_dialog.is_none()
             && self.rename.is_none();
@@ -2427,6 +2397,9 @@ impl Scene for Paint {
             if self.dialog.is_some() && !matches!(i, Input::Click { .. } | Input::MouseMove { .. })
             {
                 self.dialog_input(i, &mut fx, assets);
+                continue;
+            }
+            if self.sounds_input(i, &mut fx, assets) {
                 continue;
             }
             if let Some(p) = self.project.as_mut()
