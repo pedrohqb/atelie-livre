@@ -824,7 +824,7 @@ impl GalleryRoom {
 
     /// Quadro solto na lixeira: os exemplos são recusados pelo Rex; os
     /// desenhos da criança pedem confirmação.
-    fn to_trash(&mut self, i: usize, from: Source, assets: &Assets) {
+    fn drop_in_trash(&mut self, i: usize, from: Source, assets: &Assets) {
         self.play(&[sfx::TRASH, sfx::ALERT]);
         let slot = match from {
             Source::Wall(k) => Some(k),
@@ -1034,7 +1034,7 @@ impl GalleryRoom {
             return;
         }
         if inside(TRASH, x, y) {
-            self.to_trash(i, d.from, assets);
+            self.drop_in_trash(i, d.from, assets);
             return;
         }
         if let Some(k) = (0..3).rev().find(|&k| inside(frame_rect(k), x, y)) {
