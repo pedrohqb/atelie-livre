@@ -232,7 +232,9 @@ fn clip_art_rolls_are_the_28_carousels() {
     let a = Assets::open(&d).unwrap();
     let rolls = engine::clipart::load_rolls(&a);
     let ids: Vec<u16> = rolls.iter().map(|r| r.id).collect();
-    assert_eq!(ids, (0..28).collect::<Vec<u16>>());
+    // 28 = cenários de C-MAG100.ART (Caverna, Fazenda, Selva…)
+    assert_eq!(ids, (0..29).collect::<Vec<u16>>());
+    assert_eq!(rolls[28].items.len(), 11);
     // rolos conferidos no original: 0 começa pelo skate (128×46), 3 é dinossauro
     let skate = rolls[0].items[0].art().unwrap();
     assert_eq!((skate.width, skate.height), (128, 46));

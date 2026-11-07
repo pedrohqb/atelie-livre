@@ -1,7 +1,8 @@
-//! Rolos de adesivos de clip-art (bibliotecas `MAXMAG10.ART`, `MAX100.ART` e
-//! `MAG100.ART`). Cada rolo é um chunk `CARO` (lista de `PICT` + ícone); os
-//! números dos `CARO` formam uma sequência única entre as três bibliotecas
-//! (0 a 27), que é a ordem dos rolos no Fine Artist, depois do rolo de bichos.
+//! Rolos de adesivos de clip-art (bibliotecas `MAXMAG10.ART`, `MAX100.ART`,
+//! `MAG100.ART` e `C-MAG100.ART`). Cada rolo é um chunk `CARO` (lista de
+//! `PICT` + ícone); os números dos `CARO` formam uma sequência única entre as
+//! bibliotecas (0 a 27, e 28 = cenários de `C-MAG100.ART`: Caverna, Fazenda,
+//! Selva…), que é a ordem dos rolos no Fine Artist, depois do rolo de bichos.
 
 use crate::Image;
 use crate::assets::{Assets, Program};
@@ -10,7 +11,7 @@ use formats::{chnk, pkbm, wmf};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub const LIBRARIES: [&str; 3] = ["MAXMAG10.ART", "MAX100.ART", "MAG100.ART"];
+pub const LIBRARIES: [&str; 4] = ["MAXMAG10.ART", "MAX100.ART", "MAG100.ART", "C-MAG100.ART"];
 
 /// Desenho de um adesivo: metarquivo da biblioteca ou imagem já montada.
 pub enum ClipArt {
