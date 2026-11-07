@@ -93,10 +93,14 @@ pub const FOLDER_BTN: Rect = (300, 59, 60, 20);
 pub const PREV_BTN: Rect = (364, 59, 22, 20);
 pub const NEXT_BTN: Rect = (388, 59, 22, 20);
 pub const EFFECT_BTN: Rect = (414, 59, 114, 20);
-pub const SOUND_BTN: Rect = (300, 82, 60, 20);
-pub const CAPTION_BTN: Rect = (364, 82, 70, 20);
+pub const SOUND_BTN: Rect = (300, 82, 40, 20);
+pub const CAPTION_BTN: Rect = (344, 82, 56, 20);
+/// Desenho de abertura: título digitado que vira a figura do espaço 1.
+pub const TITLE_BTN: Rect = (404, 82, 44, 20);
 /// Seta que acrescenta um espaço (só com todos os espaços preenchidos).
-pub const ADD_BTN: Rect = (438, 82, 90, 20);
+pub const ADD_BTN: Rect = (452, 82, 76, 20);
+/// Nome de arquivo da figura do desenho de abertura.
+pub const TITLE_FILE: &str = "abertura";
 const STRIP_CLIP: Rect = (5, 56, 527, 48);
 
 // --- pasta aberta dentro do quadro ---
@@ -328,8 +332,12 @@ pub struct Flipbook {
     folder: Option<Folder>,
     sound_list: Option<SoundList>,
     caption_edit: Option<String>,
+    /// Título do desenho de abertura sendo digitado.
+    title_edit: Option<String>,
     cats: Rc<Vec<Category>>,
     font: Option<Rc<Font>>,
+    /// Fonte grande (16 pt) do desenho de abertura.
+    title_font: Option<Rc<Font>>,
     pal: Rc<Vec<Rgb>>,
     rng: XorShift,
     changed: bool,
@@ -351,8 +359,10 @@ impl Default for Flipbook {
             folder: None,
             sound_list: None,
             caption_edit: None,
+            title_edit: None,
             cats: Rc::new(Vec::new()),
             font: None,
+            title_font: None,
             pal: Rc::new(Vec::new()),
             rng: XorShift(0x9e37_79b9),
             changed: false,
@@ -370,6 +380,7 @@ impl Flipbook {
         let mut fb = Flipbook {
             cats: Rc::new(load_categories(assets)),
             font: assets.font(8),
+            title_font: assets.font(16).or_else(|| assets.font(8)),
             pal: Rc::new(assets.palettes(Program::Artist).pal256.clone()),
             ..Flipbook::default()
         };
@@ -410,6 +421,96 @@ impl Flipbook {
         self.slots.push(None);
         self.changed = true;
         true
+    }
+
+    pub fn title_editing(&self) -> Option<&str> {
+        self.title_edit.as_deref()
+    }
+
+    /// Desenho de abertura: a figura com o título (branca, texto centrado na
+    /// fonte grande) entra no espaço 1; a figura que estava lá vai para o 2,
+    /// e assim por diante (efeito, som e legenda vão junto). Se a tira está
+    /// cheia, ganha um espaço; com 10 cheios, avisa e não coloca.
+    pub fn set_title(&mut self, title: &str) -> bool {
+        let title = title.trim();
+        if title.is_empty() {
+            return false;
+        }
+        let mut c = Canvas::new(CANVAS_W, CANVAS_H);
+        c.px.fill(WHITE);
+        let font = self.title_font.as_deref();
+        let lines: Vec<&str> = title.lines().collect();
+        let lh = crate::paint::text_size(font, "Ag").1 as i32 + 4;
+        let tw = lines
+            .iter()
+            .map(|l| crate::paint::text_size(font, l).0 as i32)
+            .max()
+            .unwrap_or(1)
+            .max(1);
+        let th = lh * lines.len() as i32;
+        // letras grandes: o texto é ampliado o quanto couber (até 4×)
+        let k = (1..=4)
+            .rev()
+            .find(|k| tw * k <= CANVAS_W as i32 - 20 && th * k <= CANVAS_H as i32 - 20)
+            .unwrap_or(1);
+        let mut small = Canvas::new(tw as u32, th as u32);
+        small.px.fill(WHITE);
+        for (i, line) in lines.iter().enumerate() {
+            let (w, _) = crate::paint::text_size(font, line);
+            small.draw_text(
+                font,
+                (tw - w as i32) / 2,
+                i as i32 * lh,
+                line,
+                crate::paint::BLACK,
+            );
+        }
+        let (x0, y0) = (
+            (CANVAS_W as i32 - tw * k) / 2,
+            (CANVAS_H as i32 - th * k) / 2,
+        );
+        for (i, &v) in small.px.iter().enumerate() {
+            if v == WHITE {
+                continue;
+            }
+            let (sx, sy) = ((i as i32 % tw) * k, (i as i32 / tw) * k);
+            for dy in 0..k {
+                for dx in 0..k {
+                    c.set(x0 + sx + dx, y0 + sy + dy, v);
+                }
+            }
+        }
+        let mut slot = Slot::new(TITLE_FILE.into(), c);
+        slot.caption = String::new();
+        // já há um desenho de abertura: troca só a figura
+        if let Some(Some(s)) = self.slots.get_mut(0)
+            && s.file == TITLE_FILE
+        {
+            s.replace_canvas(slot.canvas);
+            self.selected = Some(0);
+            self.changed = true;
+            return true;
+        }
+        if self.slots.iter().all(|s| s.is_some()) {
+            if self.slots.len() >= MAX_SLOTS {
+                self.notice = Some(("Não há mais espaço: tire uma figura".into(), 3.0));
+                return false;
+            }
+            self.slots.push(None);
+        }
+        // empurra as figuras até o primeiro espaço vazio
+        let empty = self.slots.iter().position(|s| s.is_none()).unwrap_or(0);
+        self.slots[..=empty].rotate_right(1);
+        self.slots[0] = Some(slot);
+        self.selected = Some(0);
+        self.changed = true;
+        true
+    }
+
+    fn commit_title(&mut self) {
+        if let Some(t) = self.title_edit.take() {
+            self.set_title(&t);
+        }
     }
 
     /// Espaço cuja figura está na tela de pintura, se houver.
@@ -843,7 +944,9 @@ impl Flipbook {
         f.entries.len().div_ceil(FOLDER_PER_PAGE).max(1)
     }
 
+    /// Qualquer outra ação encerra o que estava sendo digitado (legenda ou título).
     fn commit_caption(&mut self) {
+        self.commit_title();
         if let Some(text) = self.caption_edit.take()
             && let Some(k) = self.selected
         {
@@ -924,6 +1027,16 @@ impl Flipbook {
         if inside(ADD_BTN, x, y) {
             self.commit_caption();
             self.add_slot();
+            return Vec::new();
+        }
+        if inside(TITLE_BTN, x, y) {
+            let typing = self.title_edit.is_some();
+            self.commit_caption();
+            if !typing {
+                self.folder = None;
+                self.sound_list = None;
+                self.title_edit = Some(String::new());
+            }
             return Vec::new();
         }
         if inside(CAPTION_BTN, x, y) {
@@ -1117,6 +1230,17 @@ impl Flipbook {
     /// Tecla: Delete esvazia o espaço escolhido; editando a legenda, Enter
     /// confirma e Backspace apaga.
     pub fn key(&mut self, key: Key) {
+        if let Some(text) = self.title_edit.as_mut() {
+            match key {
+                Key::Enter => self.commit_title(),
+                Key::Backspace => {
+                    text.pop();
+                }
+                Key::Escape => self.title_edit = None,
+                _ => {}
+            }
+            return;
+        }
         if let Some(text) = self.caption_edit.as_mut() {
             match key {
                 Key::Enter => self.commit_caption(),
@@ -1146,7 +1270,7 @@ impl Flipbook {
 
     /// Texto digitado na legenda.
     pub fn text(&mut self, t: &str) {
-        if let Some(text) = self.caption_edit.as_mut() {
+        if let Some(text) = self.title_edit.as_mut().or(self.caption_edit.as_mut()) {
             text.extend(
                 t.chars()
                     .filter(|c| !c.is_control() && formats::cp1252::encode_char(*c).is_some()),
@@ -1278,6 +1402,7 @@ impl Flipbook {
             .is_some_and(|s| s.sound.is_some());
         self.button(f, SOUND_BTN, "Som", has_sound || self.sound_list.is_some());
         self.button(f, CAPTION_BTN, "Legenda", self.caption_edit.is_some());
+        self.button(f, TITLE_BTN, "Título", self.title_edit.is_some());
         self.button(f, ADD_BTN, "Mais espaços", false);
     }
 
@@ -1301,13 +1426,6 @@ impl Flipbook {
         if let Some(folder) = &self.folder {
             self.draw_folder(f, folder);
             return;
-        }
-        if let Some((msg, _)) = &self.notice {
-            let w = self.label_w(msg) + 16;
-            let x = ORIGIN.0 + (CANVAS_W as i32 - w) / 2;
-            f.rect(x, ORIGIN.1 + 2, w, 16, YELLOW);
-            f.frame_rect(x, ORIGIN.1 + 2, w, 16, 1, BLACK);
-            self.label(f, x + 8, ORIGIN.1 + 5, msg, BLACK);
         }
         let status = format!("{} figura(s), {} espaços", self.count(), self.slots.len());
         let w = self.label_w(&status);
@@ -1358,6 +1476,17 @@ impl Flipbook {
                     f.text(t.0 - 3, t.1 - 4, &n, BLACK);
                 }
             }
+        }
+        let typing = self
+            .title_edit
+            .as_ref()
+            .map(|t| format!("Título do desenho de abertura: {t}_  (Enter confirma)"));
+        if let Some(msg) = typing.as_ref().or(self.notice.as_ref().map(|(m, _)| m)) {
+            let w = self.label_w(msg) + 16;
+            let x = ORIGIN.0 + (CANVAS_W as i32 - w) / 2;
+            f.rect(x, ORIGIN.1 + 2, w, 16, YELLOW);
+            f.frame_rect(x, ORIGIN.1 + 2, w, 16, 1, BLACK);
+            self.label(f, x + 8, ORIGIN.1 + 5, msg, BLACK);
         }
         if let Some((k, (x, y))) = self.dragging()
             && let Some(s) = self.slots[k].as_ref()
@@ -1790,6 +1919,56 @@ mod tests {
                 [((t.1 - ORIGIN.1 + 5) as u32 * CANVAS_W + (t.0 - ORIGIN.0 + 5) as u32) as usize],
             5
         );
+    }
+
+    #[test]
+    fn title_button_makes_the_opening_picture_in_space_one() {
+        let (_d, a) = empty_assets();
+        let mut fb = three(&a);
+        fb.set_caption(0, "primeira");
+        fb.click(TITLE_BTN.0 + 2, TITLE_BTN.1 + 2, None, &a);
+        assert_eq!(fb.title_editing(), Some(""));
+        fb.text("Meu filme!");
+        fb.key(Key::Backspace);
+        fb.key(Key::Enter);
+        assert_eq!(fb.title_editing(), None);
+        // a abertura entrou no 1; as outras andaram uma casa, com a legenda
+        assert_eq!(fb.count(), 4);
+        assert_eq!(fb.slots[0].as_ref().unwrap().file, TITLE_FILE);
+        assert_eq!(fb.slots[1].as_ref().unwrap().caption, "primeira");
+        assert_eq!(fb.slots[1].as_ref().unwrap().canvas.px[0], 11);
+        assert_eq!(fb.slots[3].as_ref().unwrap().canvas.px[0], 13);
+        assert_eq!(fb.selected(), Some(0));
+        // a figura é branca com texto preto no meio
+        let t = &fb.slots[0].as_ref().unwrap().canvas;
+        assert_eq!(t.px[0], WHITE);
+        let mid = (CANVAS_H / 2) as usize * CANVAS_W as usize;
+        assert!(t.px[mid..mid + CANVAS_W as usize].contains(&crate::paint::BLACK));
+        // mudar o título troca só a figura da abertura, sem empurrar de novo
+        assert!(fb.set_title("Outro"));
+        assert_eq!(fb.count(), 4);
+        assert_eq!(fb.slots[0].as_ref().unwrap().file, TITLE_FILE);
+        // tira cheia: ganha um espaço; com 10 cheios, não cabe
+        fb.remove(0);
+        fb.slots.rotate_left(1);
+        assert_eq!(fb.slot_count(), 4);
+        assert!(fb.place(String::new(), figure(9)));
+        assert!(fb.set_title("De novo"));
+        assert_eq!(fb.slot_count(), 5);
+        assert_eq!(fb.slots[4].as_ref().unwrap().canvas.px[0], 9);
+        while fb.slot_count() < MAX_SLOTS {
+            fb.place(String::new(), figure(1));
+            fb.add_slot();
+        }
+        fb.place(String::new(), figure(1));
+        fb.remove(0);
+        fb.slots.rotate_left(1);
+        fb.place(String::new(), figure(2));
+        assert_eq!(fb.count(), MAX_SLOTS);
+        assert!(!fb.set_title("Não cabe"));
+        assert!(fb.notice.is_some());
+        // vazio: nada
+        assert!(!fb.set_title("   "));
     }
 
     #[test]

@@ -212,8 +212,9 @@ remontagem "usável primeiro". Código em
   (`3a6f`): 4000 / 2000 / 1000 / 500 / 250 ms por figura, padrão 1000;
   botões desenhados (cartões brancos, Pablo 8 pt): **Pasta** (300,59),
   **<** / **>** (364 e 388), **Efeito** (414,59, mostra o efeito do espaço
-  escolhido e cicla ao clicar), **Som** (300,82), **Legenda** (364,82) e
-  **Mais espaços** (438,82, a seta de acrescentar espaços do original);
+  escolhido e cicla ao clicar), **Som** (300,82), **Legenda** (344,82),
+  **Título** (404,82, o desenho de abertura) e **Mais espaços** (452,82, a
+  seta de acrescentar espaços do original);
   "N figura(s), M espaços" no canto inferior direito do quadro.
 - **Barra de ferramentas**: as ferramentas de pintura ficam escurecidas
   (pontilhado) e não reagem; só **Imprimir** funciona: grava a folha com
@@ -245,6 +246,13 @@ remontagem "usável primeiro". Código em
   hora e ao começar a figura.
 - **Legenda**: digitada no próprio espaço (Enter confirma, Esc cancela);
   ao tocar, aparece numa faixa branca de 16 px na base da figura.
+- **Título** (desenho de abertura): o texto digitado (faixa amarela no alto
+  do quadro; Enter confirma, Esc cancela) vira uma figura branca com as
+  letras grandes (Pablo 16 pt ampliada até 4×) no **espaço 1**; a figura
+  que estava lá vai para o 2, e assim por diante, com efeito, som e
+  legenda (a tira ganha um espaço se estava cheia). Com a abertura já no
+  espaço 1 (`arquivo` `abertura`), Título só troca o texto. O clique duplo
+  leva a abertura à pintura, para enfeitar.
 - **Efeitos**: corte, dissolver (pixels espalhados em 12 passos), cortina
   para a esquerda / direita / cima / baixo e dado (sorteia a cada TOCAR).
   A transição dura 0,5 s (no máximo metade do intervalo).
@@ -253,8 +261,8 @@ remontagem "usável primeiro". Código em
 - **Guardar**: ao sair, `animacao-AAAAMMDD-HHMMSS/` na pasta de desenhos e a
   cópia `ultimo-animacao/`, reaberta ao entrar de novo — ver
   [`docs/formats/animacao.md`](../formats/animacao.md).
-- Fora, por enquanto: desenho de abertura com título girado, figura "Fim"
-  (dá para fazer qualquer figura com a pintura e o clique duplo), Varinha
+- Fora, por enquanto: girar as palavras do título, figura "Fim" pronta (dá
+  para fazer qualquer figura com a pintura e o clique duplo), Varinha
   Mágica na pausa, nome do desenho animado, dado para o som.
 
 ## Objetos das salas e elevador
