@@ -268,6 +268,11 @@ impl Stickers {
         1 + self.clip.len()
     }
 
+    /// Acrescenta um rolo no fim (o de rabinhos, na história em quadrinhos).
+    pub fn add_roll(&mut self, roll: ClipRoll) {
+        self.clip.push(roll);
+    }
+
     fn page_count(&self) -> usize {
         self.roll_count().div_ceil(ROLLS_PER_PAGE)
     }

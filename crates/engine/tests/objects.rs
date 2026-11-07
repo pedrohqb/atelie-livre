@@ -322,10 +322,7 @@ fn mczee_click_with_bucket_opens_paint_bucket_balloon() {
     p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
     p.update(&[click(78, 30)], 0.0, &a);
     assert_eq!(p.tool(), Tool::Bucket);
-    // escolher a ferramenta já abre o balão; fechar e abrir pelo McZee
-    p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
-    assert!(p.help().is_none());
-    p.update(&[click(556, 80)], 0.0, &a);
+    // escolher a ferramenta já abre o balão (o McZee no nicho abre o menu)
     let h = p.help().expect("balão aberto");
     assert_eq!(h.title(), "Paint bucket");
     assert!(h.record().plain().contains("Lata de tinta"));

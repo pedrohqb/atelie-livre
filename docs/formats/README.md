@@ -33,6 +33,10 @@ leitores sem consultar o código original.
 | `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO) | fora do escopo |
 | `WRITER/PICTIMP.FLT` | filtro de importação de imagens (DLL NE) | fora do escopo |
 
+Os arquivos que o próprio Ateliê Livre grava ao lado dos desenhos
+(`*.objetos.json`, `*.fundo.png`, `*.projeto.txt`) estão em
+`arquivos-do-port.md`.
+
 ## Ainda não interpretado
 
 Os recursos de comportamento dos executáveis (`WHAT`, `SCRD`, `SWND`,

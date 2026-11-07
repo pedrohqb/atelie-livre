@@ -55,6 +55,8 @@ pub enum Input {
     },
     /// Texto digitado (UTF-8), já composto pelo sistema (acentos, teclado morto).
     Text(String),
+    /// A tecla Shift foi apertada (`true`) ou solta (`false`).
+    Shift(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

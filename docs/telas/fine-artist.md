@@ -202,27 +202,76 @@ dos Projetos. O nicho do McZee (x 533..580 da faixa) mostra o estado do
 projeto e, clicado, abre e fecha o painel do projeto na faixa de opções;
 qualquer outro clique fecha o painel e devolve a faixa às opções da ferramenta.
 
-- **História em quadrinhos**: ao abrir, a faixa pergunta quantos quadrinhos,
-  1 a 4 (o roteiro de ajuda `WHAT` 3e00 diz "até quatro painéis"), com os
-  dígitos `3a78`/`3a79` (1), `3a7b`/`3a7c`/`3a7d` (2), `3a7f`… (3) e
-  `3a83`… (4), o escolhido em cor. Leiautes no quadro de 594×347 com margem
-  de 6 px e calha de 8 px: 1 inteiro, 2 lado a lado, 3 colunas, 4 = 2×2;
-  molduras pretas de 3 px desenhadas por cima do quadro (não entram no PNG).
-  Pincel, lata, palavras e adesivos ficam recortados ao quadrinho onde o
-  clique começou; na calha nada pinta. Trocar o número não apaga nada.
-  Imprimir grava a página com as molduras.
-- **Botão ou adesivo**: a faixa mostra três cartões — "Botão redondo"
-  (círculo de 300 px), "Botão quadrado" (300×300, cantos de raio 30) e
-  "Adesivo" (360×260, raio 24) —, como no roteiro 3c00 ("Redondo ou
-  Quadrado"). Borda preta de 3 px e, nos botões, anel cinza de 12 px (a aba
-  de metal), tudo overlay; a pintura fica limitada ao interior e, ao trocar
-  a forma, o que ficaria fora vira branco (o ovo desfaz). Imprimir grava uma
-  folha de 827×1169 (210×297 mm a 100 ppp) com 2×3 botões ou 3×4 adesivos,
-  cada cópia reduzida para caber na célula.
+- **História em quadrinhos**: ao abrir, a faixa mostra o painel do nicho:
+  os dígitos 1 a 4 (o roteiro de ajuda `WHAT` 3e00 diz "até quatro
+  painéis"; `3a78`/`3a79` (1), `3a7b`/`3a7c`/`3a7d` (2), `3a7f`… (3) e
+  `3a83`… (4), o escolhido em cor), o **fundo pronto** com as setas (rolo
+  `CARO 28 "Comic Backgrounds"` de `SHARED/STUFF/C-MAG100.ART`: onze
+  desenhos de 271×219 em preto e branco — Caverna, Fazenda, Selva, Pirâmides,
+  Telhados, Sala, Navio, Castelo, Lua, Fundo do mar, Parque; clicar na
+  miniatura escolhe e o próximo clique num quadrinho pinta o interior, branco
+  com o desenho centrado, uma ação do ovo) e os cartões **Título** e
+  **Autor** (balões `WHAT` 3e00 [158]/[160] com caixa de texto; o texto vai
+  para a barra inferior — "Título — por Autor" — e para a página impressa,
+  numa faixa em cima e outra embaixo). Leiautes no quadro de 594×347 com
+  margem de 6 px e calha de 8 px: 1 inteiro, 2 lado a lado, 3 colunas,
+  4 = 2×2; molduras pretas de 3 px desenhadas por cima do quadro (não entram
+  no PNG). Pincel, lata, palavras e adesivos ficam recortados ao quadrinho
+  onde o clique começou; na calha nada pinta. Trocar o número não apaga
+  nada. Imprimir grava a página com as molduras. O original mostra um painel
+  por vez, com botões de navegação e a cópia do painel N para N+1 (3e00
+  [60]/[66]/[163]); o port mostra todos de uma vez e não tem cópia.
+- **Cavalete de história em quadrinhos** (ferramenta Palavra nos
+  quadrinhos; 3e00 [14]–[20]): a faixa da Palavra vira o cavalete, com a
+  fonte (Pablo 16 ou 8 pt), seis formas de balão — retângulo com rabicho (o
+  "Oi!" da pintura), retângulo, oval com rabicho, oval, pensamento e o
+  "espaço em branco" (sem balão) — e a posição das palavras (esquerda,
+  centro, direita). O texto é digitado como na pintura e o estilo muda ao
+  vivo; com largura definida, o texto quebra nas palavras. Arrastar um balão
+  colocado com a Palavra **move**; com **Shift** apertado, muda a largura (e
+  o texto quebra de novo); um clique sem mover reabre o texto para mudar.
+  Fora dos quadrinhos a Palavra continua com as duas opções do original
+  (texto solto e balão "Oi!"). Os balões ovais são geométricos; as silhuetas
+  de `B-MAG100.CHK` servem de referência.
+- **Dipitidus** (3e00 [22]): nos quadrinhos, a ferramenta de adesivos ganha,
+  depois dos rolos de clip-art, o rolo "Dipitidus" com os quatro rabinhos de
+  balão de `SHARED/STUFF/B-MAG100.CHK` (`PICT` 16–19, ampliados 2×, contorno
+  preto e interior branco; o ícone é o `PICT` 20). Mudam de lugar e de
+  tamanho pelos Transformadores. O bitmap `10b0` que o roteiro cita não
+  existe no `ARTIST.PIC`.
+- **Botão ou adesivo**: a faixa mostra os cartões da forma, com a miniatura
+  e o rótulo. Botão (roteiro 3c00 [4], "Redondo ou Quadrado"): círculo de
+  300 px ou 300×300 com cantos de raio 30, borda preta de 3 px e anel cinza
+  de 12 px (a aba de metal). Adesivo (3c00 [26]): **Retangular** (360×260,
+  raio 24), **Redondo** (círculo de 300), **Quadrado** (300×300, raio 30),
+  **Oval alto** (elipse de 260×318) e **Oval largo** (318×260), só com a
+  borda de 3 px — os bitmaps `109d`–`10a1` do roteiro não existem no
+  `ARTIST.PIC`, por isso as formas são geométricas. O último cartão troca
+  entre botão e adesivo. Tudo overlay; a pintura fica limitada ao interior
+  e, ao trocar a forma, o que ficaria fora vira branco (o ovo desfaz). A
+  forma fica em `ultimo-<tipo>.projeto.txt` e volta ao reabrir. Imprimir
+  grava uma folha de 827×1169 (210×297 mm a 100 ppp) com 2×3 botões ou 3×4
+  adesivos, cada cópia reduzida para caber na célula. As amostras do
+  original ("Com uma amostra?", `SAMP3/12/13/14/15.MAG`, `WIZA = STIK`) têm
+  o conteúdo em chunks `SOBJ`/`SPLE` ainda não interpretados e não são
+  oferecidas.
+- **Fim guiado** (3c00 [12]–[31], 3e00 [151]–[162]; código em
+  `projects/dialogs.rs`): nos três projetos, Imprimir pergunta "Você quer
+  imprimir o botão?" e, depois de imprimir (o McZee imprime quantas cópias
+  cabem na página — não há escolha do número), abre "D+. Você terminou! O
+  que você quer fazer agora?": trabalhar por conta própria (fecha), começar
+  um novo (salvar? → "Digite um nome descritivo" → `<tipo>-<nome>.png`, nome
+  só com letras, dígitos e hífens; ou "Não, jogar fora" → "imprimir antes
+  que vá para o lixo?") ou voltar ao andar dos Projetos. A porta de Saída
+  com mudanças faz a mesma pergunta de salvar; sem mudanças sai direto.
+  Jogar fora não grava nada e esquece o último trabalho desse tipo. Clicar
+  fora do balão cancela. Sem os dados do original os balões usam textos
+  reserva iguais aos do `WHAT`.
 - **Arquivos**: ao sair, `ultimo-quadrinhos.png` / `ultimo-botao.png` /
   `ultimo-adesivo.png` (reaberto na próxima vez) e, se mudou,
-  `quadrinhos-AAAAMMDD-HHMMSS.png` etc.; a impressão vai para
-  `impressao-AAAAMMDD-HHMMSS.png` como na pintura.
+  `quadrinhos-AAAAMMDD-HHMMSS.png` etc., sempre com `.projeto.txt` ao lado
+  (ver [`formats/arquivos-do-port.md`](../formats/arquivos-do-port.md)); a
+  impressão vai para `impressao-AAAAMMDD-HHMMSS.png` como na pintura.
 
 ### Desenho animado
 

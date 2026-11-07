@@ -4,6 +4,7 @@
 
 pub mod button;
 pub mod comics;
+pub mod dialogs;
 pub mod flipbook;
 
 use crate::Frame;
@@ -38,11 +39,19 @@ pub(crate) fn pic(id: u16) -> ImageRef {
 }
 
 /// Cartão branco com borda preta e rótulo centrado (Pablo 8 pt, ou a fonte reserva).
-pub(crate) fn card(f: &mut Frame, a: &Assets, r: (i32, i32, i32, i32), label: &str, chosen: bool) {
+pub(crate) fn card(f: &mut Frame, a: &Assets, r: (i32, i32, i32, i32), text: &str, chosen: bool) {
     f.rect(r.0, r.1, r.2, r.3, WHITE);
     f.frame_rect(r.0, r.1, r.2, r.3, 1, BLACK);
     if chosen {
         f.frame_rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, 1, RED);
+    }
+    label(f, a, r, text);
+}
+
+/// Rótulo centrado em `r` (Pablo 8 pt, ou a fonte reserva), sem fundo.
+pub(crate) fn label(f: &mut Frame, a: &Assets, r: (i32, i32, i32, i32), label: &str) {
+    if label.is_empty() {
+        return;
     }
     match a.font(8) {
         Some(font) => {
@@ -121,6 +130,24 @@ pub fn save_picture(
     changed: bool,
     now: u64,
 ) -> Result<(), String> {
+    save_picture_meta(dir, kind, c, objs, pal, &[], changed, None, now)
+}
+
+/// Como [`save_picture`], com os metadados do projeto ao lado
+/// (`<stem>.projeto.txt`) e, se `name` vier, o nome escolhido no lugar da
+/// data (`adesivo-<nome>.png`).
+#[allow(clippy::too_many_arguments)]
+pub fn save_picture_meta(
+    dir: &Path,
+    kind: ProjectKind,
+    c: &Canvas,
+    objs: &Objects,
+    pal: &[Rgb],
+    meta: &[(String, String)],
+    changed: bool,
+    name: Option<&str>,
+    now: u64,
+) -> Result<(), String> {
     let fail = |e: std::io::Error, p: &Path| format!("não consegui gravar {}: {e}", p.display());
     std::fs::create_dir_all(dir).map_err(|e| fail(e, dir))?;
     let flat = compose_unclipped(c, objs);
@@ -128,13 +155,83 @@ pub fn save_picture(
     let last = dir.join(kind.last_name());
     save_png(&flat, pal, &last).map_err(|e| fail(e, &last))?;
     save_objects(dir, &last_stem, c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
-    if changed {
-        let stem = format!("{}-{}", kind.file_stem(), timestamp(now));
+    save_meta(dir, &last_stem, meta).map_err(|e| fail(e, dir))?;
+    if changed || name.is_some() {
+        let suffix = match name {
+            Some(n) => file_safe(n),
+            None => timestamp(now),
+        };
+        let stem = format!("{}-{}", kind.file_stem(), suffix);
         let named = dir.join(format!("{stem}.png"));
         save_png(&flat, pal, &named).map_err(|e| fail(e, &named))?;
         save_objects(dir, &stem, c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
+        save_meta(dir, &stem, meta).map_err(|e| fail(e, dir))?;
     }
     Ok(())
+}
+
+/// Nome de arquivo a partir de um nome digitado: letras, dígitos e hífens,
+/// sem acentos nem espaços (como `timestamp`); vazio vira "sem-nome".
+pub fn file_safe(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        let c = match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'a',
+            'é' | 'ê' | 'è' | 'ë' | 'É' | 'Ê' | 'È' | 'Ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+            'ç' | 'Ç' => 'c',
+            'ñ' | 'Ñ' => 'n',
+            c if c.is_ascii_alphanumeric() => c.to_ascii_lowercase(),
+            _ => '-',
+        };
+        if c == '-' && out.ends_with('-') {
+            continue;
+        }
+        out.push(c);
+    }
+    let out = out.trim_matches('-').to_string();
+    if out.is_empty() {
+        "sem-nome".into()
+    } else {
+        out
+    }
+}
+
+/// Nome do arquivo de metadados de um trabalho (`ultimo-adesivo.projeto.txt`):
+/// linhas `chave=valor` (forma do adesivo, número de quadrinhos, título...).
+pub fn meta_name(stem: &str) -> String {
+    format!("{stem}.projeto.txt")
+}
+
+/// Grava os metadados `(chave, valor)`; sem pares, apaga o arquivo.
+pub fn save_meta(dir: &Path, stem: &str, meta: &[(String, String)]) -> std::io::Result<()> {
+    let path = dir.join(meta_name(stem));
+    if meta.is_empty() {
+        return match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    let mut text = String::new();
+    for (k, v) in meta {
+        let v: String = v.chars().filter(|c| !c.is_control()).collect();
+        text.push_str(&format!("{k}={v}\n"));
+    }
+    std::fs::write(path, text)
+}
+
+/// Lê os metadados; arquivo ausente ou ilegível → lista vazia.
+pub fn load_meta(dir: &Path, stem: &str) -> Vec<(String, String)> {
+    std::fs::read_to_string(dir.join(meta_name(stem)))
+        .map(|t| {
+            t.lines()
+                .filter_map(|l| l.split_once('='))
+                .map(|(k, v)| (k.trim().to_string(), v.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Estado do projeto dentro da tela de pintura.
@@ -158,9 +255,33 @@ impl Project {
     pub fn kind(&self) -> ProjectKind {
         match self {
             Project::Comics(_) => ProjectKind::Comics,
-            Project::Button(b) if b.sticker => ProjectKind::Sticker,
+            Project::Button(b) if b.sticker() => ProjectKind::Sticker,
             Project::Button(_) => ProjectKind::Button,
             Project::Flipbook(_) => ProjectKind::Flipbook,
+        }
+    }
+
+    /// Metadados a gravar ao lado do trabalho (forma do adesivo, quadrinhos...).
+    pub fn meta(&self) -> Vec<(String, String)> {
+        match self {
+            Project::Comics(k) => k.meta(),
+            Project::Button(b) => vec![("forma".into(), b.kind().file_name().into())],
+            Project::Flipbook(_) => Vec::new(),
+        }
+    }
+
+    /// Aplica os metadados lidos de `*.projeto.txt` (antes de `prepare`).
+    pub fn apply_meta(&mut self, meta: &[(String, String)]) {
+        for (k, v) in meta {
+            match self {
+                Project::Button(b) if k == "forma" => {
+                    if let Some(kind) = button::Kind::from_file_name(v) {
+                        b.kind = kind;
+                    }
+                }
+                Project::Comics(c) => c.apply_meta(k, v),
+                _ => {}
+            }
         }
     }
 
@@ -190,11 +311,44 @@ impl Project {
 
     /// Clique na tela: nicho do projeto e, com o painel aberto, a faixa de opções.
     /// `Some(mudou)` se o projeto tratou o clique; `None` deixa seguir para a pintura.
-    pub fn click(&mut self, x: i32, y: i32, c: &mut Canvas, h: &mut History) -> Option<bool> {
+    pub fn click(
+        &mut self,
+        x: i32,
+        y: i32,
+        c: &mut Canvas,
+        h: &mut History,
+        assets: &Assets,
+    ) -> Option<bool> {
         match self {
-            Project::Comics(k) => k.click(x, y),
+            Project::Comics(k) => k.click(x, y, c, h, assets),
             Project::Button(b) => b.click(x, y, c, h),
             Project::Flipbook(_) => None,
+        }
+    }
+
+    /// Entrada (texto, tecla, clique) para um balão do projeto aberto; `true`
+    /// se o projeto a consumiu.
+    pub fn dialog_input(&mut self, input: &crate::scene::Input, assets: &Assets) -> bool {
+        match self {
+            Project::Comics(k) => k.field_input(input, assets),
+            _ => false,
+        }
+    }
+
+    /// Carrega o que o projeto precisa dos dados (fundos prontos).
+    pub fn load_assets(&mut self, assets: &Assets) {
+        if let Project::Comics(k) = self {
+            k.load_assets(assets);
+        }
+    }
+
+    /// Texto da caixa central da barra inferior (título do gibi, se houver).
+    pub fn display_name(&self) -> String {
+        match self {
+            Project::Comics(k) => k
+                .display_name()
+                .unwrap_or_else(|| self.kind().new_name().into()),
+            _ => self.kind().new_name().into(),
         }
     }
 
@@ -218,9 +372,9 @@ impl Project {
 
     /// Página a imprimir: o quadro com as molduras (quadrinhos), a folha de
     /// cópias (botão/adesivo) ou a folha com as figuras (desenho animado).
-    pub fn print_page(&self, c: &Canvas, pal: &[Rgb]) -> Canvas {
+    pub fn print_page(&self, c: &Canvas, pal: &[Rgb], font: Option<&formats::fnt::Font>) -> Canvas {
         match self {
-            Project::Comics(k) => k.compose(c),
+            Project::Comics(k) => k.print_page(c, pal, font),
             Project::Button(b) => b.print_sheet(c, pal),
             Project::Flipbook(fb) => fb.print_sheet(),
         }
@@ -276,6 +430,48 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.contains("não consegui gravar"));
+    }
+
+    #[test]
+    fn meta_roundtrip_and_file_safe_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let meta = vec![
+            ("forma".to_string(), "oval-alto".to_string()),
+            ("titulo".to_string(), "Olá, mundo\n!".to_string()),
+        ];
+        save_meta(d, "ultimo-adesivo", &meta).unwrap();
+        let back = load_meta(d, "ultimo-adesivo");
+        assert_eq!(back[0], meta[0]);
+        assert_eq!(back[1], ("titulo".to_string(), "Olá, mundo!".to_string()));
+        save_meta(d, "ultimo-adesivo", &[]).unwrap();
+        assert!(load_meta(d, "ultimo-adesivo").is_empty());
+        assert_eq!(file_safe("Meu Botão Ótimo!"), "meu-botao-otimo");
+        assert_eq!(file_safe("   "), "sem-nome");
+        let mut p = Project::new(ProjectKind::Sticker);
+        p.apply_meta(&[("forma".into(), "oval-largo".into())]);
+        assert!(matches!(&p, Project::Button(b) if b.kind() == button::Kind::WideOval));
+        assert_eq!(
+            p.meta(),
+            vec![("forma".to_string(), "oval-largo".to_string())]
+        );
+        // gravar com nome usa o nome no arquivo
+        let c = Canvas::new(CANVAS_W, CANVAS_H);
+        save_picture_meta(
+            d,
+            ProjectKind::Sticker,
+            &c,
+            &Objects::default(),
+            &pal(),
+            &p.meta(),
+            false,
+            Some("Dina"),
+            0,
+        )
+        .unwrap();
+        assert!(d.join("adesivo-dina.png").exists());
+        assert_eq!(load_meta(d, "adesivo-dina")[0].1, "oval-largo");
+        assert_eq!(load_meta(d, "ultimo-adesivo")[0].1, "oval-largo");
     }
 
     #[test]

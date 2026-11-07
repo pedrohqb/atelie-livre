@@ -278,6 +278,12 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     repeat,
                     ..
                 } => {
+                    if matches!(k, Keycode::LShift | Keycode::RShift) {
+                        if !repeat {
+                            inputs.push(Input::Shift(true));
+                        }
+                        continue;
+                    }
                     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
                     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
                     let key = map_key(k);
@@ -293,6 +299,10 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         inputs.push(Input::Key { key, ctrl, alt });
                     }
                 }
+                Event::KeyUp {
+                    keycode: Some(Keycode::LShift | Keycode::RShift),
+                    ..
+                } => inputs.push(Input::Shift(false)),
                 Event::TextInput { text, .. } => {
                     if !text.is_empty() {
                         inputs.push(Input::Text(text));
