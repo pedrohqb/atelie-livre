@@ -205,12 +205,31 @@ fn display_name(path: &Path) -> String {
     stem
 }
 
-fn thumbnail(c: &Canvas) -> Canvas {
+/// Miniatura 1/4: de cada bloco 4×4 fica o pixel mais escuro, para as
+/// linhas finas não sumirem (o original reduz com o `StretchBlt` do
+/// Windows, que preserva o preto).
+fn thumbnail(c: &Canvas, pal: &[Rgb]) -> Canvas {
     let (w, h) = (THUMB_W, THUMB_H);
+    let luma = |i: u8| {
+        pal.get(i as usize)
+            .map_or(0, |p| 3 * p.r as u32 + 6 * p.g as u32 + p.b as u32)
+    };
     let mut t = Canvas::new(w, h);
     for y in 0..h {
         for x in 0..w {
-            t.px[(y * w + x) as usize] = c.px[((y * 4) * c.w + x * 4) as usize];
+            let mut best = c.px[((y * 4) * c.w + x * 4) as usize];
+            for dy in 0..4 {
+                for dx in 0..4 {
+                    let (sx, sy) = (x * 4 + dx, y * 4 + dy);
+                    if sx < c.w && sy < c.h {
+                        let v = c.px[(sy * c.w + sx) as usize];
+                        if luma(v) < luma(best) {
+                            best = v;
+                        }
+                    }
+                }
+            }
+            t.px[(y * w + x) as usize] = best;
         }
     }
     t
@@ -315,7 +334,7 @@ impl GalleryRoom {
                         name: display_name(&path),
                         title,
                         author,
-                        thumb: thumbnail(&c),
+                        thumb: thumbnail(&c, &pal),
                         path,
                         sample,
                     });
@@ -1198,6 +1217,8 @@ impl Scene for GalleryRoom {
             if a.is_finished() {
                 self.surprise = None;
                 self.bag.open = true;
+                // como no original, o balão de boas-vindas volta
+                self.ask(Ask::Welcome, WELCOME, assets);
             }
         }
         for i in input {
@@ -1799,5 +1820,6 @@ mod tests {
         }
         assert!(!g.surprise_playing());
         assert!(g.bag().open && !g.bag().holding_wand);
+        assert!(matches!(g.balloon, Some((Ask::Welcome, _))));
     }
 }
