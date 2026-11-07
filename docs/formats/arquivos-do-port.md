@@ -10,6 +10,7 @@ PNG pode ter arquivos ao lado, com o mesmo radical (`<stem>`):
 | `<stem>.objetos.json` | adesivos e palavras por cima da pintura (ver abaixo) |
 | `<stem>.fundo.png` | a pintura sem os objetos |
 | `<stem>.projeto.txt` | metadados do projeto da Oficina (ver abaixo) |
+| `sons/<nome>.wav` | sons gravados pelo Gravador do Seleciona-sons (PCM 16 bits, mono, 22 050 Hz) |
 
 Sem o `.objetos.json` o desenho abre achatado; sem o `.projeto.txt` o projeto
 abre com os valores iniciais.
@@ -59,6 +60,11 @@ JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
   `direita`), `largura` (pixels em que o texto quebra; ausente = uma linha) e
   `fonte` (`pequena` = Pablo 8 pt; ausente = 16 pt). Sem `forma`, `balao: true`
   é `retangulo-rabicho` e `false` é `nenhum`.
+- Som preso (Seleciona-sons), um de: `som` + `som_indice` (biblioteca de
+  `SHARED/STUFF`, como `MAG100.SND` ou `MAX100.SND`, e o índice do som nela) ou
+  `som_arquivo` (caminho de um `.wav` do usuário, achado pelo Cachorrinho ou
+  gravado pelo Gravador em `sons/<nome>.wav` dentro da pasta de desenhos). Um
+  `som_arquivo` vazio ou que não seja texto é ignorado; o objeto fica sem som.
 
 ## `<stem>.projeto.txt`
 

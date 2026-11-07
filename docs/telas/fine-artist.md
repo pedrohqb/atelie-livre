@@ -348,11 +348,56 @@ seção 4. Resumo:
   `1477`/`1478`, Linha do ponto de fuga `1479`/`147c`, Aproximar do PF
   `1481`/`1484`, Afastar do PF `14d5`/`14d6`, Eixo de construção
   `147d`/`1480`, Apagar linha guia (ímã) `14d7`/`14d8`. Interruptor mágico
-  `1491` (ligado) / `1497` (desligado), 22×41 em (464, 58). As linhas guia
-  são só da tela (quadriculados de 24 e 48 px tracejados, horizonte e PF
-  azuis, linhas do PF e eixos verdes), guardadas em `ultimo.guias.json`;
+  `1491` (ligado) / `1497` (desligado), 22×41 em (464, 58); som `0256` ao
+  desligar e `0257` ao ligar. As linhas guia são só da tela (quadriculados
+  de 24 e 48 px tracejados, horizonte, círculo de raio 3 no PF, linhas do PF
+  e eixos, todos no verde `[92, 203, 83]` do original), guardadas em
+  `ultimo.guias.json`; com outra ferramenta escolhida, o horizonte e o
+  círculo do PF somem (as linhas do PF, os eixos e o quadriculado ficam).
   Aproximar/Afastar deslizam o objeto sob o botão apertado a 60 px/s,
   mudando o tamanho na proporção da distância ao PF.
+- **Seleciona-sons** (`scenes/sounds.rs`, `scenes/sounds/`,
+  `scenes/paint/sound_tool.rs`; ajuda `WHAT 1004`): três faixas de teatro por
+  página, em x 9, 121 e 233 (y 61). Cada faixa é o contorno de 1 bit `024e`
+  (máscara `024f`) pintado região a região com as cores medidas no original
+  (`BANNER_FILL`); o nome do carrossel vai na placa amarela, sem espaços
+  ("AnimalSelvagem"). As 8 categorias são os `CSRO` de `MAG100.SND` e
+  `MAX100.SND` na ordem dos ids, que continuam de um arquivo ao outro: pág. 1
+  Grave, Agudo, Dinossauro; pág. 2 AnimalSelvagem, AnimalDeFazenda, Ação;
+  pág. 3 Maluco, Absurdo. Setas `03b3`/`03b7` em (504, 58)/(504, 90) com o
+  número da página em (505, 75); ▲ volta (da 1 para a 3), som `021d`.
+  Controle de volume: trilho `0251`/`0257` em (374, 62) e cursor
+  `0259`/`025b` em x 370, y 63 (100%) a 88 (0%); clicar ou arrastar muda o
+  volume (`Effect::SetVolume`, som `020b` ao apertar, `022c` ao soltar,
+  balão `1004[4]`). Cachorrinho `025d`/`0263` em (409, 63) e Gravador
+  `0265`/`0267` em (456, 59). Clicar numa categoria (som `0233`, balão
+  `1004[2]`) abre a lista à esquerda: caixas de 94×24 em x 19, a partir de
+  y 97, a cada 23 px, com borda laranja, "Sem Som" primeiro; Ação tem 23
+  sons e rola pela última linha (setas). O som escolhido toca e fica na mão
+  (balão `1004[3]`); clicar num adesivo ou numa palavra o associa ao objeto
+  (campo `som`/`som_indice` ou `som_arquivo` do `.objetos.json`, uma ação do
+  ovo) e esvazia a mão; "Sem Som" tira o som do objeto; com a mão vazia,
+  clicar no objeto toca o som dele, e a Varinha Mágica também. Clicar no
+  fundo só abre o balão `1004[10]` ("Para associar o mesmo som…"). Os
+  "pontos de som" soltos de versões antigas (`ultimo.sons.json`) são presos
+  ao objeto debaixo deles ao abrir, e o arquivo some ao sair.
+- **Cachorrinho dos sons** (`scenes/sounds/finder.rs`; som `02f1`, balão
+  `1004[12]`): o diálogo verde de achar arquivos (painel 406×257 em
+  (120, 111), a mesma geometria do Cachorrinho dos adesivos), com os `.wav`
+  da pasta de desenhos e da subpasta `sons/`; "Fora de Imaginópolis" lista
+  os `.wav` da pasta de música (`XDG_MUSIC_DIR`, `user-dirs.dirs`, `~/Música`,
+  `~/Music`; até 4 níveis e 500 arquivos) e "Imaginópolis" volta. Clicar num
+  som toca; JÁ (`03bf`) põe na mão; X (`03bb`, som `022f`) fecha; o
+  cachorro procura de novo.
+- **Gravador** (`scenes/sounds/recorder.rs`; som `0224`, balão `1004[5]`):
+  moldura laranja (201, 164)–(438, 316); painel TEMPO em (306, 174) com a
+  barra que enche até 10 s; "Nome do Som >" (205, 241) e o campo (321, 241);
+  microfone `02d3` (216, 272) grava e para; TOCAR `02d7` (272, 272); NÃO
+  `0271` (354, 276, som `02ed`, ou Esc); OK `026d` (397, 276, ou Enter). A
+  captura é da plataforma (`Effect::RecordStart`/`RecordStop`, dispositivo de
+  gravação da SDL3, mono 22 050 Hz, 16 bits): a gravação vai para
+  `sons/.gravacao-<pid>-<n>.wav` e o OK a renomeia para `sons/<nome>.wav`
+  ("Meu som" sem nome) e põe na mão. Sem microfone, o OK só fecha.
 - **Balões do McZee**: ao escolher uma ferramenta ou uma opção da faixa, e ao
   clicar no McZee (nicho x 533..580, y 56..104), um balão amarelo explica o
   uso — os registros `WHAT` do `ARTIST.EXE` (`1002` pincel, `1003` lata,

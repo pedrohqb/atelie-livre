@@ -76,3 +76,10 @@ são 0. `formats::wave::decode` devolve o trecho em `Pcm::loop_points`.
 
 `SHARED/STUFF/MAG100.SND` e `MAX100.SND` têm o mesmo nome de extensão, mas
 são arquivos `CHNK` (ver `chnk.md`), com sons RIFF dentro dos blocos.
+
+Os carrosséis `CSRO` (categorias do Seleciona-sons) têm ids que continuam de
+um arquivo para o outro: `MAX100.SND` traz Grave (0), AnimalSelvagem (3),
+Ação (5) e Absurdo (7); `MAG100.SND`, Agudo (1), Dinossauro (2),
+AnimalDeFazenda (4) e Maluco (6). A ordem dos ids é a das faixas do original
+(3 por página). A lista de cada `CSRO`: `u16` quantidade, 4 bytes (`SND `) e
+os ids dos blocos `SND` (Ação tem 23).
