@@ -13,6 +13,14 @@ cliques contra o original (`WHAT 3800` e `4000`).
   um clique fora fecha a dica (o clique não vai para a pintura).
 - Palavras do glossário (`ffff`) viram o título do registro ligado (o
   parâmetro pode vir com o bit 15 ligado: `& 0x7fff`).
+- Figuras no meio do texto (ids `1000`–`10ff` do `WHAT`, "clique até ver
+  [ícone]") ocupam uma linha própria, centradas, no lugar em que aparecem.
+  Os ids do `WHAT` não batem com o `ARTIST.PIC` do port (`1021`, `109c`
+  não existem; `105f` é uma máscara): figura que o port não tem não ocupa
+  lugar, e o passo pode indicar o ícone do port (`Step::icons`): `[65]`
+  mostra o pincel Linha (`17b5`) e `[157]` o Grudar ou desgrudar (`14cc`).
+  O `[73]` (o rolo do café da manhã, que vem da biblioteca de adesivos)
+  fica sem figura.
 - Botões Volta / Pára / Segue sob o balão. Segue aparece nos passos
   `Next`, `PaintThenNext` e `Pictures`.
 - Passo `TypeName` ("Digite um nome…"): o balão mostra `> nome_`; as teclas

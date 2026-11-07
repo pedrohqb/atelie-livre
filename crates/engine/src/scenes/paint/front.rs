@@ -136,6 +136,7 @@ impl Paint {
             text: String::new(),
             options: Vec::new(),
             links: Vec::new(),
+            figures: Vec::new(),
         };
         let mut b = Balloon::from_block(&records, k, pos.0, pos.1, name).unwrap_or(fallback);
         if b.text.is_empty() && b.options.is_empty() {

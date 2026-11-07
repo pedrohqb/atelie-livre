@@ -3,9 +3,11 @@
 //! bolinha preta na frente (aparência medida no original).
 
 use crate::Frame;
-use crate::assets::Assets;
+use crate::assets::{Assets, ImageRef, Program};
 use formats::fnt::Font;
-use formats::what::{Item, PIC_OPTION, PIC_OPTION_PICTURE, PIC_TIP, PIC_TIP_MAX, Record};
+use formats::what::{
+    Item, PIC_GLOSSARY, PIC_OPTION, PIC_OPTION_PICTURE, PIC_TIP, PIC_TIP_MAX, Record,
+};
 use std::rc::Rc;
 
 const YELLOW: [u8; 3] = [255, 238, 76];
@@ -26,7 +28,15 @@ pub struct Balloon {
     /// Ligações para dicas (lâmpada `21b`): (registro de destino, texto),
     /// desenhadas entre o texto e as opções.
     pub links: Vec<(usize, String)>,
+    /// Figuras do `.PIC` no meio do texto ("clique até ver [ícone]"): cada
+    /// uma ocupa, na ordem, uma linha [`FIGURE`] de `text`.
+    pub figures: Vec<u16>,
 }
+
+/// Linha de `Balloon::text` que é o lugar de uma figura.
+pub const FIGURE: char = '\u{1}';
+/// Espaço acima e abaixo da figura no balão.
+const FIGURE_GAP: i32 = 2;
 
 impl Balloon {
     /// Balão a partir de um registro `WHAT` do original: o texto antes da
@@ -84,6 +94,7 @@ impl Balloon {
             t == 0 || Some(t) == own
         };
         let mut text = String::new();
+        let mut figures = Vec::new();
         let mut in_options = false;
         // dentro de uma linha de dica (lâmpada): o texto vai para `links`
         let mut in_link = false;
@@ -94,6 +105,15 @@ impl Balloon {
                 }
                 Item::Picture { id, param } if *id == PIC_TIP || *id == PIC_TIP_MAX => {
                     in_link = !is_title(*param);
+                }
+                // figura do `.PIC` no texto (ícone de ferramenta, rolo…)
+                Item::Picture { id, .. }
+                    if !in_options && !in_link && *id >= 0x1000 && *id != PIC_GLOSSARY =>
+                {
+                    text.push('\n');
+                    text.push(FIGURE);
+                    text.push('\n');
+                    figures.push(*id);
                 }
                 Item::Text { text: t, .. } if !in_options && !in_link => text.push_str(t),
                 Item::Newline if !in_options => {
@@ -121,6 +141,7 @@ impl Balloon {
             text,
             options: options.into_iter().map(|o| o.1).collect(),
             links,
+            figures,
         }
     }
 }
@@ -237,9 +258,18 @@ pub fn draw_lamp(f: &mut Frame, x: i32, y: i32) {
     f.rect(x + 5, y + 11, 3, 2, GRAY);
 }
 
+/// A linha é o lugar de uma figura.
+fn is_figure_line(line: &str) -> bool {
+    line.trim() == FIGURE.to_string()
+}
+
 /// Linhas já quebradas do balão.
 struct Layout {
     lines: Vec<String>,
+    /// Altura de cada linha do texto (a das figuras é a da figura).
+    line_hs: Vec<i32>,
+    /// Soma de `line_hs`.
+    text_h: i32,
     links: Vec<Vec<String>>,
     opts: Vec<Vec<String>>,
     h: i32,
@@ -268,11 +298,33 @@ impl Balloon {
         wrap_opt(font, text, width)
     }
 
+    fn figure(id: u16) -> ImageRef {
+        ImageRef::Pic(Program::Artist, id)
+    }
+
     /// Linhas do texto, linhas de cada ligação, linhas de cada opção e
     /// altura total; sem fonte, usa a 8×8.
-    fn layout(&self, font: Option<&Font>) -> Layout {
+    fn layout(&self, a: &Assets, font: Option<&Font>) -> Layout {
         let inner = (self.w - 2 * PAD) as u32;
         let lines = Self::wrap_any(font, &self.text, inner);
+        let lh = Self::line_h(font);
+        let mut figs = self.figures.iter();
+        let line_hs: Vec<i32> = lines
+            .iter()
+            .map(|l| {
+                if !is_figure_line(l) {
+                    return lh;
+                }
+                // figura que o port não tem não ocupa lugar (como na ajuda)
+                match figs.next().map(|&id| Self::figure(id)) {
+                    Some(r) if a.has_image(&r) => {
+                        (a.image(&r).height as i32 + 2 * FIGURE_GAP).max(lh)
+                    }
+                    _ => 0,
+                }
+            })
+            .collect();
+        let text_h = line_hs.iter().sum::<i32>();
         let item_w = inner.saturating_sub((BULLET + 4) as u32);
         let links: Vec<Vec<String>> = self
             .links
@@ -284,8 +336,7 @@ impl Balloon {
             .iter()
             .map(|o| Self::wrap_any(font, o, item_w))
             .collect();
-        let lh = Self::line_h(font);
-        let mut h = 2 * PAD + lines.len() as i32 * lh;
+        let mut h = 2 * PAD + text_h;
         if !links.is_empty() {
             h += 4 + links.iter().map(|o| o.len() as i32 * lh + 4).sum::<i32>();
         }
@@ -294,6 +345,8 @@ impl Balloon {
         }
         Layout {
             lines,
+            line_hs,
+            text_h,
             links,
             opts,
             h,
@@ -301,15 +354,15 @@ impl Balloon {
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
-        self.layout(Self::font(a).as_deref()).h
+        self.layout(a, Self::font(a).as_deref()).h
     }
 
     /// Retângulo (x, y, w, h) da ligação `k`.
     pub fn link_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
         let font = Self::font(a);
-        let lay = self.layout(font.as_deref());
+        let lay = self.layout(a, font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        let mut y0 = self.y + PAD + lay.lines.len() as i32 * lh + 4;
+        let mut y0 = self.y + PAD + lay.text_h + 4;
         for o in lay.links.iter().take(k) {
             y0 += o.len() as i32 * lh + 4;
         }
@@ -320,9 +373,9 @@ impl Balloon {
     /// Retângulo (x, y, w, h) da opção `k`.
     pub fn option_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
         let font = Self::font(a);
-        let lay = self.layout(font.as_deref());
+        let lay = self.layout(a, font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        let mut y0 = self.y + PAD + lay.lines.len() as i32 * lh + 4;
+        let mut y0 = self.y + PAD + lay.text_h + 4;
         if !lay.links.is_empty() {
             y0 += 4 + lay
                 .links
@@ -362,13 +415,22 @@ impl Balloon {
 
     pub fn draw(&self, f: &mut Frame, a: &Assets) {
         let font = Self::font(a);
-        let lay = self.layout(font.as_deref());
+        let lay = self.layout(a, font.as_deref());
         let lh = Self::line_h(font.as_deref());
         draw_box(f, self.x, self.y, self.w, lay.h);
         let mut ty = self.y + PAD;
-        for line in &lay.lines {
-            draw_line(f, font.as_deref(), self.x + PAD, ty, line);
-            ty += lh;
+        let mut figs = self.figures.iter();
+        for (line, h) in lay.lines.iter().zip(&lay.line_hs) {
+            if !is_figure_line(line) {
+                draw_line(f, font.as_deref(), self.x + PAD, ty, line);
+            } else if let Some(r) = figs.next().map(|&id| Self::figure(id))
+                && a.has_image(&r)
+            {
+                let img = a.image(&r);
+                let fx = self.x + (self.w - img.width as i32) / 2;
+                f.blit(&img, fx, ty + FIGURE_GAP);
+            }
+            ty += h;
         }
         for (k, link) in lay.links.iter().enumerate() {
             let r = self.link_rect(a, k);
@@ -427,6 +489,7 @@ mod tests {
             text: "Oi".into(),
             options: vec!["um".into(), "dois".into()],
             links: Vec::new(),
+            figures: Vec::new(),
         };
         let r0 = b.option_rect(&a, 0);
         let r1 = b.option_rect(&a, 1);
@@ -488,5 +551,62 @@ mod tests {
         // destino fora do bloco é descartado
         let b = Balloon::from_block(&recs, 0, 0, 0, "").unwrap();
         assert!(b.links.is_empty());
+    }
+
+    #[test]
+    fn inline_picture_takes_its_place_in_the_text() {
+        // "Então, clique até ver [ícone]" (`4000[65]`)
+        let t = |s: &str| Item::Text {
+            text: s.into(),
+            bold: false,
+            color: 0xf,
+            indent: 0,
+            key: false,
+            signature: false,
+        };
+        let r = Record {
+            title: "until".into(),
+            width: 200,
+            height: 0,
+            style: 0,
+            items: vec![
+                t("Então, clique até ver"),
+                Item::Picture {
+                    id: 0x105f,
+                    param: 0,
+                },
+                t("depois"),
+            ],
+        };
+        let b = Balloon::from_record(&r, 0, 0, "");
+        assert_eq!(b.figures, vec![0x105f]);
+        assert_eq!(b.text, format!("Então, clique até ver\n{FIGURE}\ndepois"));
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("ARTIST.EXE"), b"MZ").unwrap();
+        let a = Assets::open(dir.path()).unwrap();
+        let mut f = Frame::new(640, 480);
+        b.draw(&mut f, &a);
+    }
+
+    #[test]
+    fn missing_picture_takes_no_room() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("ARTIST.EXE"), b"MZ").unwrap();
+        let a = Assets::open(dir.path()).unwrap();
+        let with = Balloon {
+            x: 0,
+            y: 0,
+            w: 200,
+            text: format!("ver\n{FIGURE}\ndepois"),
+            options: Vec::new(),
+            links: Vec::new(),
+            figures: vec![0x1021],
+        };
+        let without = Balloon {
+            text: "ver\ndepois".into(),
+            figures: Vec::new(),
+            ..with.clone()
+        };
+        assert_eq!(with.height(&a), without.height(&a));
     }
 }

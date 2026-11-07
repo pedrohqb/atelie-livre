@@ -39,6 +39,7 @@ fn step(k: usize, maggie: Option<u16>, advance: Advance) -> Step {
         your_area: None,
         advance,
         anim: None,
+        icons: &[],
     }
 }
 

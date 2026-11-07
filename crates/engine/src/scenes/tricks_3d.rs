@@ -20,6 +20,10 @@ pub const OPT_VP_PUSH: usize = 7;
 /// Página e botão "Linha" do pincel.
 pub const LINE_BRUSH_PAGE: u8 = 5;
 pub const OPT_LINE_BRUSH: usize = 0;
+/// Ícones dos balões "clique até ver [ícone]": o pincel Linha (página 5 do
+/// pincel) e o Grudar ou desgrudar (cinza, como fica na faixa).
+pub const ICON_LINE_BRUSH: u16 = 0x17b5;
+pub const ICON_LINK: u16 = 0x14cc;
 /// "Grudar ou desgrudar" na página 2 dos Transformadores.
 pub const LINK_PAGE: u8 = 2;
 pub const OPT_LINK: usize = 3;
@@ -54,6 +58,7 @@ fn step(k: usize, maggie: Option<u16>, advance: Advance) -> Step {
         your_area: None,
         advance,
         anim: None,
+        icons: &[],
     }
 }
 
@@ -174,11 +179,14 @@ pub fn steps() -> Vec<Step> {
         // 22: a borda da mesa
         step(64, Some(TABLE_EDGE), Advance::Next),
         // 23: clique até ver o pincel Linha (página 5)
-        step(
-            65,
-            None,
-            Advance::Click(Target::Page(TOOL_BRUSH, LINE_BRUSH_PAGE)),
-        ),
+        Step {
+            icons: &[ICON_LINE_BRUSH],
+            ..step(
+                65,
+                None,
+                Advance::Click(Target::Page(TOOL_BRUSH, LINE_BRUSH_PAGE)),
+            )
+        },
         // 24: clique no pincel Linha
         step(
             66,
@@ -232,11 +240,14 @@ pub fn steps() -> Vec<Step> {
         // 43: clique em Transformadores
         step(156, None, Advance::Click(Target::Tool(TOOL_TRANSFORMERS))),
         // 44: clique na seta até ver o Grudar (página 2)
-        step(
-            157,
-            None,
-            Advance::Click(Target::Page(TOOL_TRANSFORMERS, LINK_PAGE)),
-        ),
+        Step {
+            icons: &[ICON_LINK],
+            ..step(
+                157,
+                None,
+                Advance::Click(Target::Page(TOOL_TRANSFORMERS, LINK_PAGE)),
+            )
+        },
         // 45: ferramenta Grudar ou Desgrudar
         step(
             159,
@@ -415,6 +426,16 @@ mod tests {
             }),
             O::Entered(33)
         );
+    }
+
+    #[test]
+    fn click_until_you_see_shows_the_port_icon() {
+        // "clique até ver [ícone]": o ícone do WHAT não está no .PIC do port
+        let st = steps();
+        assert_eq!(st[23].record.1, 65);
+        assert_eq!(st[23].icons, &[ICON_LINE_BRUSH]);
+        assert_eq!(st[44].record.1, 157);
+        assert_eq!(st[44].icons, &[ICON_LINK]);
     }
 
     #[test]

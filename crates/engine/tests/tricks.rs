@@ -155,3 +155,29 @@ fn lamp_opens_the_tip_and_a_click_outside_only_closes_it() {
         "o clique que fecha a dica pintou"
     );
 }
+
+#[test]
+fn balloon_figure_takes_the_height_of_the_icon() {
+    let Some(a) = data() else { return };
+    use engine::balloon::{Balloon, FIGURE};
+    let with = Balloon {
+        x: 0,
+        y: 0,
+        w: 200,
+        text: format!("Então, clique até ver\n{FIGURE}"),
+        options: Vec::new(),
+        links: Vec::new(),
+        figures: vec![engine::scenes::tricks_3d::ICON_LINE_BRUSH],
+    };
+    let without = Balloon {
+        text: "Então, clique até ver".into(),
+        figures: Vec::new(),
+        ..with.clone()
+    };
+    // o ícone do pincel Linha tem 32 px de altura
+    assert!(
+        with.height(&a) >= without.height(&a) + 32,
+        "{}",
+        with.height(&a)
+    );
+}

@@ -166,6 +166,7 @@ impl Dialog {
                 text: text.into(),
                 options: options.iter().map(|o| o.to_string()).collect(),
                 links: Vec::new(),
+                figures: Vec::new(),
             });
         if balloon.options.is_empty() && !options.is_empty() {
             balloon.options = options.iter().map(|o| o.to_string()).collect();

@@ -140,6 +140,9 @@ pub struct Step {
     pub advance: Advance,
     /// Animação do painel ao avançar por este passo.
     pub anim: Option<PanelAnim>,
+    /// Ícones do `.PIC` do port no lugar das figuras do registro ("clique
+    /// até ver [ícone]"), cujos ids do `WHAT` não existem no port.
+    pub icons: &'static [u16],
 }
 
 /// O que o assistente pede à tela ao processar um evento.
@@ -350,8 +353,12 @@ impl Wizard {
                     Vec::new()
                 },
                 links: Vec::new(),
+                figures: Vec::new(),
             },
         };
+        if !self.stopping && !self.quitting && !self.step().icons.is_empty() {
+            b.figures = self.step().icons.to_vec();
+        }
         if self.typing() {
             b.text.push_str("\n\n> ");
             b.text.push_str(&self.typed);
@@ -681,6 +688,7 @@ mod tests {
             your_area: None,
             advance,
             anim: None,
+            icons: &[],
         }
     }
 
