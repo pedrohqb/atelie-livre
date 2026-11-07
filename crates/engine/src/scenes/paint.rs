@@ -948,6 +948,11 @@ impl Paint {
                 self.wizard_event(e, fx, assets);
                 true
             }
+            // com um balão de saída aberto, qualquer outro clique é "ignorar isso"
+            None if w.stopping() || w.quitting() => {
+                self.wizard_event(WizardEvent::McZee, fx, assets);
+                true
+            }
             // o balão é opaco: clique dentro dele sem opção não vai para o quadro
             None => b.contains(assets, x, y),
         }
@@ -1020,10 +1025,13 @@ impl Paint {
     }
 
     /// Pinta no quadro a figura de partida do passo ("já comecei para você"):
-    /// os pixels não brancos, centrados, nas cores mais próximas da paleta.
+    /// os pixels não brancos, nas cores mais próximas da paleta, encostados
+    /// à esquerda (o painel da Maggie cobre a metade direita do quadro) e
+    /// centrados na vertical.
     fn paint_guide_picture(&mut self, id: u16, assets: &Assets) {
         let img = assets.image(&pic(id));
-        let ox = (CANVAS_W as i32 - img.width as i32) / 2;
+        let free = MAGGIE_PANEL.0 - ORIGIN.0;
+        let ox = ((free - img.width as i32) / 2).max(0);
         let oy = (CANVAS_H as i32 - img.height as i32) / 2;
         self.history.record_all(&self.canvas, &self.objects);
         for y in 0..img.height {
