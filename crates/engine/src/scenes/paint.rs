@@ -2,6 +2,15 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+pub mod exit_dialog;
+mod front;
+pub mod menu;
+pub mod rename;
+pub mod zoom;
+
+use self::exit_dialog::{Choice, ExitDialog, Reason};
+use self::rename::{After, DEFAULT_NAME, Rename};
+use self::zoom::Zoom;
 use super::paint_sfx as sfx;
 use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
@@ -15,11 +24,12 @@ use super::wizard::{
 };
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
+use crate::balloon::Balloon;
 use crate::help::HelpBalloon;
 use crate::paint::brush::{Pen, Stroke, Tiles};
 use crate::paint::objects::words_stamp;
 use crate::paint::stamp::Stamp;
-use crate::paint::store::{load_drawing, save_drawing_objects};
+use crate::paint::store::{load_drawing, load_name, save_drawing_named};
 use crate::paint::{
     CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Objects, Shape, Source, balloon_pixels,
     page_shapes, text_pixels, text_size,
@@ -67,8 +77,45 @@ const WHAT_MAP: u16 = 0x100e;
 /// Roteiro da Maggie no desenho animado (o nicho do McZee abre a apresentação).
 const WHAT_FLIPBOOK: u16 = 0x3a00;
 const WHAT_FLIPBOOK_INTRO: usize = 2;
-/// Ícone do andar, no canto inferior esquerdo da barra inferior.
-const MAP_ICON: (i32, i32, i32, i32) = (24, 460, 36, 20);
+/// Ícone do andar e a caixa "Ateliê" ao lado, na barra inferior: os dois
+/// abrem o mapa do prédio.
+const MAP_ICON: (i32, i32, i32, i32) = (24, 460, 117, 20);
+/// Registros do bloco `WHAT_MAP` (100e) usados pelo menu do McZee.
+const WHAT_MCZEE_ON: usize = 0;
+const WHAT_MCZEE_OFF: usize = 1;
+const WHAT_WAND: usize = 2;
+const WHAT_RENAME: usize = 4;
+const WHAT_MAGNIFY: usize = 6;
+/// Bloco dos ditados e piadas do McZee (cara de sol do menu).
+const WHAT_JOKES: u16 = 0x0201;
+/// Posição e largura do balão da piada, no meio do quadro.
+const JOKE_POS: (i32, i32, i32) = (218, 197, 200);
+/// Bloco e registro do convite da Maggie ("Oi! Você quer que eu te mostre
+/// alguns truques de desenho?"), pela cartola do menu.
+const WHAT_MAGGIE: (u16, usize) = (0x4600, 1);
+/// Porta aberta (batente) e a Maggie na soleira, com as máscaras.
+const DOOR_OPEN: (u16, u16) = (0x105d, 0x105f);
+const MAGGIE_DOOR: (u16, u16) = (0x6d87, 0x6d89);
+/// Faixa do Imprimir: "imprimir depressa" e "fazer escolhas" (máquina de impressão).
+const PRINT_QUICK: (u16, i32, i32, i32, i32) = (0x02e7, 131, 62, 79, 35);
+const PRINT_CHOICES: (u16, i32, i32, i32, i32) = (0x02f3, 338, 61, 70, 37);
+/// Sons do menu do McZee, da lente, da porta e do nome (ids do `ARTIST`).
+const SND_BALLOON_YES: u16 = 0x0252;
+const SND_BALLOON_NO: u16 = 0x0281;
+const SND_DISMISS_OPEN: u16 = 0x022d;
+const SND_FOLDER: u16 = 0x02f1;
+const SND_SAVE_MENU: u16 = 0x0232;
+const SND_RENAME: u16 = 0x0230;
+const SND_MCZEE_SCREEN: u16 = 0x02f6;
+const SND_WAND: u16 = 0x0307;
+const SND_JOKE: u16 = 0x0226;
+const SND_EPA: [u16; 2] = [0x02d6, 0x02fe];
+const SND_EPA_CLOSE: [u16; 2] = [0x0254, 0x02d7];
+const SND_BEEP: u16 = 0x0217;
+const SND_ZOOM_ON: u16 = 0x0309;
+const SND_ZOOM_OFF: u16 = 0x030a;
+const SND_ZOOM_SCROLL: [u16; 4] = [0x02bc, 0x02bd, 0x02be, 0x02bf];
+const SND_PRINT_MACHINE: u16 = 0x0224;
 /// Cartaz do prédio (o mesmo do saguão) aberto sobre o quadro, com borda.
 const MAP_PIC: u16 = 0x6c01;
 const MAP_FRAME: (i32, i32, i32, i32) = (0, 300, 190, 142);
@@ -212,7 +259,7 @@ const TOOLS: [ToolDef; 10] = [
     ToolDef {
         x: 458,
         y: 13,
-        w: 42,
+        w: 30,
         normal: (0x104d, 0x104f),
         active: (0x106d, 0x106f),
         action: Action::Print,
@@ -250,7 +297,7 @@ fn color_rect(k: usize) -> (i32, i32, i32, i32) {
 }
 
 fn pattern_rect(k: usize) -> (i32, i32, i32, i32) {
-    (618, 110 + 9 * k as i32, 17, 9)
+    (618, 110 + 9 * k as i32, 13, 9)
 }
 
 /// Andar do mapa do prédio sob `(x, y)`: faixas dos rótulos, como no
@@ -302,6 +349,29 @@ const VACUUM_MODES: [VacuumMode; 8] = [
     VacuumMode::Sounds,
     VacuumMode::All,
 ];
+
+/// Estado da porta de saída.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Door {
+    Closed,
+    /// Aberta (batente preto), com o "Epa!" na frente.
+    Open,
+    /// Aberta com a Maggie na soleira (cartola do menu).
+    Maggie,
+}
+
+/// Balão de opções aberto (quem fala e o que as bolinhas fazem).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Talk {
+    /// "OK, vou embora se você quiser mesmo que eu vá."
+    Dismiss,
+    /// "Oi! Aqui está o McZee…" (volta a ajudar).
+    Return,
+    /// Convite da Maggie para os truques de desenho.
+    Maggie,
+    /// Piada: qualquer clique fecha.
+    Joke,
+}
 
 /// Texto em edição: canto superior esquerdo da linha (coordenadas do quadro).
 struct WordsEdit {
@@ -369,6 +439,30 @@ pub struct Paint {
     map_open: bool,
     /// Som em laço e animação dos ícones da barra.
     sfx: sfx::State,
+    /// Menu do McZee (coluna de 8 botões) aberto.
+    menu_open: bool,
+    /// Lente de aumento ligada.
+    zoom: Option<Zoom>,
+    /// Diálogo "Epa!" aberto (modal).
+    exit_dialog: Option<ExitDialog>,
+    /// Nome do quadro em edição na barra de baixo.
+    rename: Option<Rename>,
+    /// Nome do quadro (rótulo da barra de baixo; "Quadro Novo" sem nome).
+    title: String,
+    door: Door,
+    /// Balão de opções aberto.
+    talk: Option<(Balloon, Talk)>,
+    /// O McZee ajuda (balões automáticos); "dê o fora" desliga.
+    help_on: bool,
+    /// Varinha Mágica na mão: o próximo clique num adesivo toca o som dele.
+    wand: bool,
+    /// A pasta foi aberta por cima (o quadro já foi guardado): ao sair por
+    /// ela, não gravar de novo por cima do quadro escolhido.
+    folder_pushed: bool,
+    /// Ferramenta Imprimir escolhida: a faixa mostra as duas opções.
+    print_strip: bool,
+    /// Último ponto do quadro tocado (centro da lente ao ligar).
+    last_canvas: (i32, i32),
 }
 
 impl Paint {
@@ -423,10 +517,25 @@ impl Paint {
             wizard_t: 0.0,
             map_open: false,
             sfx: sfx::State::default(),
+            menu_open: false,
+            zoom: None,
+            exit_dialog: None,
+            rename: None,
+            title: DEFAULT_NAME.to_string(),
+            door: Door::Closed,
+            talk: None,
+            help_on: true,
+            wand: false,
+            folder_pushed: false,
+            print_strip: false,
+            last_canvas: (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2),
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
         if let Some(d) = &p.drawings {
+            if let Some(n) = load_name(d) {
+                p.title = n;
+            }
             p.sounds.load_spots(&d.join(SPOTS_NAME));
             if let Some(g) = Guides::load(&d.join(GUIDES_NAME)) {
                 p.supertools.guides = g;
@@ -575,6 +684,9 @@ impl Paint {
     }
 
     fn show_help(&mut self, option: bool, assets: &Assets) {
+        if !self.help_on {
+            return;
+        }
         let (block, index) = self.help_target(option);
         self.open_help(block, index, assets);
     }
@@ -653,8 +765,8 @@ impl Paint {
         if !handles || !inside(canvas_rect(), self.mouse.0, self.mouse.1) {
             return None;
         }
-        self.objects
-            .hit(self.mouse.0 - ORIGIN.0, self.mouse.1 - ORIGIN.1)
+        let (cx, cy) = self.canvas_pt(self.mouse.0, self.mouse.1);
+        self.objects.hit(cx, cy)
     }
 
     /// Abre a tela como um projeto da Oficina: reabre o último trabalho desse
@@ -1137,6 +1249,9 @@ impl Paint {
     }
 
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        if self.front_click(x, y, fx, assets) {
+            return;
+        }
         if self.map_open {
             self.map_click(x, y, fx);
             return;
@@ -1205,7 +1320,10 @@ impl Paint {
         if self.tool == Tool::Sounds {
             // som preso a um objeto: colocar no adesivo clicado, ou tocar o dele
             if inside(canvas_rect(), x, y)
-                && let Some(id) = self.objects.hit(x - ORIGIN.0, y - ORIGIN.1)
+                && let Some(id) = {
+                    let (cx, cy) = self.canvas_pt(x, y);
+                    self.objects.hit(cx, cy)
+                }
             {
                 if let Some((_, snd)) = self.sounds.take_chosen() {
                     self.history.record_all(&self.canvas, &self.objects);
@@ -1239,7 +1357,23 @@ impl Paint {
             }
         }
         if inside(canvas_rect(), x, y) {
-            let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
+            // com o Imprimir escolhido, o quadro não responde (como no original)
+            if self.print_strip {
+                return;
+            }
+            let (cx, cy) = self.canvas_pt(x, y);
+            self.last_canvas = (cx, cy);
+            if std::mem::take(&mut self.wand) {
+                if let Some(snd) = self
+                    .objects
+                    .hit(cx, cy)
+                    .and_then(|id| self.objects.get(id))
+                    .and_then(|o| o.sound.clone())
+                {
+                    fx.push(Effect::PlaySound(snd));
+                }
+                return;
+            }
             match self.tool {
                 Tool::Brush => {
                     self.start_stroke(cx, cy);
@@ -1299,12 +1433,28 @@ impl Paint {
             return;
         }
         if inside(sfx::MAGNIFIER_ICON, x, y) {
-            fx.push(sfx::play(sfx::MAGNIFIER));
+            self.toggle_zoom(fx, assets);
             return;
         }
         if self.project.is_none() && inside(NICHE, x, y) {
             fx.push(sfx::play(sfx::MCZEE));
-            self.show_help(false, assets);
+            if !self.plain_studio() {
+                self.show_help(false, assets);
+            } else if self.help_on {
+                self.menu_open = !self.menu_open;
+            } else {
+                // o McZee foi embora: o nicho vazio chama ele de volta
+                self.open_talk(WHAT_MAP, WHAT_MCZEE_ON, HELP_POS, Talk::Return, assets);
+            }
+            return;
+        }
+        if self.plain_studio() && rename::label_hit(x, y) {
+            fx.push(sfx::play(SND_RENAME));
+            self.start_rename(After::Stay, assets);
+            return;
+        }
+        if inside(EXIT, x, y) && self.plain_studio() {
+            self.open_exit_dialog(Reason::Exit, fx, assets);
             return;
         }
         if inside(EXIT, x, y) {
@@ -1333,6 +1483,7 @@ impl Paint {
             match t.action {
                 Action::Select(tool) => {
                     self.tool = tool;
+                    self.print_strip = false;
                     self.stickers.reset();
                     self.sounds.reset();
                     self.transformers.reset();
@@ -1346,9 +1497,32 @@ impl Paint {
                     self.open_help(WHAT_EGG, 0, assets);
                 }
                 Action::Print => {
-                    fx.push(self.print());
+                    // no quadro do Ateliê, Imprimir é uma ferramenta com
+                    // duas opções; nos projetos e lições imprime na hora
+                    if self.plain_studio() {
+                        self.print_strip = true;
+                    } else {
+                        fx.push(self.print());
+                    }
                     self.open_help(WHAT_PRINT, 0, assets);
                 }
+            }
+            return;
+        }
+        if self.print_strip {
+            let (_, qx, qy, qw, qh) = PRINT_QUICK;
+            let (_, cx, cy, cw, ch) = PRINT_CHOICES;
+            if inside((qx, qy, qw, qh), x, y) {
+                fx.push(sfx::play(sfx::TOOLS[9]));
+                self.sfx.tool_clicked(9);
+                fx.push(self.print());
+            } else if inside((cx, cy, cw, ch), x, y) {
+                fx.push(sfx::play(SND_PRINT_MACHINE));
+                fx.push(Effect::Log(
+                    "máquina de impressão: ainda não disponível; imprimindo direto".into(),
+                ));
+                self.sfx.tool_clicked(9);
+                fx.push(self.print());
             }
             return;
         }
@@ -1640,8 +1814,10 @@ impl Paint {
             (None, None) if self.edit_file.is_some() => {
                 ("Animação", "Modificando uma figura do Desenho Animado")
             }
-            (None, None) => ("Ateliê", "Quadro Novo"),
+            (None, None) => ("Ateliê", self.title.as_str()),
         };
+        // em edição, o campo é desenhado por cima (ver `rename`)
+        let name = if self.rename.is_some() { "" } else { name };
         match a.font(8) {
             Some(font) => {
                 f.text_font(&font, 69, 461, label, BLACK);
@@ -1657,7 +1833,8 @@ impl Paint {
 
     fn draw_tools(&self, f: &mut Frame, a: &Assets) {
         for (i, t) in TOOLS.iter().enumerate() {
-            let active = t.action == Action::Select(self.tool);
+            let active = t.action == Action::Select(self.tool)
+                || (t.action == Action::Print && self.print_strip);
             let (mut img, mut mask) = if active { t.active } else { t.normal };
             let (mut x, mut y) = (t.x, t.y);
             let anim = self.sfx.icon(i, t.normal.1);
@@ -1678,11 +1855,18 @@ impl Paint {
             }
             f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), x, y);
         }
-        f.blit_masked(&a.image(&pic(0x1055)), &a.image(&pic(0x1057)), 537, 49);
+        if self.help_on {
+            f.blit_masked(&a.image(&pic(0x1055)), &a.image(&pic(0x1057)), 537, 49);
+        }
         // ícones da barra inferior
         f.blit(&a.image(&pic(0x03c3)), 27, 463);
         f.blit(&a.image(&pic(0x1403)), 526, 462);
-        f.blit_masked(&a.image(&pic(0x1059)), &a.image(&pic(0x105b)), 580, 18);
+        let (door, mask) = match self.door {
+            Door::Closed => (0x1059, 0x105b),
+            Door::Open => DOOR_OPEN,
+            Door::Maggie => MAGGIE_DOOR,
+        };
+        f.blit_masked(&a.image(&pic(door)), &a.image(&pic(mask)), 580, 18);
     }
 
     /// Desenho animado: as ferramentas de pintura não servem; ficam
@@ -1716,6 +1900,13 @@ impl Paint {
     }
 
     fn draw_options(&self, f: &mut Frame, a: &Assets) {
+        if self.print_strip {
+            let (q, qx, qy, _, _) = PRINT_QUICK;
+            let (c, cx, cy, _, _) = PRINT_CHOICES;
+            crate::text_balloon::blit_pic(f, a, q, qx, qy, true);
+            crate::text_balloon::blit_pic(f, a, c, cx, cy, true);
+            return;
+        }
         let selected = match self.tool {
             Tool::Brush => {
                 f.blit_masked(&a.image(&pic(0x1129)), &a.image(&pic(0x112b)), 4, 56);
@@ -1911,12 +2102,14 @@ impl Scene for Paint {
         self.sfx.update(dt);
         for i in input {
             match *i {
+                // o botão direito faz o mesmo que o esquerdo (como no original)
                 Input::Click {
-                    button: MouseButton::Left,
+                    button: MouseButton::Left | MouseButton::Right,
                     x,
                     y,
                 } => {
                     self.mouse = (x, y);
+                    self.folder_pushed = false;
                     if self.wizard.is_some() && self.wizard_click(x, y, &mut fx, assets) {
                         continue;
                     }
@@ -1929,17 +2122,15 @@ impl Scene for Paint {
                         fb.mouse_move(x, y);
                         continue;
                     }
-                    self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
-                    if self
-                        .transformers
-                        .drag(x - ORIGIN.0, y - ORIGIN.1, &mut self.objects)
-                    {
+                    let (cx, cy) = self.canvas_pt(x, y);
+                    self.extend_stroke(cx, cy);
+                    if self.transformers.drag(cx, cy, &mut self.objects) {
                         self.changed = true;
                     }
-                    self.supertools.drag(x - ORIGIN.0, y - ORIGIN.1);
+                    self.supertools.drag(cx, cy);
                 }
                 Input::MouseUp {
-                    button: MouseButton::Left,
+                    button: MouseButton::Left | MouseButton::Right,
                     x,
                     y,
                 } => {
@@ -1951,12 +2142,13 @@ impl Scene for Paint {
                         continue;
                     }
                     let painting = self.stroke.is_some();
-                    self.end_stroke(x - ORIGIN.0, y - ORIGIN.1);
+                    let (cx, cy) = self.canvas_pt(x, y);
+                    self.end_stroke(cx, cy);
                     if painting && self.wizard.is_some() {
                         self.wizard_event(WizardEvent::Painted, &mut fx, assets);
                     }
                     if self.vacuum_anchor.is_some() {
-                        self.vacuum_release(x - ORIGIN.0, y - ORIGIN.1);
+                        self.vacuum_release(cx, cy);
                     }
                     self.transformers.release();
                     self.supertools.release();
@@ -1965,21 +2157,42 @@ impl Scene for Paint {
                     key,
                     ctrl: false,
                     alt: false,
-                } => match self.project.as_mut() {
-                    Some(Project::Flipbook(fb)) => fb.key(key),
-                    _ => {
-                        if key == Key::Enter
-                            && self.words.as_ref().is_some_and(|w| !w.text.is_empty())
-                        {
-                            fx.push(sfx::play(sfx::WORDS_DONE));
-                        }
-                        self.key(key)
+                } => {
+                    // o "Epa!" é modal: nem Esc fecha
+                    if self.exit_dialog.is_some() {
+                        continue;
                     }
-                },
-                Input::Text(ref t) => match self.project.as_mut() {
-                    Some(Project::Flipbook(fb)) => fb.text(t),
-                    _ => self.type_text(t),
-                },
+                    if let Some(r) = self.rename.as_mut() {
+                        if r.key(key) {
+                            self.finish_rename(&mut fx);
+                        }
+                        continue;
+                    }
+                    match self.project.as_mut() {
+                        Some(Project::Flipbook(fb)) => fb.key(key),
+                        _ => {
+                            if key == Key::Enter
+                                && self.words.as_ref().is_some_and(|w| !w.text.is_empty())
+                            {
+                                fx.push(sfx::play(sfx::WORDS_DONE));
+                            }
+                            self.key(key)
+                        }
+                    }
+                }
+                Input::Text(ref t) => {
+                    if self.exit_dialog.is_some() {
+                        continue;
+                    }
+                    if let Some(r) = self.rename.as_mut() {
+                        r.type_text(t);
+                        continue;
+                    }
+                    match self.project.as_mut() {
+                        Some(Project::Flipbook(fb)) => fb.text(t),
+                        _ => self.type_text(t),
+                    }
+                }
                 _ => {}
             }
         }
@@ -2028,7 +2241,13 @@ impl Scene for Paint {
             _ => self.draw_options(frame, assets),
         }
         self.draw_columns(frame);
-        self.draw_canvas(frame);
+        if let Some(z) = &self.zoom {
+            let flat = self.composed();
+            z.draw_canvas(frame, &flat.px, flat.w, |i| self.rgb(i));
+            zoom::draw_arrows(frame, assets);
+        } else {
+            self.draw_canvas(frame);
+        }
         self.supertools.guides.draw(frame);
         self.draw_blink(frame);
         if self.tool == Tool::Transformers {
@@ -2051,19 +2270,36 @@ impl Scene for Paint {
         if self.tool == Tool::Sounds {
             self.sounds.draw_overlay(frame, assets);
         }
+        if self.menu_open {
+            menu::draw(frame, assets);
+        }
+        if let Some(r) = &self.rename {
+            r.draw(frame, assets.font(8).as_deref());
+        }
         if self.map_open {
             self.draw_map(frame, assets);
         }
         if let Some(h) = &self.help {
             h.draw(frame, assets);
         }
+        if let Some((b, _)) = &self.talk {
+            b.draw(frame, assets);
+        }
         self.draw_wizard(frame, assets);
+        if let Some(d) = &self.exit_dialog {
+            d.draw(frame, assets);
+        }
     }
 
     fn leave(&mut self) -> Vec<Effect> {
         self.stroke = None;
         self.finish_sticker();
         self.commit_words();
+        if self.folder_pushed {
+            // o quadro foi guardado ao abrir a pasta; a pasta pode ter
+            // trocado o último desenho, que não deve ser sobrescrito
+            return vec![Effect::Log("desenho já guardado ao abrir a pasta".into())];
+        }
         let Some(dir) = &self.drawings else {
             return vec![Effect::Log(
                 "sem pasta de desenhos (HOME e XDG_DATA_HOME vazios): desenho não guardado".into(),
@@ -2123,13 +2359,14 @@ impl Scene for Paint {
                 self.changed,
                 now_secs(),
             ),
-            None => save_drawing_objects(
+            None => save_drawing_named(
                 dir,
                 &self.canvas,
                 &self.objects,
                 &self.pal,
                 self.changed,
                 now_secs(),
+                self.save_name().as_deref(),
             ),
         };
         let msg = match saved {
@@ -2174,12 +2411,220 @@ mod tests {
         p.composed().px.iter().filter(|&&v| v != W).count()
     }
 
+    /// Bolinha `k` do "Epa!" (0 salvar, 1 jogar fora, 2 ops).
+    fn epa_bullet(k: usize) -> Input {
+        let (x, y) = ExitDialog::new(Reason::Exit, &empty_assets().1).bullet(&empty_assets().1, k);
+        click(x, y)
+    }
+
     #[test]
-    fn exit_door_goes_to_studio() {
+    fn exit_door_opens_epa_and_ops_stays() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);
         let fx = p.update(&[click(600, 60)], 0.0, &a);
+        assert!(p.exit_dialog_open());
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+        assert!(fx.contains(&sfx::play(SND_EPA[0])));
+        // modal: clique fora dá beep, Esc não fecha, o quadro não pinta
+        let fx = p.update(&[click(300, 300), key(Key::Escape)], 0.0, &a);
+        assert!(p.exit_dialog_open());
+        assert!(fx.contains(&sfx::play(SND_BEEP)));
+        assert_eq!(painted(&p), 0);
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        // "Ops!" fecha e fica
+        let fx = p.update(&[epa_bullet(2)], 0.0, &a);
+        assert!(!p.exit_dialog_open());
+        assert!(fx.contains(&sfx::play(SND_EPA_CLOSE[1])));
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+    }
+
+    #[test]
+    fn epa_discard_leaves_blank_and_save_renames_then_leaves() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
+        assert!(painted(&p) > 0);
+        let fx = p.update(&[click(600, 60), epa_bullet(1)], 0.0, &a);
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Studio)));
+        assert_eq!(painted(&p), 0);
+        // salvar: campo de nome; Return guarda com o nome e sai
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
+        p.update(&[click(600, 60), epa_bullet(0)], 0.0, &a);
+        assert_eq!(p.renaming(), Some("Quadro Novo"));
+        let fx = p.update(&[text("Casa"), key(Key::Enter)], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Studio)));
+        assert_eq!(p.title(), "Casa");
+        assert!(dir.path().join("Casa.png").exists());
+        assert!(dir.path().join("Casa.mag").exists());
+        let mag = formats::mag::read(&std::fs::read(dir.path().join("Casa.mag")).unwrap()).unwrap();
+        assert_eq!(mag.title, "Casa");
+        // ao reabrir, o rótulo lembra o nome
+        p.leave();
+        let p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(p.title(), "Casa");
+    }
+
+    #[test]
+    fn label_click_renames_and_canvas_click_cancels() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let fx = p.update(&[click(300, 468)], 0.0, &a);
+        assert!(fx.contains(&sfx::play(SND_RENAME)));
+        assert!(p.renaming().is_some());
+        p.update(&[text("X")], 0.0, &a);
+        assert_eq!(p.renaming(), Some("X"));
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        p.update(&[click(300, 300)], 0.0, &a);
+        assert!(p.renaming().is_none());
+        assert_eq!(p.title(), "Quadro Novo");
+        assert_eq!(painted(&p), 0);
+    }
+
+    #[test]
+    fn mczee_menu_toggles_and_items_act() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        let fx = p.update(&[click(555, 80)], 0.0, &a);
+        assert!(p.menu_open());
+        assert!(fx.contains(&sfx::play(sfx::MCZEE)));
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        assert_eq!(f.pixel(540, 400)[..3], WHITE);
+        p.update(&[click(555, 80)], 0.0, &a);
+        assert!(!p.menu_open());
+        // clicar no quadro sob o menu não pinta
+        p.update(&[click(555, 80), click(560, 430)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        assert!(!p.menu_open());
+        // NOVO abre o "Epa!" com a porta fechada
+        p.update(&[click(555, 80), click(560, 160)], 0.0, &a);
+        assert!(p.exit_dialog_open());
+        assert_eq!(p.door, Door::Closed);
+        p.update(&[epa_bullet(2)], 0.0, &a);
+        // SALVAR: campo de nome; Return guarda e fica
+        p.update(&[click(555, 80), click(560, 250)], 0.0, &a);
+        assert!(p.renaming().is_some());
+        let fx = p.update(&[text("Sol"), key(Key::Enter)], 0.0, &a);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+        assert!(dir.path().join("Sol.png").exists());
+        // pasta por cima, guardando antes
+        let fx = p.update(&[click(555, 80), click(560, 210)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Portfolio)));
+        assert!(
+            p.leave()
+                .iter()
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("já guardado")))
+        );
+        // história por cima
+        let fx = p.update(&[click(555, 80), click(560, 440)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::BookStory)));
+        // cartola: Maggie na porta; "Não" fecha a porta
+        p.update(&[click(555, 80), click(560, 300)], 0.0, &a);
+        assert_eq!(p.door, Door::Maggie);
+        let (b, _) = p.talk.as_ref().unwrap();
+        let r = b.option_rect(&a, 1);
+        let fx = p.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert_eq!(p.door, Door::Closed);
+        assert!(fx.contains(&sfx::play(SND_EPA_CLOSE[1])));
+        // "É" leva ao andar dos truques
+        p.update(&[click(555, 80), click(560, 300)], 0.0, &a);
+        let (b, _) = p.talk.as_ref().unwrap();
+        let r = b.option_rect(&a, 0);
+        let fx = p.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::TricksFloor)));
+        // piada no meio do quadro: qualquer clique fecha sem pintar
+        p.update(&[click(555, 80), click(560, 380)], 0.0, &a);
+        assert!(matches!(p.talk, Some((_, Talk::Joke))));
+        p.draw(&mut f, &a);
+        p.update(&[click(100, 300)], 0.0, &a);
+        assert!(p.talk.is_none());
+        assert_eq!(painted(&p), 0);
+    }
+
+    #[test]
+    fn dismissing_mczee_turns_help_off_and_niche_brings_him_back() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(555, 80), click(560, 110)], 0.0, &a);
+        let (b, kind) = p.talk.as_ref().unwrap();
+        assert_eq!(*kind, Talk::Dismiss);
+        let r = b.option_rect(&a, 0);
+        p.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert!(!p.help_on);
+        // sem o McZee, escolher ferramenta não abre balão
+        p.update(&[click(75, 30)], 0.0, &a);
+        assert!(p.help().is_none());
+        // o nicho vazio chama ele de volta
+        p.update(&[click(555, 80)], 0.0, &a);
+        assert!(!p.menu_open());
+        let (b, kind) = p.talk.as_ref().unwrap();
+        assert_eq!(*kind, Talk::Return);
+        let r = b.option_rect(&a, 0);
+        p.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        assert!(p.help_on);
+    }
+
+    #[test]
+    fn magnifier_zooms_scrolls_and_paints_in_canvas_coordinates() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let fx = p.update(&[click(530, 470)], 0.0, &a);
+        assert!(p.zoomed());
+        assert!(fx.contains(&sfx::play(SND_ZOOM_ON)));
+        let z = p.zoom.unwrap();
+        // vista centrada no meio do quadro
+        assert_eq!(z.ox, CANVAS_W as i32 / 2 - zoom::VIEW_W / 2);
+        // setas rolam (com som) e param na borda (sem som)
+        let fx = p.update(&[click(612, 468)], 0.0, &a);
+        assert!(fx.contains(&sfx::play(SND_ZOOM_SCROLL[3])));
+        let fx = p.update(&[click(612, 468), click(612, 468)], 0.0, &a);
+        assert!(
+            fx.iter()
+                .filter(|e| matches!(e, Effect::PlaySound(_)))
+                .count()
+                < 2
+        );
+        let z = p.zoom.unwrap();
+        assert_eq!(z.oy, CANVAS_H as i32 - zoom::VIEW_H - 1);
+        // um clique na tela pinta o pixel do quadro sob a lente
+        let (sx, sy) = (ORIGIN.0 + 30, ORIGIN.1 + 30);
+        let (cx, cy) = z.to_canvas(sx, sy);
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+        assert_ne!(p.canvas().get(cx, cy), Some(W));
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        // segundo clique na lupa volta
+        let fx = p.update(&[click(530, 470)], 0.0, &a);
+        assert!(!p.zoomed());
+        assert!(fx.contains(&sfx::play(SND_ZOOM_OFF)));
+    }
+
+    #[test]
+    fn atelie_box_opens_map_and_right_button_paints() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(100, 470)], 0.0, &a);
+        assert!(p.map_open());
+        p.update(&[click(320, 200)], 0.0, &a);
+        assert!(!p.map_open());
+        let right = Input::Click {
+            button: MouseButton::Right,
+            x: 300,
+            y: 300,
+        };
+        let right_up = Input::MouseUp {
+            button: MouseButton::Right,
+            x: 300,
+            y: 300,
+        };
+        p.update(&[right, right_up], 0.0, &a);
+        assert!(painted(&p) > 0);
+        assert!(p.stroke.is_none());
     }
 
     #[test]
@@ -2597,11 +3042,27 @@ mod tests {
         let (_d, a) = empty_assets();
         let dir = tempfile::tempdir().unwrap();
         let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        // o ícone escolhe a ferramenta; a faixa mostra "depressa" e "escolhas"
         let fx = p.update(&[click(479, 30)], 0.0, &a);
+        assert!(p.print_strip);
+        assert!(
+            !fx.iter()
+                .any(|e| matches!(e, Effect::Log(s) if s.contains("impressao-")))
+        );
+        // com o Imprimir ativo o quadro não pinta
+        p.update(&[click(300, 300), up(300, 300)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        let (_, qx, qy, _, _) = PRINT_QUICK;
+        let fx = p.update(&[click(qx + 10, qy + 10)], 0.0, &a);
         assert!(
             fx.iter()
                 .any(|e| matches!(e, Effect::Log(s) if s.contains("impressao-")))
         );
+        // escolher outra ferramenta fecha a faixa
+        p.update(&[click(25, 30)], 0.0, &a);
+        assert!(!p.print_strip);
         assert!(std::fs::read_dir(dir.path()).unwrap().any(|e| {
             e.unwrap()
                 .file_name()
