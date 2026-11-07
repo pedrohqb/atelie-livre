@@ -310,11 +310,44 @@ impl Project {
 
     /// Clique na tela: nicho do projeto e, com o painel aberto, a faixa de opções.
     /// `Some(mudou)` se o projeto tratou o clique; `None` deixa seguir para a pintura.
-    pub fn click(&mut self, x: i32, y: i32, c: &mut Canvas, h: &mut History) -> Option<bool> {
+    pub fn click(
+        &mut self,
+        x: i32,
+        y: i32,
+        c: &mut Canvas,
+        h: &mut History,
+        assets: &Assets,
+    ) -> Option<bool> {
         match self {
-            Project::Comics(k) => k.click(x, y),
+            Project::Comics(k) => k.click(x, y, c, h, assets),
             Project::Button(b) => b.click(x, y, c, h),
             Project::Flipbook(_) => None,
+        }
+    }
+
+    /// Entrada (texto, tecla, clique) para um balão do projeto aberto; `true`
+    /// se o projeto a consumiu.
+    pub fn dialog_input(&mut self, input: &crate::scene::Input, assets: &Assets) -> bool {
+        match self {
+            Project::Comics(k) => k.field_input(input, assets),
+            _ => false,
+        }
+    }
+
+    /// Carrega o que o projeto precisa dos dados (fundos prontos).
+    pub fn load_assets(&mut self, assets: &Assets) {
+        if let Project::Comics(k) = self {
+            k.load_assets(assets);
+        }
+    }
+
+    /// Texto da caixa central da barra inferior (título do gibi, se houver).
+    pub fn display_name(&self) -> String {
+        match self {
+            Project::Comics(k) => k
+                .display_name()
+                .unwrap_or_else(|| self.kind().new_name().into()),
+            _ => self.kind().new_name().into(),
         }
     }
 
@@ -338,9 +371,9 @@ impl Project {
 
     /// Página a imprimir: o quadro com as molduras (quadrinhos) ou a folha de
     /// cópias (botão/adesivo).
-    pub fn print_page(&self, c: &Canvas, pal: &[Rgb]) -> Canvas {
+    pub fn print_page(&self, c: &Canvas, pal: &[Rgb], font: Option<&formats::fnt::Font>) -> Canvas {
         match self {
-            Project::Comics(k) => k.compose(c),
+            Project::Comics(k) => k.print_page(c, pal, font),
             Project::Button(b) => b.print_sheet(c, pal),
             Project::Flipbook(_) => c.clone(),
         }

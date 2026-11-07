@@ -854,6 +854,7 @@ impl Paint {
             p.restore_objects(&records, assets);
         }
         let mut project = Project::new(kind);
+        project.load_assets(assets);
         if let Some(d) = &p.drawings {
             let stem = format!("ultimo-{}", kind.file_stem());
             project.apply_meta(&super::projects::load_meta(d, &stem));
@@ -883,9 +884,15 @@ impl Paint {
         let name =
             crate::paint::store::timestamp_name(now_secs()).replace("desenho-", "impressao-");
         let path = dir.join(name);
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            return Effect::Log(format!(
+                "imprimir: não consegui criar {}: {e}",
+                dir.display()
+            ));
+        }
         let flat = self.composed();
         let page = match &self.project {
-            Some(p) => p.print_page(&flat, &self.pal),
+            Some(p) => p.print_page(&flat, &self.pal, self.font.as_deref()),
             None => flat,
         };
         if let Err(e) = crate::paint::store::save_png(&page, &self.pal, &path) {
@@ -1292,7 +1299,7 @@ impl Paint {
         }
         self.commit_words();
         if let Some(p) = self.project.as_mut() {
-            if let Some(changed) = p.click(x, y, &mut self.canvas, &mut self.history) {
+            if let Some(changed) = p.click(x, y, &mut self.canvas, &mut self.history, assets) {
                 self.changed |= changed;
                 return;
             }
@@ -1777,10 +1784,11 @@ impl Paint {
         }
         // textos na "Pablo Graphos" de 8 pontos, como no original
         let (label, name) = match (&self.project, self.trick) {
-            (_, Some(t)) => ("Truques", t.label()),
-            (Some(p), None) => (p.kind().label(), p.kind().new_name()),
-            (None, None) => ("Ateliê", "Quadro Novo"),
+            (_, Some(t)) => ("Truques", t.label().to_string()),
+            (Some(p), None) => (p.kind().label(), p.display_name()),
+            (None, None) => ("Ateliê", "Quadro Novo".to_string()),
         };
+        let name = name.as_str();
         match a.font(8) {
             Some(font) => {
                 f.text_font(&font, 69, 461, label, BLACK);
@@ -2110,6 +2118,11 @@ impl Scene for Paint {
         self.wizard_t += dt;
         self.sfx.update(dt);
         for i in input {
+            if let Some(p) = self.project.as_mut()
+                && p.dialog_input(i, assets)
+            {
+                continue;
+            }
             match *i {
                 Input::Click {
                     button: MouseButton::Left,

@@ -448,3 +448,29 @@ fn plain_paint_keeps_two_word_options() {
         matches!(&o.source, engine::paint::Source::Words { style, .. } if *style == engine::paint::WordsStyle::balloon())
     );
 }
+
+#[test]
+fn comic_backgrounds_exist_in_real_data() {
+    use engine::scenes::projects::comics::{BG_THUMB, load_backgrounds};
+    let Some(d) = std::env::var_os("ATELIE_DATA").map(PathBuf::from) else {
+        eprintln!("aviso: ATELIE_DATA não definida; teste com dados reais pulado");
+        return;
+    };
+    let a = Assets::open(&d).unwrap();
+    let bgs = load_backgrounds(&a);
+    assert_eq!(bgs.len(), 11);
+    assert_eq!(bgs[0].name, "Caverna");
+    assert!(bgs.iter().any(|b| b.name == "Fundo do mar"));
+    assert!(
+        bgs.iter()
+            .all(|b| (b.image.width, b.image.height) == (271, 219))
+    );
+    // pela tela: a miniatura arma o fundo e o clique no quadrinho pinta
+    let mut p = Paint::new_project(ProjectKind::Comics, None, &a);
+    assert!(matches!(p.project(), Some(Project::Comics(c)) if c.backgrounds.len() == 11));
+    p.update(&[click(BG_THUMB.0 + 5, BG_THUMB.1 + 5)], 0.0, &a);
+    let before = painted(p.canvas()).len();
+    p.update(&[click(ORIGIN.0 + 200, ORIGIN.1 + 150)], 0.0, &a);
+    assert!(painted(p.canvas()).len() > before + 1000);
+    assert!(matches!(p.project(), Some(Project::Comics(c)) if !c.pending_background));
+}

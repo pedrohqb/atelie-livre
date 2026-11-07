@@ -96,6 +96,7 @@ pub fn pic_for(what_id: u16) -> Option<u16> {
     }
 }
 
+#[derive(Clone)]
 pub struct TextBalloon {
     pub x: i32,
     pub y: i32,
