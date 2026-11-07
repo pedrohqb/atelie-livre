@@ -37,7 +37,7 @@ use crate::paint::{
     CANVAS_H, CANVAS_W, Canvas, History, Ink, ORIGIN, Objects, Shape, Source, WordsStyle,
     page_shapes,
 };
-use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use formats::fnt::Font;
 use formats::palette::Rgb;
 use std::collections::HashMap;
