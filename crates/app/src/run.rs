@@ -431,6 +431,20 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     0
 }
 
+/// Linha de rastreio por efeito, para ferramentas externas (varredura de cliques).
+fn trace_effect(effect: &Effect) {
+    match effect {
+        Effect::PlaySound(r) => println!("TRACE som {r:?}"),
+        Effect::PlayLoop(r) => println!("TRACE laço {r:?}"),
+        Effect::StopLoop => println!("TRACE fim-laço"),
+        Effect::ChangeScene(id) => println!("TRACE cena {id:?}"),
+        Effect::Push(id) => println!("TRACE push {id:?}"),
+        Effect::Back => println!("TRACE back"),
+        Effect::Quit => println!("TRACE quit"),
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,19 +458,5 @@ mod tests {
         );
         assert_eq!(first_scene(true, ProgramChoice::Writer), SceneId::Browser);
         assert_eq!(first_scene(false, ProgramChoice::Ask), SceneId::Chooser);
-    }
-}
-
-/// Linha de rastreio por efeito, para ferramentas externas (varredura de cliques).
-fn trace_effect(effect: &Effect) {
-    match effect {
-        Effect::PlaySound(r) => println!("TRACE som {r:?}"),
-        Effect::PlayLoop(r) => println!("TRACE laço {r:?}"),
-        Effect::StopLoop => println!("TRACE fim-laço"),
-        Effect::ChangeScene(id) => println!("TRACE cena {id:?}"),
-        Effect::Push(id) => println!("TRACE push {id:?}"),
-        Effect::Back => println!("TRACE back"),
-        Effect::Quit => println!("TRACE quit"),
-        _ => {}
     }
 }
