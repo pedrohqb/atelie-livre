@@ -6,6 +6,7 @@ pub mod elevator;
 pub mod entry;
 pub mod gags;
 pub mod gallery;
+pub mod gallery_print;
 pub mod gallery_room;
 pub mod imaginopolis;
 pub mod paint;
