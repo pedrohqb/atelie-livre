@@ -363,3 +363,52 @@ fn help_without_data_never_opens_and_niche_click_is_harmless() {
     assert!(p.help().is_none());
     assert_eq!(p.tool(), Tool::Bucket);
 }
+
+/// Primeira ligação (gema, tecla, glossário) do balão, varrendo-o.
+fn first_link(h: &engine::help::HelpBalloon, a: &Assets) -> Option<(i32, i32, usize)> {
+    let hh = h.height(a);
+    (h.y..h.y + hh).step_by(2).find_map(|y| {
+        (h.x..h.x + h.w)
+            .step_by(4)
+            .find_map(|x| h.link_at(a, x, y).map(|t| (x, y, t)))
+    })
+}
+
+#[test]
+fn brush_balloon_stays_open_while_paging_and_gems_open_beside_it() {
+    let Some(a) = assets() else { return };
+    let mut p = Paint::new(None, &a);
+    p.update(&[click(300, 300), click(38, 40)], 0.0, &a);
+    let main = p.help().expect("balão do pincel").key();
+    let page = p.page();
+    // setas de página: o balão continua aberto
+    p.update(&[click(512, 96)], 0.0, &a);
+    assert_ne!(p.page(), page);
+    assert_eq!(p.help().map(|h| h.key()), Some(main));
+    // uma gema abre o sub-balão à esquerda; o principal fica aberto
+    let (lx, ly, t) = first_link(p.help().unwrap(), &a).expect("ligação");
+    p.update(&[click(lx, ly)], 0.0, &a);
+    let sub = p.help().expect("sub-balão");
+    assert_eq!(sub.index, t);
+    let parent = p.help_beside().expect("principal ao lado");
+    assert_eq!(parent.key(), main);
+    assert!(
+        sub.x + sub.w <= parent.x,
+        "{} {} {}",
+        sub.x,
+        sub.w,
+        parent.x
+    );
+    let mut f = engine::Frame::new(640, 480);
+    p.draw(&mut f, &a);
+    // clique no principal fora das ligações fecha só o sub
+    let (px, py) = (parent.x + 3, parent.y + 3);
+    p.update(&[click(px, py)], 0.0, &a);
+    assert_eq!(p.help().map(|h| h.key()), Some(main));
+    assert!(p.help_beside().is_none());
+    // de novo a gema, e um clique fora fecha os dois
+    p.update(&[click(lx, ly)], 0.0, &a);
+    assert!(p.help_beside().is_some());
+    p.update(&[click(300, 420)], 0.0, &a);
+    assert!(p.help().is_none() && p.help_beside().is_none());
+}

@@ -231,7 +231,11 @@ seção 4. Resumo:
   títulos, recuo, o ícone da ferramenta (quando o id `1xxx` existe no
   `.PIC`) e as ligações (dica `21b`, tecla `21c`, Maggie `21e`, palavra do
   glossário) são desenhados por `help.rs`; clicar numa ligação abre o
-  registro ligado. Na primeira vez que a tela abre aparece o do Pincel. Os
+  registro ligado num sub-balão à esquerda do principal (ou à direita, se
+  não couber), e o principal continua aberto, como no original; uma ligação
+  dentro do sub-balão o troca, um clique no principal fecha só o sub e um
+  clique fora fecha os dois. As setas de página da faixa não fecham os
+  balões (o do Pincel continua aberto ao paginar). Na primeira vez que a tela abre aparece o do Pincel. Os
   ícones das ligações e vários ícones das ferramentas citados nos balões
   (`100e`, `1012`, `1036`…) não estão no `.PIC`: as ligações usam ícones
   desenhados à mão e as figuras ausentes são puladas.

@@ -501,6 +501,9 @@ pub struct Paint {
     map_open: bool,
     /// Som em laço e animação dos ícones da barra.
     sfx: sfx::State,
+    /// Balão principal que continua aberto ao lado do sub-balão de uma
+    /// ligação (`help`), com a identidade do sub a que pertence.
+    help_parent: Option<(HelpBalloon, (u16, usize, i32, i32))>,
     /// Menu do McZee (coluna de 8 botões) aberto.
     menu_open: bool,
     /// Lente de aumento ligada.
@@ -591,6 +594,7 @@ impl Paint {
             wizard_t: 0.0,
             map_open: false,
             sfx: sfx::State::default(),
+            help_parent: None,
             menu_open: false,
             zoom: None,
             exit_dialog: None,
@@ -625,19 +629,73 @@ impl Paint {
         p
     }
 
+    /// Balão principal aberto ao lado do sub-balão atual, se houver.
+    fn help_parent(&self) -> Option<&HelpBalloon> {
+        let (parent, key) = self.help_parent.as_ref()?;
+        (self.help.as_ref()?.key() == *key).then_some(parent)
+    }
+
+    /// Clique com balão de ajuda aberto. Uma ligação (gema, tecla, glossário)
+    /// abre o registro ligado num sub-balão ao lado, e o principal continua
+    /// aberto, como no original; uma ligação dentro do sub-balão o troca.
+    /// Clique fora dos dois fecha ambos e segue (devolve falso).
+    fn help_click(&mut self, x: i32, y: i32, assets: &Assets) -> bool {
+        let parent = self.help_parent().cloned();
+        self.help_parent = None;
+        let Some(h) = self.help.take() else {
+            return false;
+        };
+        if h.contains(assets, x, y) {
+            match (h.link_at(assets, x, y), parent) {
+                // ligação no sub-balão: troca o sub, no mesmo lugar
+                (Some(t), Some(p)) => match h.follow(t) {
+                    Some(sub) => self.set_sub_help(p, sub),
+                    None => self.set_sub_help(p, h),
+                },
+                (Some(t), None) => match h.follow_beside(t) {
+                    Some(sub) => self.set_sub_help(h, sub),
+                    None => self.help = Some(h),
+                },
+                (None, Some(p)) => self.set_sub_help(p, h),
+                (None, None) => self.help = Some(h),
+            }
+            return true;
+        }
+        if let Some(p) = parent.as_ref()
+            && p.contains(assets, x, y)
+        {
+            // clique no principal: outra ligação troca o sub; senão fecha o sub
+            let p = p.clone();
+            match p.link_at(assets, x, y).and_then(|t| p.follow_beside(t)) {
+                Some(sub) => self.set_sub_help(p, sub),
+                None => self.help = Some(p),
+            }
+            return true;
+        }
+        // as setas de página da faixa não fecham os balões (como no original,
+        // o balão do pincel continua aberto ao paginar)
+        if inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y) {
+            match parent {
+                Some(p) => self.set_sub_help(p, h),
+                None => self.help = Some(h),
+            }
+            return false;
+        }
+        // clique fora fecha os balões e segue
+        false
+    }
+
+    fn set_sub_help(&mut self, parent: HelpBalloon, sub: HelpBalloon) {
+        self.help_parent = Some((parent, sub.key()));
+        self.help = Some(sub);
+    }
+
     /// Clique no desenho animado: balão de ajuda aberto, nicho do McZee (a
     /// apresentação da Maggie, `WHAT 3a00`), Imprimir (folha com as figuras);
     /// o resto da barra de ferramentas está escurecido; abaixo, o projeto.
     fn flipbook_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
-        if let Some(h) = self.help.take() {
-            if h.contains(assets, x, y) {
-                self.help = match h.link_at(assets, x, y) {
-                    Some(target) => h.follow(target).or(Some(h)),
-                    None => Some(h),
-                };
-                return;
-            }
-            // clique fora fecha o balão e segue
+        if self.help_click(x, y, assets) {
+            return;
         }
         if inside(NICHE, x, y) {
             fx.push(sfx::play(sfx::MCZEE));
@@ -706,6 +764,11 @@ impl Paint {
     /// Balão de ajuda aberto, se houver.
     pub fn help(&self) -> Option<&HelpBalloon> {
         self.help.as_ref()
+    }
+
+    /// Balão principal que continua aberto ao lado do sub-balão (`help`).
+    pub fn help_beside(&self) -> Option<&HelpBalloon> {
+        self.help_parent()
     }
 
     /// Bloco e registro da ajuda da ferramenta atual (`option` = da opção escolhida).
@@ -1772,16 +1835,8 @@ impl Paint {
             self.flipbook_click(x, y, fx, assets);
             return;
         }
-        if let Some(h) = self.help.take() {
-            if h.contains(assets, x, y) {
-                // ligação (dica, tecla, glossário) abre o registro ligado no lugar
-                self.help = match h.link_at(assets, x, y) {
-                    Some(target) => h.follow(target).or(Some(h)),
-                    None => Some(h),
-                };
-                return;
-            }
-            // clique fora fecha o balão e segue
+        if self.help_click(x, y, assets) {
+            return;
         }
         if self.finder.is_some() {
             self.finder_click(x, y, fx, assets);
@@ -2945,6 +3000,9 @@ impl Scene for Paint {
             if self.map_open {
                 self.draw_map(frame, assets);
             }
+            if let Some(p) = self.help_parent() {
+                p.draw(frame, assets);
+            }
             if let Some(h) = &self.help {
                 h.draw(frame, assets);
             }
@@ -2995,10 +3053,13 @@ impl Scene for Paint {
         if self.map_open {
             self.draw_map(frame, assets);
         }
-        if let Some(h) = &self.help
-            && self.wizard.is_none()
-        {
-            h.draw(frame, assets);
+        if self.wizard.is_none() {
+            if let Some(p) = self.help_parent() {
+                p.draw(frame, assets);
+            }
+            if let Some(h) = &self.help {
+                h.draw(frame, assets);
+            }
         }
         if let Some((b, _)) = &self.talk {
             b.draw(frame, assets);

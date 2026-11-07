@@ -63,6 +63,10 @@ struct Layout {
     links: Vec<(Rect, usize)>,
 }
 
+/// Distância entre um balão e o sub-balão de uma ligação ao lado.
+const GAP_BESIDE: i32 = 6;
+
+#[derive(Clone)]
 pub struct HelpBalloon {
     pub x: i32,
     pub y: i32,
@@ -111,6 +115,25 @@ impl HelpBalloon {
     /// Mesmo balão com outro registro do bloco (ligação), se existir.
     pub fn follow(&self, index: usize) -> Option<HelpBalloon> {
         HelpBalloon::new(self.records.clone(), self.block, index, self.x, self.y)
+    }
+
+    /// Balão de uma ligação (gema, tecla, glossário) ao lado deste, que
+    /// continua aberto: à esquerda, como no original, ou à direita se não
+    /// couber.
+    pub fn follow_beside(&self, index: usize) -> Option<HelpBalloon> {
+        let mut b = self.follow(index)?;
+        let left = self.x - b.w - GAP_BESIDE;
+        b.x = if left >= 5 {
+            left
+        } else {
+            (self.x + self.w + GAP_BESIDE).min(635 - b.w)
+        };
+        Some(b)
+    }
+
+    /// Identidade do balão (bloco, registro e lugar).
+    pub fn key(&self) -> (u16, usize, i32, i32) {
+        (self.block, self.index, self.x, self.y)
     }
 
     pub fn record(&self) -> &Record {
