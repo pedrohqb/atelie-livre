@@ -4,6 +4,7 @@
 
 mod bucket;
 pub mod exit_dialog;
+mod fresh;
 mod front;
 pub mod menu;
 pub mod rename;
@@ -3105,6 +3106,9 @@ impl Scene for Paint {
         }
         if let Err(e) = self.supertools.guides.save(&dir.join(GUIDES_NAME)) {
             return vec![Effect::Log(format!("guias: {e}"))];
+        }
+        if self.keeps_last() {
+            return vec![Effect::Log("quadro em branco: o último continua".into())];
         }
         let saved = match &self.project {
             Some(p) => super::projects::save_picture_meta(

@@ -50,6 +50,9 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     };
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets).with_user(user.name())),
+        SceneId::PaintNew => {
+            Box::new(Paint::new_blank(drawings_dir(), assets).with_user(user.name()))
+        }
         SceneId::Gallery => Box::new(GalleryRoom::new(
             cfg.click_sound.clone(),
             drawings_dir(),
@@ -102,6 +105,7 @@ fn scene_by_name(name: &str) -> Option<SceneId> {
         "tricks" => SceneId::TricksFloor,
         "gallery" => SceneId::Gallery,
         "paint" => SceneId::Paint,
+        "paint-new" => SceneId::PaintNew,
         "comics" => SceneId::Project(ProjectKind::Comics),
         "button" => SceneId::Project(ProjectKind::Button),
         "sticker" => SceneId::Project(ProjectKind::Sticker),
@@ -284,6 +288,12 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         }
                         continue;
                     }
+                    if matches!(k, Keycode::LCtrl | Keycode::RCtrl) {
+                        if !repeat {
+                            inputs.push(Input::Ctrl(true));
+                        }
+                        continue;
+                    }
                     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
                     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
                     let key = map_key(k);
@@ -303,6 +313,10 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     keycode: Some(Keycode::LShift | Keycode::RShift),
                     ..
                 } => inputs.push(Input::Shift(false)),
+                Event::KeyUp {
+                    keycode: Some(Keycode::LCtrl | Keycode::RCtrl),
+                    ..
+                } => inputs.push(Input::Ctrl(false)),
                 Event::TextInput { text, .. } => {
                     if !text.is_empty() {
                         inputs.push(Input::Text(text));

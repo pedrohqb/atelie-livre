@@ -57,6 +57,9 @@ pub enum Input {
     Text(String),
     /// A tecla Shift foi apertada (`true`) ou solta (`false`).
     Shift(bool),
+    /// A tecla Ctrl foi apertada (`true`) ou solta (`false`): nas salas,
+    /// Ctrl+clique pula o balão do objeto e o mastro anda dois andares.
+    Ctrl(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +81,10 @@ pub enum SceneId {
     /// Andar dos Truques de Desenho (pelo mapa do prédio).
     TricksFloor,
     Paint,
+    /// Tela de pintura com um quadro em branco ("Quadro Novo"), pelo clique
+    /// duplo no cavalete do Ateliê; o último quadro só muda se este for
+    /// guardado.
+    PaintNew,
     /// Andar dos Projetos, ao sair de um projeto.
     Projects,
     /// Uma lição dos Truques de Desenho na tela de pintura.
