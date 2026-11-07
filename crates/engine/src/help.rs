@@ -75,6 +75,8 @@ pub struct HelpBalloon {
     pub block: u16,
     pub index: usize,
     records: Rc<Vec<Record>>,
+    /// Ponta do rabicho (quem fala), acima do balão; `None` = sem rabicho.
+    pub tail: Option<(i32, i32)>,
 }
 
 fn pic(id: u16) -> ImageRef {
@@ -109,12 +111,16 @@ impl HelpBalloon {
             block,
             index,
             records,
+            tail: None,
         })
     }
 
     /// Mesmo balão com outro registro do bloco (ligação), se existir.
     pub fn follow(&self, index: usize) -> Option<HelpBalloon> {
-        HelpBalloon::new(self.records.clone(), self.block, index, self.x, self.y)
+        HelpBalloon::new(self.records.clone(), self.block, index, self.x, self.y).map(|mut h| {
+            h.tail = self.tail;
+            h
+        })
     }
 
     /// Balão de uma ligação (gema, tecla, glossário) ao lado deste, que
@@ -314,10 +320,12 @@ impl HelpBalloon {
                         x += ICON + space;
                     }
                     id if (0x1000..0x2000).contains(&id) => {
-                        if !a.has_image(&pic(id)) {
+                        let shown =
+                            crate::help_icons::icon(id).map_or(id, crate::help_icons::Icon::pic);
+                        if !a.has_image(&pic(shown)) {
                             continue;
                         }
-                        let img = a.image(&pic(id));
+                        let img = a.image(&pic(shown));
                         let (w, h) = (img.width as i32, (img.height as i32).min(MAX_PIC_H));
                         if x + w > inner && x > indent_x {
                             flush(&mut line, &mut y, lh, PAD, &mut pieces, &mut links, font);
@@ -369,6 +377,10 @@ impl HelpBalloon {
         let lay = self.layout(a);
         let (bx, by, h) = self.origin(a);
         draw_box(f, bx, by, self.w, h);
+        if let Some(tip) = self.tail.filter(|t| t.1 < by - 4) {
+            let base = tip.0.clamp(bx + 12, bx + self.w - 12);
+            crate::balloon::draw_tail(f, base, by, tip);
+        }
         for p in &lay.pieces {
             match p {
                 Piece::Text {
@@ -393,8 +405,7 @@ impl HelpBalloon {
                     }
                 }
                 Piece::Picture { x, y, id } => {
-                    let img = a.image(&pic(*id));
-                    f.blit(&img, bx + PAD + x, by + y);
+                    crate::help_icons::draw(f, a, *id, bx + PAD + x, by + y);
                 }
                 Piece::Icon { x, y, kind, .. } => draw_icon(f, bx + PAD + x, by + y, *kind),
             }
@@ -414,7 +425,7 @@ fn draw_text(f: &mut Frame, font: Option<&Font>, x: i32, y: i32, s: &str, c: [u8
 }
 
 /// Ícones das ligações, desenhados à mão (os do original não estão no `.PIC`):
-/// lâmpada (dica), chave (tecla de atalho), estrela (dica da Maggie), "?".
+/// pedra roxa (dica), chave (tecla de atalho), estrela (dica da Maggie), "?".
 fn draw_icon(f: &mut Frame, x: i32, y: i32, kind: u16) {
     match kind {
         PIC_KEY => {
@@ -448,7 +459,24 @@ fn draw_icon(f: &mut Frame, x: i32, y: i32, kind: u16) {
             f.frame_rect(x + 2, y + 1, 10, 12, 1, BLACK);
             f.text(x + 3, y + 3, "?", BLACK);
         }
-        _ => draw_lamp(f, x, y),
+        _ => {
+            // dica do McZee: pedra roxa lapidada, como no original (o balão
+            // simples da Maggie usa a lâmpada de `draw_lamp`)
+            for dy in 0..11 {
+                let half: i32 = if dy < 3 { 4 + dy } else { (10 - dy) * 6 / 7 };
+                for dx in -half..=half {
+                    let edge = dx == -half || dx == half || dy == 0 || dy == 10;
+                    let c = if edge {
+                        BLACK
+                    } else if dy == 3 || (dy < 3 && dx.abs() <= 1) {
+                        WHITE
+                    } else {
+                        PURPLE
+                    };
+                    f.put(x + 7 + dx, y + 2 + dy, c);
+                }
+            }
+        }
     }
 }
 

@@ -9,6 +9,7 @@ pub mod balloon;
 pub mod clipart;
 pub mod frame;
 pub mod help;
+pub mod help_icons;
 pub mod paint;
 pub mod paths;
 pub mod rng;

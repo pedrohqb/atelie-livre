@@ -225,6 +225,36 @@ pub fn draw_box_white(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
     }
 }
 
+/// Rabicho do balão: triângulo do topo do balão (perto de `x_base`, em `top`)
+/// até a ponta `tip`, com contorno preto e o amarelo pontilhado por dentro.
+pub fn draw_tail(f: &mut Frame, x_base: i32, top: i32, tip: (i32, i32)) {
+    let (b0, b1) = (x_base - 7, x_base + 7);
+    let rows = top - tip.1;
+    if rows <= 0 {
+        return;
+    }
+    for i in 0..=rows {
+        let y = top - i;
+        let t = i as f32 / rows as f32;
+        let l = (b0 as f32 + (tip.0 - b0) as f32 * t).round() as i32;
+        let r = (b1 as f32 + (tip.0 - b1) as f32 * t).round() as i32;
+        let (l, r) = (l.min(r), l.max(r));
+        for x in l..=r {
+            let edge = x <= l + 1 || x >= r - 1;
+            let c = if edge {
+                BLACK
+            } else if (x + 2 * y) % 3 == 0 {
+                YELLOW
+            } else {
+                WHITE
+            };
+            f.put(x, y, c);
+        }
+    }
+    // abre a passagem na borda de cima do balão
+    f.rect(b0 + 2, top, b1 - b0 - 3, 2, WHITE);
+}
+
 /// Bolinha preta com brilho branco (marca das opções), 10×10 a partir de (x, y).
 pub fn draw_bullet(f: &mut Frame, bx: i32, by: i32) {
     for dy in 0..10 {
