@@ -819,8 +819,12 @@ impl Paint {
                 item: placed.item,
             },
         };
-        self.objects
+        let id = self
+            .objects
             .place(Rc::new(placed.stamp), placed.x, placed.y, source);
+        if let Some(o) = self.objects.get_mut(id) {
+            o.sound = placed.sound;
+        }
         self.changed = true;
     }
 
@@ -4132,8 +4136,18 @@ mod tests {
         let (_d, a) = empty_assets();
         let dir = tempfile::tempdir().unwrap();
         let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
-        let id = place_fish(&mut p, &a, 300, 300);
+        // adesivo estático do usuário (um quadrado 12×12) colocado no quadro
+        let st = crate::paint::stamp::Stamp {
+            w: 12,
+            h: 12,
+            px: vec![Some(crate::paint::BLACK); 144],
+        };
+        let pal = p.pal.clone();
+        p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+        p.stickers.hold_user("adesivo-q.png".into(), st, &pal);
+        p.update(&[click(300, 300)], 0.0, &a);
         p.help = None;
+        let id = p.objects().items.last().unwrap().id;
         let (sx, sy) = opaque_point(&p, id);
         let center = p.objects().get(id).unwrap().center();
         p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
@@ -4146,6 +4160,35 @@ mod tests {
         assert!(matches!(o.source, Source::Png(_)));
         assert_eq!(o.center(), center);
         assert!(p.easel().is_none());
+    }
+
+    #[test]
+    fn clicking_a_placed_animal_animates_it_again() {
+        use crate::assets::SoundRef;
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        p.help = None;
+        let snd = SoundRef::Library {
+            file: "MAG100.SND".into(),
+            index: 3,
+        };
+        p.objects.get_mut(id).unwrap().sound = Some(snd.clone());
+        let (x0, y0) = {
+            let o = p.objects().get(id).unwrap();
+            (o.x, o.y)
+        };
+        let (sx, sy) = opaque_point(&p, id);
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+        assert!(p.easel().is_none(), "bicho não vai para o cavalete");
+        assert!(p.stickers().animating());
+        assert!(p.objects().is_empty());
+        p.update(&[], 10.0, &a);
+        assert!(!p.stickers().animating());
+        let o = p.objects().items.last().expect("bicho de volta");
+        assert_eq!((o.x, o.y), (x0, y0));
+        assert_eq!(o.sound, Some(snd));
+        assert!(p.help().is_none(), "sem o balão \"Você viu isso?\" de novo");
     }
 
     #[test]

@@ -137,6 +137,8 @@ pub struct Placed {
     pub item: usize,
     /// Adesivo do usuário: nome do PNG na pasta de desenhos (origem do objeto).
     pub png: Option<String>,
+    /// Som que o adesivo já tinha (bicho animado de novo por um clique).
+    pub sound: Option<crate::assets::SoundRef>,
 }
 
 /// Adesivo escolhido, ainda não colocado.
@@ -234,6 +236,9 @@ struct Playing {
     base_half: i32,
     /// Imagem de repouso (colada ao terminar) e canto superior esquerdo no quadro.
     rest: Option<(Stamp, i32, i32)>,
+    /// Animado de novo por um clique: sem balão de ajuda no fim, e o som
+    /// que o adesivo tinha volta para ele.
+    replay: Option<Option<crate::assets::SoundRef>>,
 }
 
 /// Desenho de clip-art (1 bit) como carimbo: preto pinta preto, o branco interno
@@ -542,7 +547,9 @@ impl Stickers {
     pub fn finish(&mut self) -> Option<Placed> {
         let p = self.playing.take()?;
         let (stamp, x, y) = p.rest?;
-        self.placed_notice = Some(0);
+        if p.replay.is_none() {
+            self.placed_notice = Some(0);
+        }
         Some(Placed {
             stamp,
             x,
@@ -550,6 +557,7 @@ impl Stickers {
             roll: 0,
             item: p.animal,
             png: None,
+            sound: p.replay.flatten(),
         })
     }
 
@@ -712,6 +720,7 @@ impl Stickers {
                         roll: self.roll,
                         item,
                         png: None,
+                        sound: None,
                     }));
                 }
                 Some(Held::User(stamp, item, name)) => {
@@ -724,50 +733,84 @@ impl Stickers {
                         roll: self.roll,
                         item,
                         png: Some(name),
+                        sound: None,
                     }));
                 }
-                Some(Held::Animal(animal)) => {
-                    let stamp = |id: u16| {
-                        Stamp::from_images(
-                            &assets.image(&pic(id)),
-                            &assets.image(&pic(id + 6)),
-                            pal,
-                        )
-                    };
-                    let base_half = assets.image(&pic(ANIMALS[animal][0])).height as i32 / 2;
-                    let rest = match (self.ani.get(animal), &SCRIPTS[animal]) {
-                        // com o roteiro do .ANI, o adesivo volta à célula 0 no clique
-                        (Some(an), _) => {
-                            let s = Stamp::from_images(&an.cells[0].0, &an.cells[0].1, pal);
-                            let (w, h) = (s.w as i32, s.h as i32);
-                            Some((s, cx - w / 2, cy - h / 2))
-                        }
-                        (None, sc) => match sc {
-                            // a cobra (sem repouso) vai embora pela direita
-                            Some(sc) => sc
-                                .rest
-                                .map(|(id, dx, dy)| (stamp(id), cx + dx as i32, cy + dy as i32)),
-                            None => {
-                                let s = stamp(ANIMALS[animal][0]);
-                                let (w, h) = (s.w as i32, s.h as i32);
-                                Some((s, cx - w / 2, cy - h / 2))
-                            }
-                        },
-                    };
-                    self.playing = Some(Playing {
-                        animal,
-                        cx,
-                        cy,
-                        t: 0.0,
-                        base_half,
-                        rest,
-                    });
-                }
+                Some(Held::Animal(animal)) => self.start_animal(animal, cx, cy, assets, pal),
                 None => {}
             }
             return Some(None);
         }
         None
+    }
+
+    /// Começa a animação do bicho `animal` colocado em `(cx, cy)` do quadro.
+    fn start_animal(&mut self, animal: usize, cx: i32, cy: i32, assets: &Assets, pal: &[Rgb]) {
+        let stamp =
+            |id: u16| Stamp::from_images(&assets.image(&pic(id)), &assets.image(&pic(id + 6)), pal);
+        let base_half = assets.image(&pic(ANIMALS[animal][0])).height as i32 / 2;
+        let rest = match (self.ani.get(animal), &SCRIPTS[animal]) {
+            // com o roteiro do .ANI, o adesivo volta à célula 0 no clique
+            (Some(an), _) => {
+                let s = Stamp::from_images(&an.cells[0].0, &an.cells[0].1, pal);
+                let (w, h) = (s.w as i32, s.h as i32);
+                Some((s, cx - w / 2, cy - h / 2))
+            }
+            (None, sc) => match sc {
+                // a cobra (sem repouso) vai embora pela direita
+                Some(sc) => sc
+                    .rest
+                    .map(|(id, dx, dy)| (stamp(id), cx + dx as i32, cy + dy as i32)),
+                None => {
+                    let s = stamp(ANIMALS[animal][0]);
+                    let (w, h) = (s.w as i32, s.h as i32);
+                    Some((s, cx - w / 2, cy - h / 2))
+                }
+            },
+        };
+        self.playing = Some(Playing {
+            animal,
+            cx,
+            cy,
+            t: 0.0,
+            base_half,
+            rest,
+            replay: None,
+        });
+    }
+
+    /// Clique parado num bicho colocado: anima de novo, terminando no mesmo
+    /// lugar (`x, y` = canto da imagem de repouso). Falso se ele não tem
+    /// imagem de repouso (a cobra) e não há o que animar.
+    pub fn replay(
+        &mut self,
+        animal: usize,
+        (x, y): (i32, i32),
+        sound: Option<crate::assets::SoundRef>,
+        assets: &Assets,
+        pal: &[Rgb],
+    ) -> bool {
+        if animal >= ANIMALS.len() {
+            return false;
+        }
+        self.start_animal(animal, 0, 0, assets, pal);
+        let Some(p) = self.playing.as_mut() else {
+            return false;
+        };
+        let Some(rest) = p.rest.as_mut() else {
+            self.playing = None;
+            return false;
+        };
+        // a animação começa onde o repouso fica: desloca o ponto do clique
+        (p.cx, p.cy) = (x - rest.1, y - rest.2);
+        (rest.1, rest.2) = (x, y);
+        p.replay = Some(sound);
+        true
+    }
+
+    /// Um bicho está animando.
+    pub fn animating(&self) -> bool {
+        self.playing.is_some()
     }
 
     /// Põe na mão um adesivo do usuário que não está no rolo (achado pelo

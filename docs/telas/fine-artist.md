@@ -143,8 +143,10 @@ seção 4. Resumo:
   `0233`.
 - **Adesivos colocados** (ferramenta Seleciona-adesivos com a mão vazia): o
   contorno do adesivo sob o ponteiro pisca e arrastá-lo o move (uma ação do
-  ovo); um clique parado nele o leva ao Cavalete de adesivos para modificar
-  (o balão `1005[4]` do original promete isso). Balões do `WHAT 1005`:
+  ovo); um clique parado num bicho o anima de novo (balão
+  `1005[9]`: "Para animar um adesivo outra vez agora mesmo: Clique nele"),
+  terminando no mesmo lugar e com o som que tinha; num adesivo estático o
+  leva ao Cavalete de adesivos para modificar (balão `1005[4]`). Balões do `WHAT 1005`:
   `2` ao abrir a tira ("Clique no adesivo…", ao lado da tira), `3` ao pegar,
   `9` depois de colocar um bicho ("Você viu isso?"), `4` depois de colocar
   um adesivo estático.

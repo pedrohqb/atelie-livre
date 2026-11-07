@@ -310,14 +310,29 @@ impl Paint {
         }
     }
 
-    /// Botão solto na ferramenta de adesivos: um clique parado num adesivo
-    /// colocado o traz para o Cavalete.
+    /// Botão solto na ferramenta de adesivos: um clique parado num bicho
+    /// colocado o anima de novo ("Para animar um adesivo outra vez agora
+    /// mesmo: Clique nele", `1005[9]`); num adesivo estático, o traz para o
+    /// Cavalete ("Para modificar um adesivo: Clique nele", `1005[4]`).
     pub(super) fn sticker_release(&mut self, assets: &Assets) {
-        if let Some(id) = self.stickers.release()
-            && self.tool == Tool::Stickers
-        {
-            self.open_easel(Some(id), assets);
+        let Some(id) = self.stickers.release() else {
+            return;
+        };
+        if self.tool != Tool::Stickers {
+            return;
         }
+        let Some(o) = self.objects.get(id) else {
+            return;
+        };
+        if let Source::Roll { roll: 0, item } = o.source {
+            let (pos, sound) = ((o.x, o.y), o.sound.clone());
+            if self.stickers.replay(item, pos, sound, assets, &self.pal) {
+                self.objects.remove(id);
+                self.changed = true;
+            }
+            return;
+        }
+        self.open_easel(Some(id), assets);
     }
 
     /// Balão depois de colocar um adesivo (estático ou animado).
