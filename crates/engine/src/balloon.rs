@@ -153,6 +153,20 @@ pub fn draw_box(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
     }
 }
 
+/// Caixa dos avisos "EPA!": fundo branco com a mesma borda preta.
+pub fn draw_box_white(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
+    f.rect(x, y, w, h, BLACK);
+    f.rect(x + 2, y + 2, w - 4, h - 4, WHITE);
+    for (cx, cy) in [
+        (x, y),
+        (x + w - 1, y),
+        (x, y + h - 1),
+        (x + w - 1, y + h - 1),
+    ] {
+        f.put(cx, cy, WHITE);
+    }
+}
+
 /// Bolinha preta com brilho branco (marca das opções), 10×10 a partir de (x, y).
 pub fn draw_bullet(f: &mut Frame, bx: i32, by: i32) {
     for dy in 0..10 {
