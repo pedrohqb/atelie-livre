@@ -245,6 +245,7 @@ impl Floor {
             w,
             text: text.into(),
             options: options.iter().map(|o| o.to_string()).collect(),
+            links: Vec::new(),
         }
     }
 
@@ -330,6 +331,7 @@ impl Floor {
             w: 168,
             text: "Varinha Mágica\nQuando você clica no mastro de bombeiro ou no buraco do rato com a Varinha Mágica, coisas incríveis acontecem!".into(),
             options: Vec::new(),
+            links: Vec::new(),
         };
         let mut b = Balloon::from_block(
             &assets.dialogs(Program::Artist, ROOMS_WHAT),
@@ -551,6 +553,7 @@ impl Room {
                     w: 220,
                     text: "Epa! O que você quer fazer?".into(),
                     options: vec!["Sair do Fine Artist".into(), "Continuar trabalhando".into()],
+                    links: Vec::new(),
                 });
             }
             Action::Close => {
@@ -566,6 +569,7 @@ impl Room {
                     w: 260,
                     text: "Legal! O que você quer fazer?".into(),
                     options: vec!["Um botão".into(), "Um adesivo".into()],
+                    links: Vec::new(),
                 });
             }
             Action::NewPicture => {

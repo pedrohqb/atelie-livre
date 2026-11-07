@@ -5,22 +5,27 @@
 use crate::Frame;
 use crate::assets::Assets;
 use formats::fnt::Font;
-use formats::what::{Item, PIC_OPTION, PIC_OPTION_PICTURE, Record};
+use formats::what::{Item, PIC_OPTION, PIC_OPTION_PICTURE, PIC_TIP, PIC_TIP_MAX, Record};
 use std::rc::Rc;
 
 const YELLOW: [u8; 3] = [255, 238, 76];
 const WHITE: [u8; 3] = [255, 255, 255];
 const BLACK: [u8; 3] = [0, 0, 0];
+const GRAY: [u8; 3] = [120, 120, 120];
 pub const PAD: i32 = 8;
 const LINE_GAP: i32 = 2;
 const BULLET: i32 = 14;
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Balloon {
     pub x: i32,
     pub y: i32,
     pub w: i32,
     pub text: String,
     pub options: Vec<String>,
+    /// Ligações para dicas (lâmpada `21b`): (registro de destino, texto),
+    /// desenhadas entre o texto e as opções.
+    pub links: Vec<(usize, String)>,
 }
 
 impl Balloon {
@@ -38,7 +43,7 @@ impl Balloon {
             .into_iter()
             .map(|i| match i {
                 Item::Picture { id, param } if id == formats::what::PIC_GLOSSARY => {
-                    match records.get(param as usize) {
+                    match records.get((param & 0x7fff) as usize) {
                         Some(t) => Item::Text {
                             text: t.title.trim().to_string(),
                             bold: true,
@@ -60,30 +65,62 @@ impl Balloon {
                 other => other,
             })
             .collect();
-        Some(Balloon::from_record(&r, x, y, name))
+        let mut b = Balloon::from_record_in(&r, x, y, name, Some(k));
+        b.links.retain(|(t, _)| *t < records.len());
+        Some(b)
     }
 
     pub fn from_record(r: &Record, x: i32, y: i32, name: &str) -> Balloon {
+        Balloon::from_record_in(r, x, y, name, None)
+    }
+
+    /// `own` é o índice do registro no bloco, se conhecido: a lâmpada que
+    /// aponta para ele — ou para o registro 0, como a do título dos
+    /// registros de dica (`21B0000`) — é só enfeite do título, que fica no
+    /// texto; as outras lâmpadas viram ligações (`links`).
+    fn from_record_in(r: &Record, x: i32, y: i32, name: &str, own: Option<usize>) -> Balloon {
+        let is_title = |param: u16| {
+            let t = (param & 0x7fff) as usize;
+            t == 0 || Some(t) == own
+        };
         let mut text = String::new();
         let mut in_options = false;
+        // dentro de uma linha de dica (lâmpada): o texto vai para `links`
+        let mut in_link = false;
         for i in &r.items {
             match i {
                 Item::Picture { id, .. } if *id == PIC_OPTION || *id == PIC_OPTION_PICTURE => {
                     in_options = true;
                 }
-                Item::Text { text: t, .. } if !in_options => text.push_str(t),
-                Item::Newline if !in_options => text.push('\n'),
+                Item::Picture { id, param } if *id == PIC_TIP || *id == PIC_TIP_MAX => {
+                    in_link = !is_title(*param);
+                }
+                Item::Text { text: t, .. } if !in_options && !in_link => text.push_str(t),
+                Item::Newline if !in_options => {
+                    if in_link {
+                        in_link = false;
+                    } else {
+                        text.push('\n');
+                    }
+                }
                 _ => {}
             }
         }
         let text = text.replace('@', name).trim().to_string();
         let options: Vec<(u16, String)> = r.options();
+        let links = r
+            .links()
+            .into_iter()
+            .filter(|(t, s)| !s.is_empty() && !is_title(*t))
+            .map(|(t, s)| (t as usize, s))
+            .collect();
         Balloon {
             x,
             y,
             w: r.width.max(120) as i32,
             text,
             options: options.into_iter().map(|o| o.1).collect(),
+            links,
         }
     }
 }
@@ -184,6 +221,30 @@ pub fn draw_bullet(f: &mut Frame, bx: i32, by: i32) {
     f.put(bx + 7, by + 3, WHITE);
 }
 
+/// Lâmpada das dicas (14×14 a partir de (x, y)): bulbo amarelo com contorno
+/// e base cinza (o ícone do original não está no `.PIC`).
+pub fn draw_lamp(f: &mut Frame, x: i32, y: i32) {
+    for dy in 0..9 {
+        for dx in 0..9 {
+            let (ex, ey) = (dx - 4, dy - 4);
+            let d = ex * ex + ey * ey;
+            if d <= 16 {
+                f.put(x + 2 + dx, y + dy, if d >= 11 { BLACK } else { YELLOW });
+            }
+        }
+    }
+    f.rect(x + 4, y + 9, 5, 2, BLACK);
+    f.rect(x + 5, y + 11, 3, 2, GRAY);
+}
+
+/// Linhas já quebradas do balão.
+struct Layout {
+    lines: Vec<String>,
+    links: Vec<Vec<String>>,
+    opts: Vec<Vec<String>>,
+    h: i32,
+}
+
 /// Texto numa linha: na fonte do balão ou na 8×8.
 pub fn draw_line(f: &mut Frame, font: Option<&Font>, x: i32, y: i32, s: &str) {
     match font {
@@ -207,37 +268,72 @@ impl Balloon {
         wrap_opt(font, text, width)
     }
 
-    /// Linhas do texto, linhas de cada opção e altura total; sem fonte, usa a 8×8.
-    fn layout(&self, font: Option<&Font>) -> (Vec<String>, Vec<Vec<String>>, i32) {
+    /// Linhas do texto, linhas de cada ligação, linhas de cada opção e
+    /// altura total; sem fonte, usa a 8×8.
+    fn layout(&self, font: Option<&Font>) -> Layout {
         let inner = (self.w - 2 * PAD) as u32;
         let lines = Self::wrap_any(font, &self.text, inner);
+        let item_w = inner.saturating_sub((BULLET + 4) as u32);
+        let links: Vec<Vec<String>> = self
+            .links
+            .iter()
+            .map(|(_, t)| Self::wrap_any(font, t, item_w))
+            .collect();
         let opts: Vec<Vec<String>> = self
             .options
             .iter()
-            .map(|o| Self::wrap_any(font, o, inner.saturating_sub((BULLET + 4) as u32)))
+            .map(|o| Self::wrap_any(font, o, item_w))
             .collect();
         let lh = Self::line_h(font);
         let mut h = 2 * PAD + lines.len() as i32 * lh;
+        if !links.is_empty() {
+            h += 4 + links.iter().map(|o| o.len() as i32 * lh + 4).sum::<i32>();
+        }
         if !opts.is_empty() {
             h += 4 + opts.iter().map(|o| o.len() as i32 * lh + 4).sum::<i32>();
         }
-        (lines, opts, h)
+        Layout {
+            lines,
+            links,
+            opts,
+            h,
+        }
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
-        self.layout(Self::font(a).as_deref()).2
+        self.layout(Self::font(a).as_deref()).h
+    }
+
+    /// Retângulo (x, y, w, h) da ligação `k`.
+    pub fn link_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
+        let font = Self::font(a);
+        let lay = self.layout(font.as_deref());
+        let lh = Self::line_h(font.as_deref());
+        let mut y0 = self.y + PAD + lay.lines.len() as i32 * lh + 4;
+        for o in lay.links.iter().take(k) {
+            y0 += o.len() as i32 * lh + 4;
+        }
+        let n = lay.links.get(k).map_or(1, |o| o.len() as i32);
+        (self.x + PAD, y0 - 2, self.w - 2 * PAD, n * lh + 4)
     }
 
     /// Retângulo (x, y, w, h) da opção `k`.
     pub fn option_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
         let font = Self::font(a);
-        let (lines, opts, _) = self.layout(font.as_deref());
+        let lay = self.layout(font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        let mut y0 = self.y + PAD + lines.len() as i32 * lh + 4;
-        for o in opts.iter().take(k) {
+        let mut y0 = self.y + PAD + lay.lines.len() as i32 * lh + 4;
+        if !lay.links.is_empty() {
+            y0 += 4 + lay
+                .links
+                .iter()
+                .map(|o| o.len() as i32 * lh + 4)
+                .sum::<i32>();
+        }
+        for o in lay.opts.iter().take(k) {
             y0 += o.len() as i32 * lh + 4;
         }
-        let n = opts.get(k).map_or(1, |o| o.len() as i32);
+        let n = lay.opts.get(k).map_or(1, |o| o.len() as i32);
         (self.x + PAD, y0 - 2, self.w - 2 * PAD, n * lh + 4)
     }
 
@@ -249,6 +345,16 @@ impl Balloon {
         })
     }
 
+    /// Registro da ligação (dica) clicada em (x, y), se houver.
+    pub fn link_hit(&self, a: &Assets, x: i32, y: i32) -> Option<usize> {
+        (0..self.links.len())
+            .find(|&k| {
+                let r = self.link_rect(a, k);
+                x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
+            })
+            .map(|k| self.links[k].0)
+    }
+
     pub fn contains(&self, a: &Assets, x: i32, y: i32) -> bool {
         let h = self.height(a);
         x >= self.x && y >= self.y && x < self.x + self.w && y < self.y + h
@@ -256,15 +362,23 @@ impl Balloon {
 
     pub fn draw(&self, f: &mut Frame, a: &Assets) {
         let font = Self::font(a);
-        let (lines, opts, h) = self.layout(font.as_deref());
+        let lay = self.layout(font.as_deref());
         let lh = Self::line_h(font.as_deref());
-        draw_box(f, self.x, self.y, self.w, h);
+        draw_box(f, self.x, self.y, self.w, lay.h);
         let mut ty = self.y + PAD;
-        for line in &lines {
+        for line in &lay.lines {
             draw_line(f, font.as_deref(), self.x + PAD, ty, line);
             ty += lh;
         }
-        for (k, opt) in opts.iter().enumerate() {
+        for (k, link) in lay.links.iter().enumerate() {
+            let r = self.link_rect(a, k);
+            draw_lamp(f, r.0, r.1 + 1 + (lh - 12) / 2);
+            for (j, line) in link.iter().enumerate() {
+                let ly = r.1 + 2 + j as i32 * lh;
+                draw_line(f, font.as_deref(), r.0 + BULLET + 4, ly, line);
+            }
+        }
+        for (k, opt) in lay.opts.iter().enumerate() {
             let r = self.option_rect(a, k);
             draw_bullet(f, r.0, r.1 + 2 + (lh - 10) / 2);
             for (j, line) in opt.iter().enumerate() {
@@ -312,6 +426,7 @@ mod tests {
             w: 200,
             text: "Oi".into(),
             options: vec!["um".into(), "dois".into()],
+            links: Vec::new(),
         };
         let r0 = b.option_rect(&a, 0);
         let r1 = b.option_rect(&a, 1);
@@ -323,5 +438,55 @@ mod tests {
         let mut f = Frame::new(640, 480);
         b.draw(&mut f, &a);
         assert_eq!(f.pixel(100, 60)[..3], [0, 0, 0]);
+    }
+
+    fn tip_record(param: u16, title: &str, link: u16) -> Record {
+        let t = |s: &str| Item::Text {
+            text: s.into(),
+            bold: false,
+            color: 0xf,
+            indent: 0,
+            key: false,
+            signature: false,
+        };
+        Record {
+            title: "tip".into(),
+            width: 200,
+            height: 0,
+            style: 0,
+            items: vec![
+                Item::Picture { id: PIC_TIP, param },
+                t(title),
+                Item::Newline,
+                t("Corpo da dica."),
+                Item::Newline,
+                Item::Picture {
+                    id: PIC_TIP,
+                    param: link,
+                },
+                t("Outra dica"),
+                Item::Newline,
+            ],
+        }
+    }
+
+    #[test]
+    fn title_lamp_stays_in_the_text_and_other_lamps_become_links() {
+        // `21B0000` no título (registro de dica) e uma ligação para o 2
+        let recs = vec![
+            tip_record(0, "intro", 0x7fff),
+            tip_record(0, "Quer mudar a cor?", 2),
+            tip_record(2, "Mesmo registro", 1),
+        ];
+        let b = Balloon::from_block(&recs, 1, 0, 0, "").unwrap();
+        assert!(b.text.starts_with("Quer mudar a cor?"), "{}", b.text);
+        assert_eq!(b.links, vec![(2, "Outra dica".to_string())]);
+        // a lâmpada que aponta para o próprio registro também é título
+        let b = Balloon::from_block(&recs, 2, 0, 0, "").unwrap();
+        assert!(b.text.starts_with("Mesmo registro"), "{}", b.text);
+        assert_eq!(b.links, vec![(1, "Outra dica".to_string())]);
+        // destino fora do bloco é descartado
+        let b = Balloon::from_block(&recs, 0, 0, 0, "").unwrap();
+        assert!(b.links.is_empty());
     }
 }

@@ -332,6 +332,7 @@ impl GalleryRoom {
                     "Ver outros quadros".into(),
                     "Outra coisa...".into(),
                 ],
+                links: Vec::new(),
             },
             Ask::Welcome2 => Balloon {
                 x: 0,
@@ -342,6 +343,7 @@ impl GalleryRoom {
                     "Imprimir um desenho".into(),
                     "Voltar para outras escolhas...".into(),
                 ],
+                links: Vec::new(),
             },
             Ask::Recycle(_) => Balloon {
                 x: 0,
@@ -349,6 +351,7 @@ impl GalleryRoom {
                 w: 256,
                 text: "Você quer mesmo jogar isto fora?".into(),
                 options: vec!["É, jogar fora".into(), "Não, eu quero manter!".into()],
+                links: Vec::new(),
             },
             Ask::Tip => Balloon {
                 x: 0,
@@ -356,6 +359,7 @@ impl GalleryRoom {
                 w: 200,
                 text: String::new(),
                 options: Vec::new(),
+                links: Vec::new(),
             },
         };
         let records = assets.dialogs(Program::Artist, WHAT);

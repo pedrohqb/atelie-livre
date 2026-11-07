@@ -131,6 +131,7 @@ impl Elevator {
             w: 154,
             text: "Subindo? Ou descendo?\nClique no andar que você quer visitar.".into(),
             options: Vec::new(),
+            links: Vec::new(),
         };
         let mut balloon = Balloon::from_block(
             &assets.dialogs(Program::Artist, ROOMS_WHAT),

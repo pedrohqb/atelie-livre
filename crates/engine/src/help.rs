@@ -6,7 +6,7 @@
 
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
-use crate::balloon::draw_box;
+use crate::balloon::{draw_box, draw_lamp};
 use formats::fnt::Font;
 use formats::what::{Item, PIC_GLOSSARY, PIC_HELP, PIC_TIP, PIC_TIP_MAX, Record};
 use std::rc::Rc;
@@ -425,20 +425,7 @@ fn draw_icon(f: &mut Frame, x: i32, y: i32, kind: u16) {
             f.frame_rect(x + 2, y + 1, 10, 12, 1, BLACK);
             f.text(x + 3, y + 3, "?", BLACK);
         }
-        _ => {
-            // lâmpada: bulbo amarelo com contorno e base cinza
-            for dy in 0..9 {
-                for dx in 0..9 {
-                    let (ex, ey) = (dx - 4, dy - 4);
-                    let d = ex * ex + ey * ey;
-                    if d <= 16 {
-                        f.put(x + 2 + dx, y + dy, if d >= 11 { BLACK } else { YELLOW });
-                    }
-                }
-            }
-            f.rect(x + 4, y + 9, 5, 2, BLACK);
-            f.rect(x + 5, y + 11, 3, 2, GRAY);
-        }
+        _ => draw_lamp(f, x, y),
     }
 }
 
