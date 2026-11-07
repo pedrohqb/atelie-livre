@@ -4038,6 +4038,34 @@ mod tests {
     }
 
     #[test]
+    fn user_sticker_thumbnail_is_transparent_in_the_film() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        // 30×30, só a diagonal pintada
+        let px = (0..900)
+            .map(|k| (k % 30 == k / 30).then_some(0u8))
+            .collect();
+        let st = crate::paint::stamp::Stamp { w: 30, h: 30, px };
+        let pal = p.pal.clone();
+        p.stickers.add_user("adesivo-d.png".into(), st, &pal);
+        p.stickers.show_user(0);
+        p.help = None;
+        let mut f = Frame::new(640, 480);
+        p.draw(&mut f, &a);
+        let x0 = p.stickers().film_x();
+        // linhas quase todas pretas dentro da tira: só as bordas da casa
+        let rows = (100..470)
+            .filter(|&y| {
+                (x0 + 4..x0 + 38)
+                    .filter(|&x| f.pixel(x as u32, y as u32)[..3] == [0, 0, 0])
+                    .count()
+                    >= 25
+            })
+            .count();
+        assert!(rows <= 4, "{rows} linhas pretas na tira");
+    }
+
+    #[test]
     fn easel_paints_a_sticker_into_the_user_roll() {
         let (_d, a) = empty_assets();
         let dir = tempfile::tempdir().unwrap();

@@ -916,6 +916,14 @@ impl Stickers {
                 }
             }
         }
+        // os adesivos do usuário têm cor e transparência (alfa); as
+        // miniaturas de traço servem de máscara de si mesmas
+        let user = self.roll == self.user_roll();
+        let no_mask = Image {
+            width: 0,
+            height: 0,
+            rgba: Vec::new(),
+        };
         let mut cell = |r: Rect, img: Option<std::rc::Rc<Image>>| {
             f.rect(r.0, r.1, r.2, r.3, BLACK);
             f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, WHITE);
@@ -923,7 +931,8 @@ impl Stickers {
                 let (tw, th) = (t.width as i32, t.height as i32);
                 let inner = (r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2);
                 let (x, y) = (r.0 + r.2 / 2 - tw / 2, r.1 + r.3 / 2 - th / 2);
-                blit_clipped(f, &t, &t, x, y, inner);
+                let mask = if user { &no_mask } else { &*t };
+                blit_clipped(f, &t, mask, x, y, inner);
             }
         };
         for j in 0..film.cells() {
