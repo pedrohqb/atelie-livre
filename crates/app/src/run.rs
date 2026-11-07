@@ -61,6 +61,7 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::Projects => room(Floor::Projects),
         SceneId::Tricks(kind) => Box::new(Paint::new_tricks(kind, drawings_dir(), assets)),
         SceneId::Project(kind) => Box::new(Paint::new_project(kind, drawings_dir(), assets)),
+        SceneId::FlipbookFigure => Box::new(Paint::new_flipbook_figure(drawings_dir(), assets)),
         SceneId::Chooser => Box::new(Chooser::new()),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
         SceneId::Entry => {
@@ -105,6 +106,7 @@ fn scene_by_name(name: &str) -> Option<SceneId> {
         "button" => SceneId::Project(ProjectKind::Button),
         "sticker" => SceneId::Project(ProjectKind::Sticker),
         "flipbook" => SceneId::Project(ProjectKind::Flipbook),
+        "flipbook-figure" => SceneId::FlipbookFigure,
         "tricks-basic" => SceneId::Tricks(TrickKind::Basic),
         "tricks-3d" => SceneId::Tricks(TrickKind::ThreeD),
         _ => return None,

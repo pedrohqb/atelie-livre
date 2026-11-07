@@ -28,7 +28,7 @@ use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use formats::fnt::Font;
 use formats::palette::Rgb;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -64,6 +64,9 @@ const WHAT_PRINT: u16 = 0x100b;
 const WHAT_ERRORS: u16 = 0x100f;
 /// Bloco `WHAT` do mapa do prédio (registro 3: "Mapa do prédio").
 const WHAT_MAP: u16 = 0x100e;
+/// Roteiro da Maggie no desenho animado (o nicho do McZee abre a apresentação).
+const WHAT_FLIPBOOK: u16 = 0x3a00;
+const WHAT_FLIPBOOK_INTRO: usize = 2;
 /// Ícone do andar, no canto inferior esquerdo da barra inferior.
 const MAP_ICON: (i32, i32, i32, i32) = (24, 460, 36, 20);
 /// Cartaz do prédio (o mesmo do saguão) aberto sobre o quadro, com borda.
@@ -354,6 +357,9 @@ pub struct Paint {
     time: f32,
     /// Projeto da Oficina em andamento, se a tela foi aberta por ele.
     project: Option<Project>,
+    /// Figura do desenho animado aberta pelo clique duplo: arquivo em que a
+    /// porta de saída a grava antes de voltar (`Effect::Back`).
+    edit_file: Option<PathBuf>,
     /// Lição dos Truques de Desenho em andamento.
     wizard: Option<Wizard>,
     trick: Option<TrickKind>,
@@ -411,6 +417,7 @@ impl Paint {
             vacuum_object: None,
             clipboard: None,
             project: None,
+            edit_file: None,
             wizard: None,
             trick: None,
             wizard_t: 0.0,
@@ -429,6 +436,43 @@ impl Paint {
             p.open_help(WHAT_BRUSH, 1, assets);
         }
         p
+    }
+
+    /// Clique no desenho animado: balão de ajuda aberto, nicho do McZee (a
+    /// apresentação da Maggie, `WHAT 3a00`), Imprimir (folha com as figuras);
+    /// o resto da barra de ferramentas está escurecido; abaixo, o projeto.
+    fn flipbook_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        if let Some(h) = self.help.take() {
+            if h.contains(assets, x, y) {
+                self.help = match h.link_at(assets, x, y) {
+                    Some(target) => h.follow(target).or(Some(h)),
+                    None => Some(h),
+                };
+                return;
+            }
+            // clique fora fecha o balão e segue
+        }
+        if inside(NICHE, x, y) {
+            fx.push(sfx::play(sfx::MCZEE));
+            self.open_help(WHAT_FLIPBOOK, WHAT_FLIPBOOK_INTRO, assets);
+            return;
+        }
+        if let Some((i, t)) = TOOLS
+            .iter()
+            .enumerate()
+            .find(|(_, t)| inside((t.x - 5, 5, t.w + 11, 50), x, y))
+        {
+            if t.action == Action::Print {
+                fx.push(sfx::play(sfx::TOOLS[i]));
+                self.sfx.tool_clicked(i);
+                fx.push(self.print());
+                self.open_help(WHAT_PRINT, 0, assets);
+            }
+            return;
+        }
+        if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
+            fx.extend(fb.click(x, y, self.drawings.as_deref(), assets));
+        }
     }
 
     /// Abre o balão de ajuda do registro `index` do bloco `WHAT` (se existir).
@@ -783,6 +827,8 @@ impl Paint {
                 p.drawings.as_deref(),
                 assets,
             ))));
+            // o balão do pincel não cabe aqui: a apresentação vem do nicho do McZee
+            p.help = None;
             return p;
         }
         if let Some((c, records)) = p
@@ -797,6 +843,29 @@ impl Paint {
         project.prepare(&mut p.canvas);
         p.project = Some(project);
         p
+    }
+
+    /// Figura do desenho animado aberta pelo clique duplo: a tela de pintura
+    /// comum com a figura de [`Flipbook::edit_path`]; a porta de saída grava
+    /// a figura nesse arquivo e volta ao desenho animado.
+    pub fn new_flipbook_figure(drawings: Option<PathBuf>, assets: &Assets) -> Paint {
+        let mut p = Paint::new(None, assets);
+        let Some(d) = drawings else {
+            return p;
+        };
+        let path = Flipbook::edit_path(&d);
+        if let Some(c) = crate::paint::store::load_png(&path, &p.pal) {
+            p.canvas = c;
+        }
+        p.drawings = Some(d);
+        p.edit_file = Some(path);
+        p
+    }
+
+    /// Arquivo em que a figura do desenho animado é gravada ao sair, se a
+    /// tela foi aberta pelo clique duplo.
+    pub fn edit_file(&self) -> Option<&Path> {
+        self.edit_file.as_deref()
     }
 
     /// Desenho animado em andamento, se a tela é esse projeto.
@@ -1079,10 +1148,10 @@ impl Paint {
             return;
         }
         // desenho animado: fora da porta de saída, tudo é do projeto
-        if let Some(Project::Flipbook(fb)) = self.project.as_mut()
+        if let Some(Project::Flipbook(_)) = self.project
             && !inside(EXIT, x, y)
         {
-            fx.extend(fb.click(x, y, self.drawings.as_deref(), assets));
+            self.flipbook_click(x, y, fx, assets);
             return;
         }
         if let Some(h) = self.help.take() {
@@ -1239,6 +1308,11 @@ impl Paint {
             return;
         }
         if inside(EXIT, x, y) {
+            if self.edit_file.is_some() {
+                // figura do desenho animado: a saída grava (em `leave`) e volta
+                fx.push(Effect::Back);
+                return;
+            }
             let back = if self.trick.is_some() {
                 SceneId::TricksFloor
             } else if self.project.is_some() {
@@ -1563,6 +1637,9 @@ impl Paint {
         let (label, name) = match (&self.project, self.trick) {
             (_, Some(t)) => ("Truques", t.label()),
             (Some(p), None) => (p.kind().label(), p.kind().new_name()),
+            (None, None) if self.edit_file.is_some() => {
+                ("Animação", "Modificando uma figura do Desenho Animado")
+            }
             (None, None) => ("Ateliê", "Quadro Novo"),
         };
         match a.font(8) {
@@ -1606,6 +1683,20 @@ impl Paint {
         f.blit(&a.image(&pic(0x03c3)), 27, 463);
         f.blit(&a.image(&pic(0x1403)), 526, 462);
         f.blit_masked(&a.image(&pic(0x1059)), &a.image(&pic(0x105b)), 580, 18);
+    }
+
+    /// Desenho animado: as ferramentas de pintura não servem; ficam
+    /// escurecidas (pontilhado), menos Imprimir.
+    fn dim_tools(&self, f: &mut Frame) {
+        for t in TOOLS.iter().filter(|t| t.action != Action::Print) {
+            for y in 5..55 {
+                for x in (t.x - 5 + (y & 1))..(t.x + t.w + 6) {
+                    if (x + y) % 2 == 0 {
+                        f.put(x, y, DARK);
+                    }
+                }
+            }
+        }
     }
 
     fn draw_shape_button(&self, f: &mut Frame, r: (i32, i32, i32, i32), s: &Shape) {
@@ -1834,6 +1925,10 @@ impl Scene for Paint {
                 }
                 Input::MouseMove { x, y } => {
                     self.mouse = (x, y);
+                    if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
+                        fb.mouse_move(x, y);
+                        continue;
+                    }
                     self.extend_stroke(x - ORIGIN.0, y - ORIGIN.1);
                     if self
                         .transformers
@@ -1850,6 +1945,10 @@ impl Scene for Paint {
                 } => {
                     if std::mem::take(&mut self.sfx.looping) {
                         fx.push(Effect::StopLoop);
+                    }
+                    if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
+                        fb.mouse_up(x, y);
+                        continue;
                     }
                     let painting = self.stroke.is_some();
                     self.end_stroke(x - ORIGIN.0, y - ORIGIN.1);
@@ -1912,14 +2011,15 @@ impl Scene for Paint {
         self.draw_chrome(frame, assets);
         self.draw_tools(frame, assets);
         if let Some(Project::Flipbook(fb)) = &self.project {
+            self.dim_tools(frame);
             fb.draw_strip(frame, assets);
             self.draw_columns(frame);
             fb.draw_canvas(frame, assets);
             if self.map_open {
                 self.draw_map(frame, assets);
-                if let Some(h) = &self.help {
-                    h.draw(frame, assets);
-                }
+            }
+            if let Some(h) = &self.help {
+                h.draw(frame, assets);
             }
             return;
         }
@@ -1969,6 +2069,16 @@ impl Scene for Paint {
                 "sem pasta de desenhos (HOME e XDG_DATA_HOME vazios): desenho não guardado".into(),
             )];
         };
+        if let Some(path) = &self.edit_file {
+            let flat = self.composed();
+            self.changed = false;
+            return vec![Effect::Log(
+                match crate::paint::store::save_png(&flat, &self.pal, path) {
+                    Ok(()) => format!("figura do desenho animado gravada em {}", path.display()),
+                    Err(e) => format!("não consegui gravar {}: {e}", path.display()),
+                },
+            )];
+        }
         if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
             if !fb.needs_save() {
                 return vec![Effect::Log("desenho animado sem mudanças".into())];

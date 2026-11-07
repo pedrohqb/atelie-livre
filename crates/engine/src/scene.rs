@@ -82,6 +82,10 @@ pub enum SceneId {
     Tricks(crate::scenes::wizard::TrickKind),
     /// Um projeto da Oficina na tela de pintura.
     Project(crate::scenes::projects::ProjectKind),
+    /// Uma figura do desenho animado aberta na tela de pintura pelo clique
+    /// duplo (por cima do desenho animado, com `Push`); a porta de saída
+    /// grava a figura e volta (`Back`).
+    FlipbookFigure,
     /// Galeria de desenhos guardados.
     Gallery,
     /// Pasta de trabalhos aberta pela maleta vermelha de uma sala (por cima

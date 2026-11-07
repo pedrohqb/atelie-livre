@@ -216,13 +216,13 @@ impl Project {
         }
     }
 
-    /// Página a imprimir: o quadro com as molduras (quadrinhos) ou a folha de
-    /// cópias (botão/adesivo).
+    /// Página a imprimir: o quadro com as molduras (quadrinhos), a folha de
+    /// cópias (botão/adesivo) ou a folha com as figuras (desenho animado).
     pub fn print_page(&self, c: &Canvas, pal: &[Rgb]) -> Canvas {
         match self {
             Project::Comics(k) => k.compose(c),
             Project::Button(b) => b.print_sheet(c, pal),
-            Project::Flipbook(_) => c.clone(),
+            Project::Flipbook(fb) => fb.print_sheet(),
         }
     }
 }

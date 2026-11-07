@@ -124,3 +124,74 @@ fn three_figures_play_and_save() {
     let fx = p2.update(&[click(600, 60)], 0.0, &a);
     assert!(fx.contains(&Effect::ChangeScene(SceneId::Projects)));
 }
+
+/// Clique duplo numa figura pede a tela de pintura por cima; ela abre com a
+/// figura, a porta de saída grava e volta; o desenho animado reabre a figura.
+#[test]
+fn double_click_edits_a_figure_in_the_paint_scene() {
+    let (_d, a) = assets();
+    let pal = a.palettes(Program::Artist).pal256.clone();
+    let dir = tempfile::tempdir().unwrap();
+    save_png(&figure(20), &pal, &dir.path().join("desenho-1.png")).unwrap();
+    let drawings = Some(dir.path().to_path_buf());
+    let mut p = Paint::new_project(ProjectKind::Flipbook, drawings.clone(), &a);
+    p.update(
+        &[click(
+            flipbook::FOLDER_BTN.0 + 3,
+            flipbook::FOLDER_BTN.1 + 3,
+        )],
+        0.0,
+        &a,
+    );
+    let r = Flipbook::folder_cell_rect(0);
+    p.update(&[click(r.0 + 4, r.1 + 4)], 0.0, &a);
+    p.update(
+        &[click(
+            flipbook::FOLDER_CLOSE.0 + 2,
+            flipbook::FOLDER_CLOSE.1 + 2,
+        )],
+        0.0,
+        &a,
+    );
+    assert_eq!(p.flipbook().unwrap().count(), 1);
+    // o nicho do McZee abre a apresentação da Maggie (sem travar sem dados)
+    p.update(&[click(550, 80)], 0.0, &a);
+    let mut f = engine::Frame::new(640, 480);
+    p.draw(&mut f, &a);
+    // clique duplo na figura 1
+    let c = Flipbook::cell_rect(0);
+    p.update(&[click(c.0 + 10, c.1 + 10)], 0.0, &a);
+    let fx = p.update(&[click(c.0 + 10, c.1 + 10)], 0.05, &a);
+    assert!(
+        fx.contains(&Effect::Push(SceneId::FlipbookFigure)),
+        "{fx:?}"
+    );
+    assert_eq!(p.flipbook().unwrap().editing(), Some(0));
+    // a tela de pintura por cima abre com a figura e grava ao sair pela porta
+    let mut e = Paint::new_flipbook_figure(drawings.clone(), &a);
+    assert!(e.edit_file().is_some());
+    assert_eq!(e.canvas().px[0], 20);
+    let mut f = engine::Frame::new(640, 480);
+    e.draw(&mut f, &a);
+    e.update(&[click(600, 60)], 0.0, &a);
+    let fx = e.update(&[click(600, 60)], 0.0, &a);
+    assert!(fx.contains(&Effect::Back), "{fx:?}");
+    // simula uma modificação e a saída
+    save_png(&figure(33), &pal, e.edit_file().unwrap()).unwrap();
+    let e2 = Paint::new_flipbook_figure(drawings, &a);
+    assert_eq!(e2.canvas().px[0], 33);
+    let mut e2 = e2;
+    let fx = e2.leave();
+    assert!(
+        fx.iter()
+            .any(|e| matches!(e, Effect::Log(m) if m.contains("gravada"))),
+        "{fx:?}"
+    );
+    // de volta: a figura modificada entra no lugar
+    p.update(&[], 0.0, &a);
+    let fb = p.flipbook().unwrap();
+    assert_eq!(fb.editing(), None);
+    assert_eq!(fb.slots[0].as_ref().unwrap().canvas.px[0], 33);
+    assert!(fb.needs_save());
+    assert!(!Flipbook::edit_path(dir.path()).exists());
+}
