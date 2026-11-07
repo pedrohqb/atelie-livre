@@ -50,9 +50,10 @@ pub const MAGGIE_POS: (i32, i32) = (-2, 253);
 /// a um ponto; o ponto foi medido no original.
 pub const STREET_HYDRANT: (u16, (i32, i32)) = (0x5dc, (489, 387));
 pub const STREET_TRASH: (u16, (i32, i32)) = (0x672, (69, 333));
-/// Áreas clicáveis do hidrante e da lata (x, y, largura, altura).
-pub const HYDRANT_RECT: (i32, i32, i32, i32) = (470, 370, 60, 80);
-pub const TRASH_RECT: (i32, i32, i32, i32) = (60, 330, 90, 80);
+/// Áreas clicáveis do hidrante e da lata (x, y, largura, altura), da tabela
+/// de pontos quentes da rua em `ARTIST.EXE`; o canto é o ponto do roteiro.
+pub const HYDRANT_RECT: (i32, i32, i32, i32) = (489, 387, 41, 57);
+pub const TRASH_RECT: (i32, i32, i32, i32) = (69, 333, 65, 70);
 
 /// Personagem parado de uma sala: figura colorida com a máscara duas
 /// imagens adiante no `.PIC`.

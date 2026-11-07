@@ -56,19 +56,22 @@ McZee no carrinho de supermercado descendo a montanha-russa e sumindo ao
 longe ("AAAI!"). **Alta**: visto na gravação 0,2 s depois de a tela
 aparecer, uma vez só (90 s de gravação sem repetir).
 
-### Rua (fundo 0x6d01) — 0x5dc, 0x640, 0x672 (1500, 1600, 1650)
+### Rua (fundo 0x6d01) — 0x5aa, 0x5dc, 0x640, 0x672 (1450, 1500, 1600, 1650)
 
-Roteiros gravados em relação a um ponto (origens pequenas); o ponto foi
-medido na gravação:
+Três roteiros gravados em relação a um ponto (origens pequenas) e um com
+origem absoluta. O ponto é o canto da área clicável na tabela de pontos
+quentes da rua em `ARTIST.EXE` (ver `fine-artist.md`, "Rua") e bate com a
+gravação:
 
 | Roteiro | O quê | Ponto | Confiança |
 |---|---|---|---|
 | 0x5dc | hidrante treme e esguicha (sons 0x2bc, 0x2be, 0x221, 0x26e, 0x303) | (489, 387) | **alta** (clique no hidrante) |
 | 0x672 | lata de lixo amassa, some e volta (sons 0x2f8, 0x30a, 0x2fd, 0x309) | (69, 333) | **alta** (clique na lata) |
-| 0x640 | porta do prédio abrindo e fechando (som 0x2f9) | porta (≈ 296, 300) | média (não gravado; o motor não o usa) |
+| 0x640 | porta giratória girando: 9 células de 200 ms alternando 0x6474 (94×115) e 0x647c (94×111), origem (0, −2), som 0x2f9 na 1ª; ao fim (1,8 s) entra no saguão | (296, 315) | **alta** (clique na porta; `shots/st2_porta_sheet.png`) |
+| 0x5aa | bola de beisebol: três arremessos fixos (seja qual for o ponto clicado da fachada), cada um com 9 células de 50 ms em que a bola diminui em perspectiva (0x6534 → 0x653c → 0x6544) e voa da esquerda para a direita, e uma célula de 1500 ms com a janela rachada (0x654c em (254, 246), 0x655c em (390, 151), 0x6564 em (247, 128)); som 0x2e9 em cada arremesso e 0x25c em cada rachadura; 30 células, 5,85 s | origem absoluta (−65, 318) | **alta** (clique na fachada; `shots/st2_bola_sheet.png`) |
 
 Na gravação a rua ficou 70 s sem animação espontânea: os roteiros tocam ao
-clicar.
+clicar. Enquanto um deles toca, o original ignora todos os cliques.
 
 ### Saguão (fundo 0x6a6b) — 0x321–0x328 (801–808)
 
@@ -147,8 +150,6 @@ Galeria = buraco 0x258–0x25e em (445,348), por eliminação. Detalhes em
   3 s com o som 0x222 (sino, capa, rosa, teia, cabeça de touro, fitas,
   óculos, bolo, chapéu, gravata...): adereços dos Truques de Desenho ou do
   Mundo. Baixa; não usado.
-- 0x5aa (1450): bola de beisebol voando com estrelas, de (−65, 318). Tela
-  desconhecida.
 - 0x3840, 0x384a, 0x3854, 0x4010, 0x401a, 0x4024 (14400–16420): a menina de
   macacão verde (do Creative Writer) correndo e pulando corda, os únicos
   roteiros do tipo 9 (deslizes interpolados) e os únicos com imagens fora
@@ -176,11 +177,14 @@ travessias acima.
 
 - `Splash`: pássaro 0x67 aos 0,3 s, depois os outros roteiros do título em
   ordem sorteada, com pausas de 0,5–1,5 s.
-- `Street`: clique no hidrante ou na lata toca o roteiro correspondente.
+- `Street`: clique no hidrante ou na lata toca o roteiro correspondente; na
+  fachada, a bola 0x5aa; na porta, a porta giratória 0x640 e depois o
+  saguão. Cliques durante um roteiro são ignorados.
 - `Room`: personagem parado por andar (sorteado) e uma travessia do bloco do
   andar entre 4 e 10 s depois de chegar, depois a cada 12–30 s.
 - `Room` e `GalleryRoom`: a Varinha Mágica no mastro ou no buraco do rato
   toca uma surpresa sorteada do bloco da sala (`room_objects`).
-- `Imaginopolis`: o carrinho 0x2bc 0,2 s depois de chegar, uma vez.
+- `Imaginopolis`: o som 0x302 e o carrinho 0x2bc 0,2 s depois de chegar,
+  uma vez; cliques ignorados até o carrinho sumir.
 - Sons das células viram `Effect::PlaySound(SoundRef::Snd(Artist, id))`.
 - Sem os dados (recurso ou imagem ausente) nada toca e nada quebra.

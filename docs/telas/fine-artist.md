@@ -95,14 +95,35 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    fecha o livro. *No port* também passam a fala Enter, →, um clique no
    balão ou na página direita do álbum, e voltam ←, PageUp ou um clique na
    página esquerda. O McZee voando (`4233`) não é usado.
-4. **Imaginópolis** (`6cfd`, 641×480, alinhado à esquerda): a porta "Entre"
-   do Museu Mágico, por volta de (302,172), leva à rua. O McZee passa no
-   carrinho da montanha-russa (roteiro `ATAG` 0x2bc) logo ao chegar
-   (0,2 s depois de a tela aparecer, 3,5 s de duração), uma vez só: em 90 s
-   de gravação ele não volta. A Entrada e o título ficam parados no
-   original (33 s de gravação da Entrada sem nenhuma mudança).
-5. **Rua** (`6d01`): a porta do prédio, por volta de (338,355–385), leva ao
-   saguão (resposta com atraso).
+4. **Imaginópolis** (`6cfd`, 641×480, alinhado à esquerda): ao chegar (da
+   Entrada ou da rua) toca o som `302` (trilha da chegada, 178304 bytes,
+   ~16 s; `ARTIST.EXE` o toca logo antes do roteiro) e o McZee passa no
+   carrinho da montanha-russa (roteiro `ATAG` 0x2bc), 0,2 s depois de a
+   tela aparecer, 3,5 s de duração, uma vez só: em 90 s de gravação ele não
+   volta. Durante o carrinho os cliques são ignorados; depois, um clique em
+   **qualquer ponto** da tela (placa, túnel, montanha-russa, árvores, a
+   porta "Entre" em (302,172)...) leva à rua na hora, com o som `253`
+   (1068 bytes; `2c0`–`2c5` são o mesmo som, byte a byte). A Entrada e o
+   título ficam parados no original (33 s de gravação da Entrada sem
+   nenhuma mudança).
+5. **Rua** (`6d01`): não há área morta. A tabela de pontos quentes da rua
+   está em `ARTIST.EXE` (deslocamento 0xde392 do arquivo da versão em
+   português; registros de 34 bytes: som do clique ou −1, canto x, y, dois
+   campos não usados pelo port, largura, altura, ação — 1 = troca de tela
+   com o argumento 3 (saguão), 2 = código próprio, 3 = roteiro `ATAG` do
+   argumento —, e no fim o número do ponto, 0x404–0x40b). Os pontos que vêm
+   depois na tabela ficam por cima:
+
+   | Área (x, y, largura × altura) | O quê |
+   |---|---|
+   | hidrante (489,387) 41×57 e lata (69,333) 65×70 | roteiros 0x5dc e 0x672 (ponto = canto) |
+   | porta giratória (296,315) 89×110 | roteiro 0x640 (1,8 s, som `2f9`), depois o saguão com o `253` |
+   | toldo (289,264) 100×46 e fachada em volta da porta (224,280) 221×141 | saguão na hora: `301` (6700 bytes) no clique e `253` na troca |
+   | fachada (195,23) 260×92, (194,115) 250×75 e (209,189) 250×278 (com a calçada da frente) | `301` e o gag da bola de beisebol, roteiro 0x5aa (5,85 s) |
+   | todo o resto: céu, cornija, prédios dos lados, rua, amarelinha | volta a Imaginópolis (que toca o `302` e o carrinho) |
+
+   Enquanto um roteiro toca (bola, porta, hidrante, lata), os cliques são
+   ignorados.
 6. **Saguão** (parede `6a6b`): elevador (as portas e o botão ao lado levam
    para dentro dele, ver abaixo); quadro de andares com Truques de
    Desenho, Oficina de Projetos, Ateliê de Pintura e Saguão/Galeria (clique
