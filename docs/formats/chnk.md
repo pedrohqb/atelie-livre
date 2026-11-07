@@ -98,6 +98,15 @@ Exemplo (`2MAX100.BOR`, primeiro registro, 46 bytes):
   contagem × { `u16` r, `u16` g, `u16` b } com o byte alto como cor. Tem 256
   cores nos desenhos salvos e 16 em `A-MAG100.ANI`; vale para as imagens
   `PKBM` do arquivo que não trazem paleta própria (ver `pkbm.md`).
+- `APAT` (papel de parede que se mexe, em `W-MAG100.CHK`): nome em inglês
+  no registro ("trees & telephone poles", "clouds", ...) e uma parte com
+  `u16` contagem e `contagem × u16` números de chunks `APBM`, na ordem de
+  `byte_order` do arquivo (big-endian em `W-MAG100.CHK`). Ex.: `00 02 03 e8
+  03 ea` = 2 quadros, `APBM` 1000 e 1002. Cada `APBM` é uma imagem `PKBM`
+  32×32 de 4 bits; há também um `PKBM` com o mesmo número do `APAT`, igual ao
+  primeiro quadro. Os `PKBM` sem `APAT` (números 8 a 176, de 8 em 8) são os
+  papéis parados. O rolo mostra os 13 `APAT` em ordem de número e depois os
+  22 parados (`engine::paint::bucket_fx::load_wallpapers`).
 - Demais etiquetas (`SOBJ`, `COBJ`, `TEXT`, `FONT`, `FRAM`, ...): ainda
   não interpretadas.
 

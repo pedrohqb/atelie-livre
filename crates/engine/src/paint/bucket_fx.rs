@@ -6,9 +6,16 @@
 use super::canvas::{COLORS, Canvas, Ink, ORIGIN, WHITE};
 use super::objects::Object;
 use super::stamp::Stamp;
+use crate::assets::{Assets, Program};
 use crate::rng::XorShift;
 use formats::palette::{Rgb, nearest};
+use formats::render::bitmap_to_rgba;
+use formats::{chnk, pkbm};
+use std::collections::HashMap;
 use std::rc::Rc;
+
+/// Biblioteca dos papéis de parede em `SHARED/STUFF`.
+pub const WALLPAPER_LIBRARY: &str = "W-MAG100.CHK";
 
 /// Lado do ladrilho dos papéis de parede, em pixels.
 pub const TILE: usize = 32;
@@ -38,6 +45,84 @@ impl Wallpaper {
     pub fn animated(&self) -> bool {
         self.frames.len() > 1
     }
+}
+
+/// Papéis de parede de `W-MAG100.CHK`, na ordem do rolo: primeiro os que se
+/// mexem (chunks `APAT`, em ordem de número), depois os parados (`PKBM`
+/// sem `APAT`, em ordem de número). Ver `docs/formats/chnk.md`.
+pub fn load_wallpapers(assets: &Assets, pal: &[Rgb]) -> Vec<Wallpaper> {
+    let Some(data) = assets.library_bytes(WALLPAPER_LIBRARY) else {
+        return Vec::new();
+    };
+    let Ok(f) = chnk::parse(data) else {
+        return Vec::new();
+    };
+    let pals = assets.palettes(Program::Artist).for_chnk(&f);
+    let big = f.byte_order == chnk::ByteOrder::Big;
+    let mut cache: HashMap<[u8; 3], u8> = HashMap::new();
+    let mut image = |tag: &[u8; 4], id: u16| -> Option<Vec<u8>> {
+        let c = f.chunks.iter().find(|c| &c.tag.0 == tag && c.id == id)?;
+        let p = c.parts.iter().find(|p| pkbm::is_pkbm(p.data))?;
+        let b = pkbm::decode(p.data).ok()?;
+        if (b.width as usize, b.height as usize) != (TILE, TILE) {
+            return None;
+        }
+        let img = bitmap_to_rgba(&b, &pals);
+        Some(
+            img.rgba
+                .chunks_exact(4)
+                .map(|q| {
+                    *cache
+                        .entry([q[0], q[1], q[2]])
+                        .or_insert_with(|| nearest(pal, q[0], q[1], q[2]))
+                })
+                .collect(),
+        )
+    };
+    let mut animated: Vec<&chnk::Chunk> = f.chunks.iter().filter(|c| &c.tag.0 == b"APAT").collect();
+    animated.sort_by_key(|c| c.id);
+    let mut out = Vec::new();
+    for c in &animated {
+        let d = c.parts.first().map(|p| p.data).unwrap_or_default();
+        let at = |k: usize| -> Option<u16> {
+            let b = [*d.get(k)?, *d.get(k + 1)?];
+            Some(if big {
+                u16::from_be_bytes(b)
+            } else {
+                u16::from_le_bytes(b)
+            })
+        };
+        let n = at(0).unwrap_or(0) as usize;
+        let mut frames: Vec<Vec<u8>> = (1..=n)
+            .filter_map(|k| at(2 * k))
+            .filter_map(|id| image(b"APBM", id))
+            .collect();
+        if frames.is_empty() {
+            frames.extend(image(b"PKBM", c.id));
+        }
+        if !frames.is_empty() {
+            out.push(Wallpaper {
+                name: c.name.clone().unwrap_or_default(),
+                frames,
+            });
+        }
+    }
+    let mut still: Vec<u16> = f
+        .chunks
+        .iter()
+        .filter(|c| &c.tag.0 == b"PKBM" && !animated.iter().any(|a| a.id == c.id))
+        .map(|c| c.id)
+        .collect();
+    still.sort_unstable();
+    for id in still {
+        if let Some(frame) = image(b"PKBM", id) {
+            out.push(Wallpaper {
+                name: format!("papel {id}"),
+                frames: vec![frame],
+            });
+        }
+    }
+    out
 }
 
 /// O que a lata despeja: tinta (cor e padrão) ou um papel de parede.
