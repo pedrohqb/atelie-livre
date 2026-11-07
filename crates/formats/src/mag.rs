@@ -1,9 +1,10 @@
 //! Desenhos salvos do Fine Artist (`.MAG`; ver `docs/formats/mag.md`).
 //!
 //! Um `.MAG` é um arquivo `CHNK` little-endian de criador `SPLT`. O leitor
-//! aproveita a paleta (`CTBL`), a pintura (`PKBM 0`), o título (`TITL`) e o
-//! autor (`AUTH`) e ignora os adesivos e palavras soltos (`SOBJ`, `COBJ`), que
-//! o original já desenhou na pintura. O gravador produz os mesmos chunks, na
+//! aproveita a paleta (`CTBL`), a pintura (de preferência a cópia em tamanho
+//! real `THMB 1`, que já traz os adesivos e palavras soltos; senão `PKBM 0`),
+//! o título (`TITL`) e o autor (`AUTH`), e ignora os objetos soltos (`SOBJ`,
+//! `COBJ`). O gravador produz os mesmos chunks, na
 //! mesma ordem, de um desenho de exemplo da instalação (`SAMP6.MAG`), sem
 //! objetos soltos.
 
@@ -112,7 +113,18 @@ pub fn read(data: &[u8]) -> Result<Picture> {
     let Some(pic) = part(b"PKBM", 0) else {
         return Err(err(0, ErrorKind::Invalid("no PKBM 0 chunk".into())));
     };
-    let bitmap = pkbm::decode(pic.data).map_err(|e| err(pic.offset + e.offset, e.kind))?;
+    let mut bitmap = pkbm::decode(pic.data).map_err(|e| err(pic.offset + e.offset, e.kind))?;
+    // Com adesivos ou palavras soltos (`SOBJ`/`COBJ`), o `PKBM 0` é só o
+    // fundo; a cópia em tamanho real (`THMB 1`) tem a figura inteira.
+    if let Some(full) = part(b"THMB", 1)
+        .and_then(|p| pkbm::decode(p.data).ok())
+        .filter(|b| (b.width, b.height) == (bitmap.width, bitmap.height))
+    {
+        bitmap.pixels = full.pixels;
+        if bitmap.palette.is_none() {
+            bitmap.palette = full.palette;
+        }
+    }
     let ctbl = part(b"CTBL", 0)
         .map(|p| palette::parse_ctbl(p.data).map_err(|e| err(p.offset + e.offset, e.kind)));
     let palette = match ctbl {
@@ -372,6 +384,54 @@ mod tests {
         let e = read(&d3).unwrap_err();
         assert_eq!(e.format, Format::Mag);
         assert!(matches!(e.kind, ErrorKind::Invalid(_)));
+    }
+
+    /// Com adesivos soltos o `PKBM 0` é só o fundo; a figura inteira está
+    /// na cópia em tamanho real (`THMB 1`), que o leitor prefere.
+    #[test]
+    fn read_prefers_full_size_copy_with_the_objects() {
+        let p = picture();
+        let d = write(&p);
+        let f = chnk::parse(&d).unwrap();
+        let blank = pkbm::Bitmap {
+            width: p.width,
+            height: p.height,
+            depth: 8,
+            pixels: vec![0; p.pixels.len()],
+            palette: None,
+        };
+        let chunks: Vec<OwnedChunk> = f
+            .chunks
+            .iter()
+            .map(|c| {
+                if c.tag.0 == *b"PKBM" && c.id == 0 {
+                    OwnedChunk::single(b"PKBM", 0, b"PKBM", pkbm::encode(&blank))
+                } else {
+                    OwnedChunk::from(c)
+                }
+            })
+            .collect();
+        assert_eq!(read(&chnk::write(CREATOR, &chunks)).unwrap(), p);
+        // uma cópia de outro tamanho não vale: fica o PKBM 0
+        let small = pkbm::Bitmap {
+            width: 3,
+            height: 3,
+            depth: 8,
+            pixels: vec![9; 9],
+            palette: Some(pal()),
+        };
+        let chunks: Vec<OwnedChunk> = chunks
+            .into_iter()
+            .map(|c| {
+                if c.tag.0 == *b"THMB" && c.id == 1 {
+                    OwnedChunk::single(b"THMB", 1, b"PKBM", pkbm::encode(&small))
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let got = read(&chnk::write(CREATOR, &chunks)).unwrap();
+        assert!(got.pixels.iter().all(|&x| x == 0));
     }
 
     #[test]

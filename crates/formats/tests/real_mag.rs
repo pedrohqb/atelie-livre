@@ -148,3 +148,17 @@ fn writing_a_sample_picture_reads_back_equal() {
         assert_eq!(a.parts[0].data, b.parts[0].data, "{}", a.tag);
     }
 }
+
+/// "5 Artistas" (`SAMP1.MAG`) tem os adesivos soltos: o `PKBM 0` é quase
+/// branco e a figura completa vem da cópia em tamanho real (`THMB 1`).
+#[test]
+fn samp1_comes_with_its_stickers() {
+    let Some(d) = support::read("SHARED/USERS/MAGGIE/SAMP1.MAG") else {
+        return;
+    };
+    let pic = mag::read(&d).unwrap();
+    assert_eq!(pic.title, "5 Artistas");
+    let bg = pic.pixels[0];
+    let drawn = pic.pixels.iter().filter(|&&x| x != bg).count();
+    assert!(drawn > 20_000, "{drawn}");
+}
