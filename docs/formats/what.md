@@ -55,5 +55,8 @@ com figura, `21b` dica (parâmetro = registro de destino no mesmo bloco; o
 bit 15 aparece ligado em alguns), `21d` dica do Max, `222` "Precisa de
 ajuda?", `223` pasta, `229`/`230` Rex, `ffff` palavra do glossário
 (parâmetro = registro cujo título é a palavra e cujo texto é a definição).
-Ids `1000`–`10ff` são os ícones das ferramentas desenhados no meio do texto.
+Ids `1000`–`10ff` são os ícones das ferramentas desenhados no meio do texto,
+numa numeração própria (não são ids do `ARTIST.PIC`): `1000`–`1005` e
+`1036`–`1039` são os ícones da barra, `1049`–`1052` os botões do Aspirador,
+`1071`/`1072` os do Imprimir (tabela em `../telas/pintura-impressao.md`).
 O `@` no texto é o nome do usuário cadastrado.

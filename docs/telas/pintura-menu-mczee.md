@@ -82,10 +82,10 @@ quadro). O segundo clique na lupa volta ao normal (som `030a`).
   como a cabeça vermelha ao lado.
 - **Imprimir** é uma ferramenta: o ícone fica ativo e a faixa mostra
   "imprimir depressa" (`02e7` em (131,62)) e "fazer escolhas" (`02f3` em
-  (338,61)); enquanto está escolhida o quadro não responde. No Ateliê Livre
-  os dois imprimem (PNG + `lp`); a máquina de impressão do original (tela
-  com pré-visualização, FUNDO, PÁRA/SEGUE, sons `0224`+`02f6`) ainda não
-  existe. Nos projetos e lições, o ícone imprime na hora.
+  (338,61)); enquanto está escolhida o quadro não responde (as cores e os
+  padrões, sim). Os dois abrem a máquina de impressão do McZee, descrita em
+  [`pintura-impressao.md`](pintura-impressao.md). Nos projetos e lições, o
+  ícone imprime na hora.
 - O botão direito do mouse faz o mesmo que o esquerdo em toda a tela.
 - Áreas de clique: a coluna de padrões responde até x ≈ 630 e o ícone
   Imprimir até x ≈ 494 (no original 488).

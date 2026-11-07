@@ -260,7 +260,9 @@ seção 4. Resumo:
     cima à direita; some ao trocar de ferramenta ou de opção). Os atalhos
     com Alt ("em todos os lugares") e Ctrl ("permanente") não foram feitos.
 - **Aspirador**: 8 opções (`1557`, `1559`, `1567`, `1561`, `155f`, `155b`,
-  `155c`, `1569`); a primeira limpa o quadro.
+  `155c`, `1569`); Aspira-tinta, Aspira-cópias e Aspira-cores seguem o
+  caminho do mouse (Shift: retângulo) — ver
+  [`pintura-impressao.md`](pintura-impressao.md).
 - **Cores**: 38 caixas na coluna esquerda (índices da `LOGPALETTE` 8).
 - **Padrões**: 38 caixas na coluna direita, padrões 0–37 de `PAT#` 0x80,
   desenhados na cor atual; bit 0 = cor, bit 1 = branco.
@@ -364,10 +366,12 @@ seção 4. Resumo:
   não couber), e o principal continua aberto, como no original; uma ligação
   dentro do sub-balão o troca, um clique no principal fecha só o sub e um
   clique fora fecha os dois. As setas de página da faixa não fecham os
-  balões (o do Pincel continua aberto ao paginar). Na primeira vez que a tela abre aparece o do Pincel. Os
-  ícones das ligações e vários ícones das ferramentas citados nos balões
-  (`100e`, `1012`, `1036`…) não estão no `.PIC`: as ligações usam ícones
-  desenhados à mão e as figuras ausentes são puladas.
+  balões (o do Pincel continua aberto ao paginar). Na primeira vez que a tela
+  abre aparece o do Pincel. Os ícones das ligações são desenhados à mão; os
+  ids `1xxx` das figuras são uma numeração própria, traduzida para o `.PIC`
+  por `help_icons.rs` (barra de ferramentas, faixas do Aspirador e do
+  Imprimir; tabela em [`pintura-impressao.md`](pintura-impressao.md)); os
+  ainda sem tradução são lidos direto do `.PIC` ou pulados.
 
 ## Oficina de Projetos
 
