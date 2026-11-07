@@ -4,6 +4,7 @@
 
 pub mod button;
 pub mod comics;
+pub mod dialogs;
 pub mod flipbook;
 
 use crate::Frame;

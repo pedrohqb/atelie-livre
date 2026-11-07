@@ -3,6 +3,7 @@
 //! Posições medidas no original (spec 2b, seção 4).
 
 use super::paint_sfx as sfx;
+use super::projects::dialogs::{After, Dialog, Outcome, Step};
 use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
@@ -406,6 +407,10 @@ pub struct Paint {
     time: f32,
     /// Projeto da Oficina em andamento, se a tela foi aberta por ele.
     project: Option<Project>,
+    /// Balão do fim guiado do projeto (imprimir, salvar com nome, jogar fora).
+    dialog: Option<Dialog>,
+    /// O trabalho foi jogado fora: sair não guarda nada e esquece o último.
+    discard: bool,
     /// Lição dos Truques de Desenho em andamento.
     wizard: Option<Wizard>,
     trick: Option<TrickKind>,
@@ -467,6 +472,8 @@ impl Paint {
             vacuum_object: None,
             clipboard: None,
             project: None,
+            dialog: None,
+            discard: false,
             wizard: None,
             trick: None,
             wizard_t: 0.0,
@@ -881,6 +888,109 @@ impl Paint {
         self.project.as_ref()
     }
 
+    /// Balão do fim guiado aberto, se houver.
+    pub fn dialog(&self) -> Option<&Dialog> {
+        self.dialog.as_ref()
+    }
+
+    /// Abre um passo do fim guiado do projeto.
+    fn open_dialog(&mut self, step: Step, after: After, assets: &Assets) {
+        let Some(kind) = self.project.as_ref().map(|p| p.kind()) else {
+            return;
+        };
+        self.help = None;
+        self.dialog = Some(Dialog::open(kind, step, after, assets));
+    }
+
+    /// Entrada com o balão do fim guiado aberto.
+    fn dialog_input(&mut self, input: &Input, fx: &mut Vec<Effect>, assets: &Assets) {
+        let Some(d) = self.dialog.as_mut() else {
+            return;
+        };
+        match d.handle(input, assets) {
+            Outcome::Continue => {}
+            Outcome::Close => self.dialog = None,
+            Outcome::Print => {
+                fx.push(self.print());
+                self.open_dialog(Step::Done, After::Leave, assets);
+            }
+            Outcome::SaveAs(name, after) => {
+                self.dialog = None;
+                fx.push(self.save_named(&name));
+                self.after(after, fx, assets);
+            }
+            Outcome::PrintAndDiscard(after) => {
+                self.dialog = None;
+                fx.push(self.print());
+                self.discard = true;
+                self.after(after, fx, assets);
+            }
+            Outcome::Discard(after) => {
+                self.dialog = None;
+                self.discard = true;
+                self.after(after, fx, assets);
+            }
+        }
+    }
+
+    /// Grava o projeto com o nome escolhido (`botao-<nome>.png` e o último).
+    fn save_named(&mut self, name: &str) -> Effect {
+        let (Some(dir), Some(p)) = (&self.drawings, &self.project) else {
+            return Effect::Log("sem pasta de desenhos: trabalho não guardado".into());
+        };
+        let saved = super::projects::save_picture_meta(
+            dir,
+            p.kind(),
+            &self.canvas,
+            &self.objects,
+            &self.pal,
+            &p.meta(),
+            false,
+            Some(name),
+            now_secs(),
+        );
+        match saved {
+            Ok(()) => {
+                self.changed = false;
+                Effect::Log(format!("trabalho \"{name}\" guardado em {}", dir.display()))
+            }
+            Err(e) => Effect::Log(e),
+        }
+    }
+
+    /// Depois de salvar ou jogar fora: um trabalho novo, ou a volta ao andar.
+    fn after(&mut self, after: After, fx: &mut Vec<Effect>, assets: &Assets) {
+        match after {
+            After::Leave => fx.push(Effect::ChangeScene(SceneId::Projects)),
+            After::New => self.start_new(assets),
+        }
+    }
+
+    /// Começa um trabalho novo do mesmo tipo: quadro branco, sem objetos nem
+    /// desfazer; o anterior foi guardado (ou jogado fora) antes.
+    fn start_new(&mut self, assets: &Assets) {
+        let Some(kind) = self.project.as_ref().map(|p| p.kind()) else {
+            return;
+        };
+        if self.discard
+            && let Some(dir) = &self.drawings
+        {
+            forget_last(dir, kind);
+        }
+        self.discard = false;
+        self.canvas = Canvas::new(CANVAS_W, CANVAS_H);
+        self.objects = Objects::default();
+        self.history = History::default();
+        self.words = None;
+        self.changed = false;
+        let mut project = Project::new(kind);
+        project.load_assets(assets);
+        project.prepare(&mut self.canvas);
+        self.project = Some(project);
+        // "Chocante! Aqui está um novo para você fazer." (3c00 [24])
+        self.open_help(0x3c00, 24, assets);
+    }
+
     /// Grava `impressao-AAAAMMDD-HHMMSS.png` na pasta de desenhos e tenta `lp`.
     fn print(&self) -> Effect {
         let Some(dir) = &self.drawings else {
@@ -1263,6 +1373,15 @@ impl Paint {
     }
 
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        if self.dialog.is_some() {
+            let input = Input::Click {
+                button: MouseButton::Left,
+                x,
+                y,
+            };
+            self.dialog_input(&input, fx, assets);
+            return;
+        }
         if self.map_open {
             self.map_click(x, y, fx);
             return;
@@ -1446,6 +1565,16 @@ impl Paint {
             return;
         }
         if inside(EXIT, x, y) {
+            // num projeto com mudanças, o fim guiado pergunta se guarda com nome
+            if self.changed
+                && self
+                    .project
+                    .as_ref()
+                    .is_some_and(|p| p.kind() != ProjectKind::Flipbook)
+            {
+                self.open_dialog(Step::SaveAsk, After::Leave, assets);
+                return;
+            }
             let back = if self.trick.is_some() {
                 SceneId::TricksFloor
             } else if self.project.is_some() {
@@ -1479,8 +1608,16 @@ impl Paint {
                     self.open_help(WHAT_EGG, 0, assets);
                 }
                 Action::Print => {
-                    fx.push(self.print());
-                    self.open_help(WHAT_PRINT, 0, assets);
+                    if self
+                        .project
+                        .as_ref()
+                        .is_some_and(|p| p.kind() != ProjectKind::Flipbook)
+                    {
+                        self.open_dialog(Step::PrintAsk, After::Leave, assets);
+                    } else {
+                        fx.push(self.print());
+                        self.open_help(WHAT_PRINT, 0, assets);
+                    }
                 }
             }
             return;
@@ -2110,6 +2247,19 @@ impl Paint {
     }
 }
 
+/// Esquece o último trabalho de um tipo (`ultimo-<tipo>.*`), depois de jogá-lo fora.
+fn forget_last(dir: &std::path::Path, kind: ProjectKind) {
+    let stem = format!("ultimo-{}", kind.file_stem());
+    for name in [
+        kind.last_name(),
+        crate::paint::store::objects_name(&stem),
+        crate::paint::store::background_name(&stem),
+        super::projects::meta_name(&stem),
+    ] {
+        let _ = std::fs::remove_file(dir.join(name));
+    }
+}
+
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2123,6 +2273,11 @@ impl Scene for Paint {
         self.wizard_t += dt;
         self.sfx.update(dt);
         for i in input {
+            if self.dialog.is_some() && !matches!(i, Input::Click { .. } | Input::MouseMove { .. })
+            {
+                self.dialog_input(i, &mut fx, assets);
+                continue;
+            }
             if let Some(p) = self.project.as_mut()
                 && p.dialog_input(i, assets)
             {
@@ -2269,6 +2424,9 @@ impl Scene for Paint {
         if let Some(h) = &self.help {
             h.draw(frame, assets);
         }
+        if let Some(d) = &self.dialog {
+            d.draw(frame, assets);
+        }
         self.draw_wizard(frame, assets);
     }
 
@@ -2308,6 +2466,14 @@ impl Scene for Paint {
                     Err(e) => format!("não consegui gravar {}: {e}", path.display()),
                 },
             )];
+        }
+        if self.discard
+            && let Some(p) = &self.project
+        {
+            forget_last(dir, p.kind());
+            self.discard = false;
+            self.changed = false;
+            return vec![Effect::Log("trabalho jogado fora".into())];
         }
         if let Err(e) = self.sounds.save_spots(&dir.join(SPOTS_NAME)) {
             return vec![Effect::Log(format!("sons: {e}"))];

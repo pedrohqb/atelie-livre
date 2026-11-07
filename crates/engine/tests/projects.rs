@@ -49,6 +49,13 @@ fn stroke(x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<Input> {
     ]
 }
 
+/// Clica em Imprimir e confirma no balão "Você quer imprimir ...?".
+fn print_now(p: &mut Paint, a: &Assets) {
+    p.update(&[click(479, 30)], 0.0, a);
+    let r = p.dialog().expect("balão de imprimir").option_rect(a, 0);
+    p.update(&[click(r.0 + 3, r.1 + 3)], 0.0, a);
+}
+
 fn painted(c: &Canvas) -> Vec<(i32, i32)> {
     c.px.iter()
         .enumerate()
@@ -116,7 +123,7 @@ fn comics_print_includes_frames_and_niche_reopens_panel() {
     let mut p = Paint::new_project(ProjectKind::Comics, Some(dir.path().to_path_buf()), &a);
     let r = digit_rect(1);
     p.update(&[click(r.0 + 10, r.1 + 10)], 0.0, &a);
-    p.update(&[click(479, 30)], 0.0, &a);
+    print_now(&mut p, &a);
     let name = files(dir.path(), "impressao-").pop().unwrap();
     let pal = a.palettes(Program::Artist).pal256.clone();
     let page = load_png(&dir.path().join(name), &pal).unwrap();
@@ -165,7 +172,7 @@ fn button_print_sheet_has_six_copies_and_sticker_twelve() {
     let mut p = Paint::new_project(ProjectKind::Button, Some(dir.path().to_path_buf()), &a);
     let (cx, cy) = (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2);
     p.update(&stroke(cx, cy, cx, cy), 0.0, &a);
-    p.update(&[click(479, 30)], 0.0, &a);
+    print_now(&mut p, &a);
     let name = files(dir.path(), "impressao-").pop().unwrap();
     let (w, h, px) = read_png(&dir.path().join(&name));
     assert_eq!((w, h), (PAGE_W, PAGE_H));
@@ -189,7 +196,7 @@ fn button_print_sheet_has_six_copies_and_sticker_twelve() {
     let dir = tempfile::tempdir().unwrap();
     let mut s = Paint::new_project(ProjectKind::Sticker, Some(dir.path().to_path_buf()), &a);
     assert!(matches!(s.project(), Some(Project::Button(b)) if b.kind() == Kind::Rect));
-    s.update(&[click(479, 30)], 0.0, &a);
+    print_now(&mut s, &a);
     let name = files(dir.path(), "impressao-").pop().unwrap();
     let (w, h, px) = read_png(&dir.path().join(name));
     assert_eq!((w, h), (PAGE_W, PAGE_H));
@@ -513,4 +520,58 @@ fn comics_have_the_tails_roll_in_real_data() {
     assert!(o.image.px.iter().any(|p| *p == Some(BLACK)));
     assert!(o.image.px.iter().any(|p| *p == Some(WHITE)));
     assert!(o.image.px.iter().any(|p| p.is_none()));
+}
+
+#[test]
+fn end_flow_saves_with_name_discards_or_starts_new() {
+    use engine::scenes::projects::dialogs::Step;
+    let (_d, a) = empty_assets();
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = Paint::new_project(ProjectKind::Button, Some(dir.path().to_path_buf()), &a);
+    let (cx, cy) = (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2);
+    p.update(&[click(540, 70)], 0.0, &a);
+    p.update(&stroke(cx, cy, cx + 20, cy), 0.0, &a);
+    // imprimir: pergunta, imprime, "D+. Você terminou!"
+    print_now(&mut p, &a);
+    assert_eq!(files(dir.path(), "impressao-").len(), 1);
+    assert_eq!(p.dialog().map(|d| d.step), Some(Step::Done));
+    // "Começar um novo": salvar? → nome → grava botao-<nome>.png e limpa o quadro
+    let r = p.dialog().unwrap().option_rect(&a, 1);
+    p.update(&[click(r.0 + 3, r.1 + 3)], 0.0, &a);
+    assert_eq!(p.dialog().map(|d| d.step), Some(Step::SaveAsk));
+    let r = p.dialog().unwrap().option_rect(&a, 0);
+    p.update(&[click(r.0 + 3, r.1 + 3)], 0.0, &a);
+    assert_eq!(p.dialog().map(|d| d.step), Some(Step::NameAsk));
+    p.update(&[text("Meu Botão"), enter()], 0.0, &a);
+    assert!(p.dialog().is_none());
+    assert!(dir.path().join("botao-meu-botao.png").exists());
+    assert!(dir.path().join("botao-meu-botao.projeto.txt").exists());
+    assert_eq!(painted(p.canvas()).len(), 0);
+    assert!(matches!(p.project(), Some(Project::Button(b)) if b.asking));
+    // sair sem mudanças: direto
+    let fx = p.update(&[click(600, 60)], 0.0, &a);
+    assert!(fx.contains(&Effect::ChangeScene(engine::scene::SceneId::Projects)));
+    // com mudanças, a porta pergunta; "Não, jogar fora" → "imprimir antes?" → "Não"
+    p.update(&[click(540, 70)], 0.0, &a);
+    p.update(&stroke(cx, cy, cx + 20, cy), 0.0, &a);
+    let fx = p.update(&[click(600, 60)], 0.0, &a);
+    assert!(fx.is_empty());
+    assert_eq!(p.dialog().map(|d| d.step), Some(Step::SaveAsk));
+    // clique fora cancela a saída
+    p.update(&[click(100, 470)], 0.0, &a);
+    assert!(p.dialog().is_none());
+    p.update(&[click(600, 60)], 0.0, &a);
+    let r = p.dialog().unwrap().option_rect(&a, 1);
+    p.update(&[click(r.0 + 3, r.1 + 3)], 0.0, &a);
+    assert_eq!(p.dialog().map(|d| d.step), Some(Step::PrintBeforeTrash));
+    let r = p.dialog().unwrap().option_rect(&a, 1);
+    let fx = p.update(&[click(r.0 + 3, r.1 + 3)], 0.0, &a);
+    assert!(fx.contains(&Effect::ChangeScene(engine::scene::SceneId::Projects)));
+    let fx = p.leave();
+    assert!(matches!(&fx[..], [Effect::Log(s)] if s.contains("jogado fora")));
+    assert!(!dir.path().join("ultimo-botao.png").exists());
+    assert_eq!(files(dir.path(), "botao-").len(), 2);
+    // reabrir vem em branco
+    let q = Paint::new_project(ProjectKind::Button, Some(dir.path().to_path_buf()), &a);
+    assert_eq!(painted(q.canvas()).len(), 0);
 }
