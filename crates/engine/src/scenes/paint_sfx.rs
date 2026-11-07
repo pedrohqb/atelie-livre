@@ -21,7 +21,7 @@ pub const WORDS_OPTION: u16 = 0x0224;
 pub const WORDS_START: u16 = 0x0209;
 /// Palavra pronta no quadro (o OK do Cavalete).
 pub const WORDS_DONE: u16 = 0x02ee;
-pub const STICKER_ROLL: u16 = 0x0259;
+pub const STICKER_ROLL: u16 = 0x0233;
 pub const STICKER_PICK: u16 = 0x022d;
 pub const STICKER_PLACE: u16 = 0x0228;
 pub const SOUND_CATEGORY: u16 = 0x0233;
