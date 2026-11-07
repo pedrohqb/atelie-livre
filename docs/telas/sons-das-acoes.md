@@ -158,6 +158,14 @@ O Aspirador ativo é o saco cheio (`100f`/`1011`), não o ícone normal.
 `paint_sfx::State` guarda a animação; `draw_tools` desenha a imagem dela
 centrada no ícone.
 
+## Entrada
+
+Medidos pela varredura de cliques (`sweep`, 6/11) e ligados em
+`scenes/entry.rs` (`entry::snd`); a lista completa está em
+`docs/telas/fine-artist.md`, item 1. Os sons em sequência (abertura,
+botão + vinheta do "EPA!") tocam um depois do outro: a cena guarda a
+fila e espera a duração do PCM anterior.
+
 ## Para fazer
 
 1. Porta Saída: o original abre o aviso "Epa!" (`02fe` + `02d6`); o Ateliê

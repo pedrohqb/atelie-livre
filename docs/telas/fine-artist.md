@@ -29,20 +29,47 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    (120,170)–(431,370) com a lista de usuários (caixa branca (130,179),
    linhas de 18 px, setas `2db`/`2df` em (169,343) e (220,343)) e os botões
    **Sou eu** (`473`, (280,215)), **Primeira vez** (`477`, (280,253)) e
-   **Procurar** (`47b`, (280,288)). "Sou eu" com um nome escolhido abre
-   `4400[2]` (Imaginópolis / mudar o cadastro / história do McZee / Ateliê
-   de Pintura); sem nome, o aviso `4402[3]`.
-   *No port:* a lista vem de `usuarios/` (ver README); "Procurar" só
-   registra um aviso (não há discos).
+   **Procurar** (`47b`, (280,288)). "Sou eu" com um nome escolhido esconde
+   o quadro-negro e abre `4400[2]` em (64,76), **modal**, com Volta/Para:
+   Imaginópolis / mudar o cadastro / história do McZee / direto à tela de
+   pintura (sem passar pelo cômodo do Ateliê); Volta devolve a lista sem
+   nome escolhido; clique fora toca a vinheta de recusa. Sem nome, o
+   aviso `4402[3]`.
+   Avisos "EPA!" (`WHAT 4402` e o de saída `1001[2]`): balão branco com a
+   arte casinha-do-Rex + "EPA!" + cachorro (`2a9`, 195×48; no `WHAT` é a
+   figura `230`) e sem botão — qualquer clique fecha. O de saída ("O que
+   você quer fazer? Sair do Fine Artist / Continuar trabalhando", em
+   (214,179)) abre pelo Para de qualquer balão da Entrada por cima do que
+   estava; só as opções respondem; fora dele, vinheta de recusa.
+   Clicar no McZee toca uma fala curta; as setas fazem o clique mesmo com
+   a lista parada; Procurar fala, relê a lista e perde a escolha.
+   Sons (ids do `ARTIST.SND`, em `entry::snd`): abertura `300` + `2f6` +
+   `2fd` em sequência; escolher um nome `230`; Sou eu / Coloque aqui `239`;
+   Primeira vez `2fb`; Procurar `26d`; setas `2bc`; McZee `252`; Para
+   `2ec` + vinheta `2fe`; aviso "EPA!" `2fe` (depois do som do botão);
+   recusa `217`; opção escolhida (bolinha) e "Continuar trabalhando" `254`;
+   Segue `2eb`; Volta `2f5`; escolher a pasta `22d`.
+   *No port:* a lista vem de `usuarios/` (ver README); "Procurar" relê a
+   pasta (não há discos). Os sons em sequência são enfileirados pela cena
+   (`Entry::play`) e tocam um depois do outro pela duração do PCM; uma
+   ação nova interrompe a sequência.
 2. **Cadastro** ("Primeira vez"): balões sucessivos em (112,78) com os
    botões Volta (`40f`) / Para (`417`) / Segue (`413`), 31×14, centrados no
    rodapé do balão: `4400[4]` nome e sobrenome (caixas de 144 px),
    `4400[8]` bicho preferido (12 figuras `45b`, `45d`… em 4×3, bolinha
-   `409`/`40d`), `4400[5]` apelido. Avisos do `WHAT 4402`: `[1]` nome
-   vazio, `[2]` apelido inválido (mais de 8 caracteres, espaço ou
-   pontuação), `[0]` apelido repetido. Depois `4400[3]`: conte mais
-   (história) / direto para Imaginópolis / mudar o cadastro.
-   *No port:* a escolha do disco (`4400[6]`) não existe; o apelido é
+   `409`/`40d`), `4400[6]` "Onde você quer que eu guarde o seu trabalho?"
+   (Volta/Para; o quadro-negro volta com a lista de unidades, o botão
+   **Coloque aqui** (`47f`, (282,218)) e Procurar), `4400[5]` apelido
+   (campo já preenchido com o primeiro nome e **selecionado**: digitar
+   substitui). Avisos do `WHAT 4402` (balões "EPA!", ver acima): `[1]`
+   nome vazio, `[2]` apelido inválido (mais de 8 caracteres, espaço ou
+   pontuação), `[0]` apelido repetido. Depois `4400[3]` em (70,76) com o
+   botão Para: conte mais (história) / direto para Imaginópolis / mudar o
+   cadastro; o Volta do nome volta a esse balão quando se chegou por
+   "Quero mudar…", senão à lista. Para em qualquer passo abre o balão de
+   saída por cima.
+   *No port:* no passo da pasta a lista mostra só a pasta de dados (não
+   há discos; a dica do disquete `4400[7]` é omitida); o apelido é
    sugerido a partir do nome.
 3. **História do McZee** (álbum `4201`, 495×314, em (72,160) sobre o fundo
    da Entrada): uma página por balão do `WHAT 4200` (11), foto de 169×119 na
