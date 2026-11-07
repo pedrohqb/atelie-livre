@@ -71,17 +71,30 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    *No port:* no passo da pasta a lista mostra só a pasta de dados (não
    há discos; a dica do disquete `4400[7]` é omitida); o apelido é
    sugerido a partir do nome.
-3. **História do McZee** (álbum `4201`, 495×314, em (72,160) sobre o fundo
-   da Entrada): uma página por balão do `WHAT 4200` (11), foto de 169×119 na
-   moldura da esquerda (`420b`, `4210`, `4211`, `4218`, `423b`, `4273`,
-   `4293`, `4299`, `42b3`, `42b9`, `42f3`) e legenda ou foto na da direita
-   (`424b`, `4219`, `4223`, `4241`, `426b`, `428b`, `42a1`, `4281`, `42cb`,
-   `42e1`). Segue, Enter, → ou um clique no balão ou na página direita do
-   álbum passam a página (rótulo "mais", `42c1`, no canto da página direita
-   enquanto há seguinte); Volta, ←, PageUp ou um clique na página esquerda
-   voltam; Para sai. *No port:* as figuras `422b` (Max) e `4233` (McZee
-   voando) não são usadas; o comportamento delas no original não foi
-   confirmado.
+3. **História do McZee** (álbum `4201`, 495×314, com a máscara `4209`, em
+   (76,114) sobre o fundo `4200`; medido no livro verde do Ateliê,
+   `studio_o_book_6.png` e `studio_o_bookpg_*.png` da varredura): 9 falas
+   do `WHAT 4200` (os registros 2 e 3 repetem o 1, "Same as #2", e não
+   aparecem) em 7 páginas duplas. Fotos de 169×119 em (37,122) e (276,163)
+   dentro do álbum (as de 167×117 um pixel para dentro) e legendas escritas
+   à mão por cima:
+
+   | falas | foto esquerda / legenda | foto direita / legenda |
+   |---|---|---|
+   | 0, 1 | `420b` + Maggie `422b` / "Maggie" `4219` | `4211` / "Max" `4223` |
+   | 4 | `423b` / "Nossa casa na árvore" `4241` | `4253` / "Os contadores de histórias" `424b` |
+   | 5 | `4273` / "A chegada do McZee" `426b` | `4259` / "Nosso primeiro encontro" `4261` |
+   | 6 | `4293` / "Imaginópolis" `428b` | `4279` / "O Museu?!" `4281` |
+   | 7 | `42b3` / "Obras-primas" `42a1` | `4299` / "Obras-primas" `42a1` |
+   | 8 | `42d3` / "McZee explica" `42cb` | `42b9` / "mais" `42c1` + "Obras-primas" |
+   | 9, 10 | `42f3` / "Histórias do McZee" `42eb` | `42d9` / "A visita" `42e1` |
+
+   O balão (largura do registro) fica à esquerda da cabeça do McZee, com o
+   canto inferior direito em (416,197); Para e Segue em todas as falas,
+   Volta a partir da segunda (sons `2ec`, `2eb`, `2f5`); o Segue da última
+   fecha o livro. *No port* também passam a fala Enter, →, um clique no
+   balão ou na página direita do álbum, e voltam ←, PageUp ou um clique na
+   página esquerda. O McZee voando (`4233`) não é usado.
 4. **Imaginópolis** (`6cfd`, 641×480, alinhado à esquerda): a porta "Entre"
    do Museu Mágico, por volta de (302,172), leva à rua. O McZee passa no
    carrinho da montanha-russa (roteiro `ATAG` 0x2bc) logo ao chegar
@@ -503,11 +516,10 @@ fechada / aberta / maleta / livro / varinha):
 
 \* estimada (a bolsa da Galeria só foi vista aberta).
 
-- **Maleta**: abre a pasta de trabalhos por cima da sala (som `2f1`). No
-  original é o diálogo "Esta Pasta / Conteúdo / Título / Artista" com o
-  botão "Já"; *no port* é o painel de miniaturas da Galeria
-  (`SceneId::Portfolio`, aberto com `Effect::Push`): clique duplo abre o
-  quadro na pintura, "Fechar" ou um clique fora volta à sala.
+- **Maleta**: abre a pasta de trabalhos (o fichário verde, ver "Galeria"
+  abaixo) por cima da sala (som `2f1`; `SceneId::Portfolio`, aberto com
+  `Effect::Push`): JÁ ou clique duplo abrem o quadro na pintura, X ou um
+  clique fora voltam à sala.
 - **Livro verde**: a História do McZee por cima da sala (sons `2e2`/`265`
   e `2f6`); Para volta à sala (`SceneId::BookStory`).
 - **Varinha Mágica**: some do chão, a bolsa se fecha, o cursor vira a
@@ -557,6 +569,70 @@ toca o motor (`2d8`) e a escotilha mostra o roteiro 0x190 (subindo) ou
 mostrador muda a cada andar. Depois as portas se abrem (`2d4`), o vão
 mostra a parede do andar por 1 s e a sala aparece (`311`) com o balão de
 chegada. Clicar no andar em que se está só abre as portas.
+
+## Galeria
+
+Medida no original (varredura de cliques, `report/gallery.md`); código em
+`crates/engine/src/scenes/gallery_room.rs`, `gallery_print.rs` e
+`portfolio.rs`. Ao chegar, a fala `304` e "Seja bem-vindo à Galeria!"
+(`100d[6]`) em (130,240). Os sons das ações seguintes tocam em fila.
+
+- **Moldura, clique simples**: `21c` e o balão "Se você quiser trabalhar
+  neste quadro…" (`100d[41]`) ao lado da moldura (à direita se couber,
+  senão à esquerda): "Estou pronto para ir!" (`254`) abre a pintura com o
+  quadro; "Ops!" fecha. **Clique duplo** abre direto. A pintura recebe o
+  título do quadro (o do `.MAG`, inclusive dos exemplos) em
+  `ultimo.nome.txt`; um desenho sem título abre como "Quadro Novo".
+- **Arrastar** (`21c` ao pegar): para outra moldura troca os dois; para a
+  impressora abre a prévia; para a lixeira, os avisos abaixo.
+- **Impressora**: clique simples toca `212` e mostra a dica `100d[10]`.
+  Quadro solto nela (`212`, `2f6`): janela de prévia (moldura laranja,
+  faixa cinza, a folha com o desenho pela metade) com o McZee `4403` no
+  alto à direita e "OK. Já estou pronto para imprimir a figura!"
+  (`4c00[11]`) com Para (`2ec`, volta) e Segue (`2eb`): a folha é gravada
+  em `impressao-AAAAMMDD-HHMMSS.png` e mandada ao `lp`; "Eu ainda estou
+  imprimindo…" (`4c00[12]`) fica pelo menos 1,5 s, com o bicho `25d`
+  andando na faixa de progresso; Esc cancela (`100f[20]`). Se o `lp` falha
+  ou não existe, o "EPA!" do Rex `100f[19]` (`2fe`); qualquer clique volta
+  à Galeria. Deu certo: "Terminei de imprimir a figura" (`4c00[14]`) com
+  Para.
+- **Lixeira**: clique simples toca `2f8` e mostra a dica `100d[11]`. Um
+  **exemplo** solto nela (`2f8`, `2fe`) é recusado: "Não, obrigado..."
+  (`100d[74]` vindo da parede, `[75]` da pasta), que fecha com qualquer
+  clique; a moldura recebe outro exemplo, sorteado entre os que não estão
+  na parede. Um **desenho da criança** vindo da parede pergunta
+  (`100d[76]`) "Jogue no lixo!" (apaga o `.png` e o `.mag`), "Tire da
+  parede" (o arquivo fica; a moldura recebe outro quadro) ou "Ops!
+  Esquece"; vindo da pasta, `100d[73]` (Jogue no lixo / Tira a mão). Nos
+  avisos com opções, um clique fora toca a recusa `217`.
+- **Tchau**: `264`, `2fe` e o "EPA!" modal `1001[2]` em (214,179): "Sair
+  do Fine Artist" (opção 1 do original) sai, "Continuar trabalhando"
+  (opção 0) fecha; clique fora toca `217`.
+- **McZee**: fala `252` e "Você quer me ver menos?" (`100d[29]`): "Sim,
+  por favor" esconde as dicas (o McZee fica), "Diga de novo" volta às
+  boas-vindas, "Deixa para lá" fecha; dispensado, o próximo clique nele dá
+  "Que bom que você me chamou de novo" (`100d[30]`).
+- **Seta "Saguão"**: `2fb` e o saguão. **Buraco do rato** sem a varinha:
+  `20a`. "Ver outros quadros", nas boas-vindas, mostra a dica da pasta
+  (`100d[12]`) como no original.
+- **Pasta** (maleta, `2f1`): o fichário verde (115,111)–(521,368), igual
+  ao do Ateliê. Página esquerda: "Esta Pasta" (a pasta de desenhos; as
+  setas de unidade só tocam `2bc`, não há discos), "Conteúdo" com a árvore
+  — a criança com o seu bicho (`45b`+2·n), "Ateliê de Pintura" (`3c3`) e
+  os quadros; embaixo "Maggie" com os exemplos — 8 linhas de 17 px, setas
+  que rolam a lista; botões inseto `25d` (procurar: `0213[0]`, "Ache"
+  escolhe o próximo quadro cujo nome contém o texto, sem acento nem
+  maiúscula; nada achado toca `217`), X `3bb` (fecha, `2ed`) e JÁ `3bf`
+  (abre na pintura, `239`). Clicar num quadro: tique `230`; clique duplo
+  abre. Página direita: a miniatura em (345,155) 144×84, "Título" e
+  "Artista" (o autor do `.MAG` nos exemplos), com setas para o quadro
+  anterior/seguinte e para o artista anterior/seguinte (`2bc`). Ao abrir,
+  "Para ver mais escolhas, clique aqui…" (`100d[54]`) em (310,118). Na
+  Galeria a miniatura pode ser arrastada para uma moldura (o fichário some
+  ao arrastar).
+- *Fora, por enquanto:* o suporte de pastas e a gaveta das unidades (não
+  há discos) e as
+  bordas exatas (máscara) da bolsa, do livro e da maleta.
 
 ## Conferência
 

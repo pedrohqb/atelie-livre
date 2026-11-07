@@ -52,9 +52,15 @@ ou `08 04`; nas miniaturas, `08 00`.
 
 ## Leitura
 
-`mag::read` aproveita `CTBL`, `PKBM 0`, `TITL` e `AUTH` e ignora os objetos
-soltos: o original já os desenhou na pintura, então a imagem fica completa.
-Sem `CTBL`, vale a paleta embutida em `THMB 0` ou na própria pintura.
+`mag::read` aproveita `CTBL`, a pintura, `TITL` e `AUTH` e ignora os objetos
+soltos. Com adesivos ou palavras soltos o `PKBM 0` guarda **só o fundo**: em
+`SAMP1.MAG` ("5 Artistas") ele é quase todo branco (3 554 pixels desenhados),
+e a figura completa (26 010) está na cópia em tamanho real `THMB 1`. Por isso
+o leitor usa `THMB 1` quando ela tem o tamanho da pintura e cai no `PKBM 0`
+quando não há cópia (nos 12 exemplos sem objetos as duas são iguais). Nos
+adesivos e cartões (`SAMP12`–`SAMP15`) o `PKBM 0` é todo branco e só a cópia
+tem o desenho. Sem `CTBL`, vale a paleta embutida em `THMB 0` ou na própria
+pintura.
 
 ## Gravação
 

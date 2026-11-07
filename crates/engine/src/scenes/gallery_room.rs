@@ -11,16 +11,20 @@
 //! abre sozinha por cima das salas ([`GalleryRoom::portfolio`]).
 
 use super::gags::{self, Character};
+use super::gallery_print::PrintPreview;
+use super::portfolio::{self, Action, Binder};
 use super::room_objects::{self as objects, BagPart, MagicBag, Target, snd};
 use crate::Frame;
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
-use crate::paint::store::{LAST_NAME, load_picture, save_png, timestamp_name};
+use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
 use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::text_balloon::{PIC_ALERT, Part, TextBalloon};
 use formats::palette::Rgb;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
 type Rect = (i32, i32, i32, i32);
@@ -52,35 +56,79 @@ const MOUSE_HOLE: Rect = (445, 348, 54, 47);
 #[cfg(test)]
 const FOLDER: Rect = (304, 391, 99, 74);
 
-/// Pasta aberta: painel com 4×3 miniaturas e setas.
-const PANEL: Rect = (40, 40, 560, 360);
-const COLS: usize = 4;
-const ROWS: usize = 3;
-const PER_PAGE: usize = COLS * ROWS;
-const CELL: (i32, i32) = (134, 112);
-const PANEL_PREV: Rect = (60, 368, 80, 24);
-const PANEL_NEXT: Rect = (500, 368, 80, 24);
-const PANEL_CLOSE: Rect = (280, 368, 80, 24);
-
 /// Bloco `WHAT` das salas: boas-vindas da galeria e reciclagem.
 const WHAT: u16 = 0x100d;
 const WELCOME: usize = 6;
 const WELCOME2: usize = 7;
-const RECYCLE: usize = 73;
-/// Dicas mostradas pelas opções do balão de boas-vindas.
+/// Dicas mostradas pelas opções do balão de boas-vindas, pela impressora e
+/// pela lixeira (`gallery-printer`, `gallery-Recycle bin`).
 const TIP_REORGANIZE: usize = 8;
 const TIP_OPEN: usize = 9;
 const TIP_PRINT: usize = 10;
 const TIP_TRASH: usize = 11;
+/// "A pasta é o lugar onde são guardados todos os seus quadros…".
+const TIP_PORTFOLIO: usize = 12;
+/// "Você quer me ver menos?" e "Que bom que você me chamou de novo".
+const HELP_OFF: usize = 29;
+const HELP_ON: usize = 30;
+/// "Se você quiser trabalhar neste quadro…" (clique simples na moldura).
+const WORK_ON: usize = 41;
 /// "Wand - library": a varinha no buraco do rato da Galeria.
 const WAND_LIBRARY: usize = 57;
+/// Avisos "EPA!" da lixeira: desenho da pasta (2 opções), exemplo da parede
+/// ("Não, obrigado..."), exemplo da pasta e desenho da parede (3 opções).
+const RECYCLE: usize = 73;
+const NOT_YOURS_WALL: usize = 74;
+const NOT_YOURS: usize = 75;
+const RECYCLE_WALL: usize = 76;
+/// "O que você quer fazer? Sair do Fine Artist / Continuar trabalhando".
+const QUIT_WHAT: (u16, usize) = (0x1001, 2);
+/// Índices do original nas opções da lixeira (`22C000n`).
+const OPT_KEEP: u16 = 0;
+const OPT_TRASH: u16 = 1;
+const OPT_QUIT: u16 = 1;
+/// Posição dos avisos "EPA!" (medida em `gallery_o_dtrash_own_1.png`).
+const ALERT_POS: (i32, i32) = (178, 145);
+const QUIT_POS: (i32, i32) = (214, 179);
+/// Balão de boas-vindas (medido na chegada do original).
+const WELCOME_POS: (i32, i32) = (130, 240);
+
+/// Sons da Galeria (ids do `ARTIST.SND`, identificados pelo tamanho no
+/// original; ver `report/gallery.md` da varredura).
+pub mod sfx {
+    /// Fala de chegada.
+    pub const ARRIVAL: u16 = 0x304;
+    /// Clique ao pegar um quadro (ou clicar nele).
+    pub const PICK: u16 = 0x21c;
+    /// Opção escolhida num balão.
+    pub const CHOICE: u16 = 0x254;
+    /// Impressora (clique ou quadro solto nela) e a abertura da prévia.
+    pub const PRINTER: u16 = 0x212;
+    pub const PREVIEW: u16 = 0x2f6;
+    /// Lixeira.
+    pub const TRASH: u16 = 0x2f8;
+    /// Vinheta dos avisos "EPA!".
+    pub const ALERT: u16 = 0x2fe;
+    /// Vinheta de recusa: clique fora de um aviso modal.
+    pub const REFUSE: u16 = 0x217;
+    /// Tchau.
+    pub const BYE: u16 = 0x264;
+    /// Fala curta do McZee ao clicar nele.
+    pub const MCZEE: u16 = 0x252;
+    /// Seta "Saguão".
+    pub const LOBBY: u16 = 0x2fb;
+    /// Buraco do rato sem a varinha.
+    pub const MOUSE_HOLE: u16 = 0x20a;
+}
+
+/// Programa que imprime a folha (o `lp` do CUPS).
+const PRINT_COMMAND: &str = "lp";
 
 const DOUBLE_CLICK: f32 = 0.4;
 /// Arquivo com os nomes dos quadros das três molduras.
 pub const WALL_FILE: &str = "galeria.txt";
 
 const BLACK: [u8; 3] = [0, 0, 0];
-const WHITE: [u8; 3] = [255, 255, 255];
 const WALL_A: [u8; 3] = [136, 136, 230];
 const WALL_B: [u8; 3] = [71, 140, 80];
 const FLOOR_A: [u8; 3] = [100, 100, 100];
@@ -98,20 +146,47 @@ fn frame_rect(k: usize) -> Rect {
 pub struct Item {
     pub path: PathBuf,
     pub name: String,
+    /// Título dado ao quadro (o do `.MAG`, sem o "Quadro Novo"): vai para o
+    /// rótulo da pintura quando ele é aberto.
+    pub title: Option<String>,
+    /// Autor gravado no `.MAG` (os exemplos são da Maggie).
+    pub author: String,
     pub sample: bool,
     thumb: Canvas,
 }
 
-/// Nome para mostrar: o título do `.MAG`, ou o nome do arquivo sem o carimbo.
-fn display_name(path: &Path) -> String {
-    if path
+impl Item {
+    /// Miniatura 1/4 do quadro.
+    pub fn thumb(&self) -> &Canvas {
+        &self.thumb
+    }
+}
+
+/// Título e autor do `.MAG` do quadro (o próprio arquivo ou o gêmeo do `.png`).
+fn mag_info(path: &Path) -> (Option<String>, String) {
+    let mag = if path
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("mag"))
-        && let Ok(d) = std::fs::read(path)
-        && let Ok(p) = formats::mag::read(&d)
-        && !p.title.trim().is_empty()
     {
-        return p.title.trim().to_string();
+        path.to_path_buf()
+    } else {
+        path.with_extension("mag")
+    };
+    let Some(p) = std::fs::read(&mag)
+        .ok()
+        .and_then(|d| formats::mag::read(&d).ok())
+    else {
+        return (None, String::new());
+    };
+    let t = p.title.trim();
+    let title = (!t.is_empty() && t != MAG_TITLE).then(|| t.to_string());
+    (title, p.author.trim().to_string())
+}
+
+/// Nome para mostrar: o título do `.MAG`, ou o nome do arquivo sem o carimbo.
+fn display_name(path: &Path) -> String {
+    if let (Some(t), _) = mag_info(path) {
+        return t;
     }
     let stem = path
         .file_stem()
@@ -130,12 +205,31 @@ fn display_name(path: &Path) -> String {
     stem
 }
 
-fn thumbnail(c: &Canvas) -> Canvas {
+/// Miniatura 1/4: de cada bloco 4×4 fica o pixel mais escuro, para as
+/// linhas finas não sumirem (o original reduz com o `StretchBlt` do
+/// Windows, que preserva o preto).
+fn thumbnail(c: &Canvas, pal: &[Rgb]) -> Canvas {
     let (w, h) = (THUMB_W, THUMB_H);
+    let luma = |i: u8| {
+        pal.get(i as usize)
+            .map_or(0, |p| 3 * p.r as u32 + 6 * p.g as u32 + p.b as u32)
+    };
     let mut t = Canvas::new(w, h);
     for y in 0..h {
         for x in 0..w {
-            t.px[(y * w + x) as usize] = c.px[((y * 4) * c.w + x * 4) as usize];
+            let mut best = c.px[((y * 4) * c.w + x * 4) as usize];
+            for dy in 0..4 {
+                for dx in 0..4 {
+                    let (sx, sy) = (x * 4 + dx, y * 4 + dy);
+                    if sx < c.w && sy < c.h {
+                        let v = c.px[(sy * c.w + sx) as usize];
+                        if luma(v) < luma(best) {
+                            best = v;
+                        }
+                    }
+                }
+            }
+            t.px[(y * w + x) as usize] = best;
         }
     }
     t
@@ -163,8 +257,33 @@ enum Ask {
     Welcome2,
     /// Dica sem opções.
     Tip,
-    /// Jogar fora o quadro (índice em `items`).
-    Recycle(usize),
+    /// "Se você quiser trabalhar neste quadro…" (índice em `items`).
+    WorkOn(usize),
+    /// "Você quer me ver menos?".
+    HelpOff,
+    /// "Que bom que você me chamou de novo".
+    HelpOn,
+}
+
+/// Avisos "EPA!" modais (casinha do Rex): só as opções respondem; um clique
+/// fora toca a vinheta de recusa. Os que não têm opções fecham com qualquer
+/// clique.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Modal {
+    /// Sair do Fine Artist / Continuar trabalhando.
+    Quit,
+    /// Um exemplo na lixeira: "Não, obrigado..."; a moldura de onde ele
+    /// veio, se veio de uma, recebe outro exemplo.
+    NotYours(Option<usize>),
+    /// Um desenho da criança na lixeira (item, moldura de onde veio).
+    Trash(usize, Option<usize>),
+}
+
+struct Alert {
+    kind: Modal,
+    balloon: TextBalloon,
+    /// Índice do original de cada opção, na ordem em que aparecem.
+    ids: Vec<u16>,
 }
 
 pub struct GalleryRoom {
@@ -175,12 +294,20 @@ pub struct GalleryRoom {
     /// Índice em `items` do quadro de cada moldura.
     wall: [Option<usize>; 3],
     folder_open: bool,
-    folder_page: usize,
+    /// O fichário verde (a pasta de trabalhos).
+    binder: Binder,
     drag: Option<Drag>,
     last_click: Option<(Source, f32)>,
     clock: f32,
     balloon: Option<(Ask, Balloon)>,
+    alert: Option<Alert>,
+    print: Option<PrintPreview>,
+    /// Programa de impressão (os testes trocam o `lp`).
+    print_command: String,
     character: Option<Character>,
+    /// "Sim, por favor" em "Você quer me ver menos?": sem as dicas, e o
+    /// próximo clique no McZee pergunta se ele volta a ajudar.
+    help_off: bool,
     mouse: (i32, i32),
     /// Só a pasta, aberta pela maleta de uma sala (por cima dela).
     overlay: bool,
@@ -188,6 +315,11 @@ pub struct GalleryRoom {
     surprise: Option<Animator>,
     rng: XorShift,
     wand_cursor: bool,
+    /// A fala de chegada já foi pedida.
+    arrived: bool,
+    /// Sons em sequência e quanto falta para o próximo.
+    queue: VecDeque<u16>,
+    queue_wait: f32,
 }
 
 impl GalleryRoom {
@@ -197,9 +329,12 @@ impl GalleryRoom {
         let mut add = |paths: Vec<PathBuf>, sample: bool| {
             for path in paths {
                 if let Some(c) = load_picture(&path, &pal) {
+                    let (title, author) = mag_info(&path);
                     items.push(Item {
                         name: display_name(&path),
-                        thumb: thumbnail(&c),
+                        title,
+                        author,
+                        thumb: thumbnail(&c, &pal),
                         path,
                         sample,
                     });
@@ -214,6 +349,14 @@ impl GalleryRoom {
         );
         add(super::gallery::list_samples(assets.data_dir()), true);
         let wall = load_wall(dir.as_deref(), &items);
+        let folder = dir
+            .as_ref()
+            .and_then(|d| d.file_name())
+            .map_or("(sem pasta)".to_string(), |n| {
+                format!("{}/", n.to_string_lossy())
+            });
+        let mut binder = Binder::new(folder);
+        binder.rebuild(&items);
         let mut rng = XorShift::from_clock();
         let character = Character::pick(gags::MCZEE_COSTUMES, gags::MCZEE_LOBBY, &mut rng);
         let mut g = GalleryRoom {
@@ -223,21 +366,106 @@ impl GalleryRoom {
             items,
             wall,
             folder_open: false,
-            folder_page: 0,
+            binder,
             drag: None,
             last_click: None,
             clock: 0.0,
             balloon: None,
+            alert: None,
+            print: None,
+            print_command: PRINT_COMMAND.to_string(),
             character,
+            help_off: false,
             mouse: (0, 0),
             overlay: false,
             bag: MagicBag::new(objects::GALLERY_BAG, true),
             surprise: None,
             rng,
             wand_cursor: false,
+            arrived: false,
+            queue: VecDeque::new(),
+            queue_wait: 0.0,
         };
         g.ask(Ask::Welcome, WELCOME, assets);
         g
+    }
+
+    /// Toca sons em sequência: o primeiro já, os outros quando o anterior
+    /// acabar. Uma ação nova interrompe a sequência pendente.
+    fn play(&mut self, ids: &[u16]) {
+        self.queue.clear();
+        self.queue.extend(ids.iter().copied());
+        self.queue_wait = 0.0;
+    }
+
+    fn pump_sounds(&mut self, dt: f32, fx: &mut Vec<Effect>, assets: &Assets) {
+        self.queue_wait -= dt;
+        if self.queue_wait > 0.0 {
+            return;
+        }
+        if let Some(id) = self.queue.pop_front() {
+            let r = snd(id);
+            self.queue_wait = assets.sound(&r).map_or(0.5, |p| {
+                p.samples.len() as f32 / (p.sample_rate.max(1) as f32 * p.channels.max(1) as f32)
+            });
+            fx.push(Effect::PlaySound(r));
+        } else {
+            self.queue_wait = 0.0;
+        }
+    }
+
+    /// Aviso "EPA!" do bloco `block`, registro `k`, em `pos`; o reserva vale
+    /// sem o `ARTIST.EXE`.
+    fn alert(&mut self, kind: Modal, block: u16, k: usize, pos: (i32, i32), assets: &Assets) {
+        let (fallback, opts): (&str, &[&str]) = match kind {
+            Modal::Quit => (
+                "O que você quer fazer?",
+                &["Sair do Fine Artist", "Continuar trabalhando"],
+            ),
+            Modal::NotYours(_) => (
+                "Não, obrigado... Não posso reciclar isso — ele não é seu.",
+                &[],
+            ),
+            Modal::Trash(_, Some(_)) => (
+                "Tem certeza de que você quer que o Rex jogue isso fora?",
+                &[
+                    "Jogue no lixo! Não quero ver isso nunca mais!",
+                    "Tire da parede, posso precisar mais tarde",
+                    "Ops! Esquece, pode deixar na parede",
+                ],
+            ),
+            Modal::Trash(_, None) => (
+                "O Rex está se preparando para jogar isto fora... Você tem certeza?",
+                &[
+                    "Jogue no lixo! Não quero ver isso nunca mais!",
+                    "Tira a mão! Posso precisar mais tarde",
+                ],
+            ),
+        };
+        let fallback_ids: Vec<u16> = match kind {
+            Modal::Trash(_, Some(_)) => vec![OPT_TRASH, OPT_KEEP, 2],
+            Modal::Trash(_, None) => vec![OPT_TRASH, OPT_KEEP],
+            Modal::Quit => vec![OPT_QUIT, 0],
+            Modal::NotYours(_) => Vec::new(),
+        };
+        let (balloon, ids) = match assets.dialogs(Program::Artist, block).get(k) {
+            Some(r) => (
+                TextBalloon::from_record(r, pos.0, pos.1, "", Vec::new()),
+                r.options().into_iter().map(|o| o.0).collect(),
+            ),
+            None => {
+                let mut parts = vec![Part::Figure(PIC_ALERT), Part::Text(fallback.into())];
+                if !opts.is_empty() {
+                    parts.push(Part::Options(opts.iter().map(|o| o.to_string()).collect()));
+                }
+                (
+                    TextBalloon::new(pos.0, pos.1, 260, parts, Vec::new()),
+                    fallback_ids,
+                )
+            }
+        };
+        self.balloon = None;
+        self.alert = Some(Alert { kind, balloon, ids });
     }
 
     /// Só a pasta de trabalhos, aberta pela maleta vermelha de uma sala:
@@ -251,8 +479,26 @@ impl GalleryRoom {
         let mut g = GalleryRoom::new(click, dir, assets);
         g.balloon = None;
         g.overlay = true;
-        g.folder_open = true;
+        g.open_folder(assets);
         g
+    }
+
+    /// A criança (apelido e bicho), para a árvore do fichário.
+    pub fn with_user(mut self, user: &str, animal: Option<usize>) -> GalleryRoom {
+        self.binder.set_user(user, animal, &self.items);
+        self
+    }
+
+    fn open_folder(&mut self, assets: &Assets) {
+        self.folder_open = true;
+        self.binder.open(!self.help_off, assets);
+    }
+
+    fn close_folder(&mut self, fx: &mut Vec<Effect>) {
+        self.folder_open = false;
+        if self.overlay {
+            fx.push(Effect::Back);
+        }
     }
 
     pub fn bag(&self) -> &MagicBag {
@@ -277,7 +523,7 @@ impl GalleryRoom {
             }
             BagPart::Suitcase => {
                 fx.push(Effect::PlaySound(snd(objects::SND_SUITCASE)));
-                self.folder_open = true;
+                self.open_folder(assets);
             }
             BagPart::Book => {
                 fx.extend(objects::SND_BOOK.map(|id| Effect::PlaySound(snd(id))));
@@ -347,12 +593,40 @@ impl GalleryRoom {
                 links: Vec::new(),
                 figures: Vec::new(),
             },
-            Ask::Recycle(_) => Balloon {
+            Ask::WorkOn(_) => Balloon {
                 x: 0,
                 y: 0,
-                w: 256,
-                text: "Você quer mesmo jogar isto fora?".into(),
-                options: vec!["É, jogar fora".into(), "Não, eu quero manter!".into()],
+                w: 225,
+                text: "Se você quiser trabalhar neste quadro, eu vou levar você para o Ateliê de Pintura na Bolsa Mágica.".into(),
+                options: vec![
+                    "Estou pronto para ir!".into(),
+                    "Ops! Não quero trabalhar com isto!".into(),
+                ],
+                links: Vec::new(),
+                figures: Vec::new(),
+            },
+            Ask::HelpOff => Balloon {
+                x: 0,
+                y: 0,
+                w: 162,
+                text: "Você quer me ver menos?".into(),
+                options: vec![
+                    "Sim, por favor.".into(),
+                    "Diga de novo o que eu posso fazer aqui.".into(),
+                    "Deixa para lá.".into(),
+                ],
+                links: Vec::new(),
+                figures: Vec::new(),
+            },
+            Ask::HelpOn => Balloon {
+                x: 0,
+                y: 0,
+                w: 203,
+                text: "Que bom que você me chamou de novo. O que você quer que eu faça?".into(),
+                options: vec![
+                    "Ajudar você mais um pouco?".into(),
+                    "Não, eu não preciso de mais ajuda.".into(),
+                ],
                 links: Vec::new(),
                 figures: Vec::new(),
             },
@@ -374,9 +648,42 @@ impl GalleryRoom {
             b.options
                 .retain(|o| !o.contains("disquete") && !o.contains("unidades"));
         }
-        b.x = 150;
-        b.y = 170;
+        (b.x, b.y) = match kind {
+            Ask::Welcome | Ask::Welcome2 | Ask::HelpOff | Ask::HelpOn => WELCOME_POS,
+            Ask::WorkOn(_) => (0, 0),
+            Ask::Tip => (150, 170),
+        };
         self.balloon = Some((kind, b));
+    }
+
+    /// Dica do McZee (sem opções), se ele não foi dispensado, em `pos`.
+    fn tip(&mut self, k: usize, pos: (i32, i32), assets: &Assets) {
+        if self.help_off {
+            return;
+        }
+        self.ask(Ask::Tip, k, assets);
+        if let Some((_, b)) = &mut self.balloon {
+            (b.x, b.y) = pos;
+        }
+    }
+
+    /// "Se você quiser trabalhar neste quadro…" ao lado da moldura `k`: à
+    /// direita se couber, senão à esquerda, senão encostado na borda.
+    fn ask_work_on(&mut self, i: usize, k: usize, assets: &Assets) {
+        self.ask(Ask::WorkOn(i), WORK_ON, assets);
+        let (fx, fy, fw, _) = frame_rect(k);
+        if let Some((_, b)) = &mut self.balloon {
+            let right = fx + fw + 23;
+            let left = fx - b.w - 23;
+            b.x = if right + b.w <= 636 {
+                right
+            } else if left >= 4 {
+                left
+            } else {
+                636 - b.w
+            };
+            b.y = fy + 2;
+        }
     }
 
     /// Arquivo do quadro da moldura `k`.
@@ -395,57 +702,91 @@ impl GalleryRoom {
                     + "\n"
             })
             .collect();
-        std::fs::write(dir.join(WALL_FILE), text)
+        std::fs::create_dir_all(dir)
+            .and_then(|()| std::fs::write(dir.join(WALL_FILE), text))
             .err()
             .map(|e| Effect::Log(format!("galeria: {e}")))
     }
 
+    /// Abre o quadro na pintura: ele vira o último desenho, com o seu título
+    /// no rótulo (ou "Quadro Novo", se não tiver um).
     fn open(&self, i: usize) -> Vec<Effect> {
         let (Some(dir), Some(it)) = (&self.dir, self.items.get(i)) else {
             return Vec::new();
         };
-        match load_picture(&it.path, &self.pal) {
-            Some(c) => match save_png(&c, &self.pal, &dir.join(LAST_NAME)) {
-                Ok(()) => vec![Effect::ChangeScene(SceneId::Paint)],
-                Err(e) => vec![Effect::Log(format!("galeria: {e}"))],
-            },
-            None => vec![Effect::Log(format!(
+        let Some(c) = load_picture(&it.path, &self.pal) else {
+            return vec![Effect::Log(format!(
                 "galeria: não consegui abrir {}",
                 it.path.display()
-            ))],
+            ))];
+        };
+        if let Err(e) = std::fs::create_dir_all(dir)
+            .and_then(|()| save_png(&c, &self.pal, &dir.join(LAST_NAME)))
+        {
+            return vec![Effect::Log(format!("galeria: {e}"))];
         }
+        let name_file = dir.join(NAME_FILE);
+        let named = match &it.title {
+            Some(t) => std::fs::write(&name_file, t),
+            None => match std::fs::remove_file(&name_file) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            },
+        };
+        let mut fx = Vec::new();
+        if let Err(e) = named {
+            fx.push(Effect::Log(format!("galeria: {e}")));
+        }
+        fx.push(Effect::ChangeScene(SceneId::Paint));
+        fx
     }
 
-    fn print(&self, i: usize) -> Effect {
-        let (Some(dir), Some(it)) = (&self.dir, self.items.get(i)) else {
-            return Effect::Log("imprimir: sem pasta de desenhos".into());
-        };
+    /// Quadro solto na impressora: a prévia com o McZee.
+    fn print(&mut self, i: usize, assets: &Assets) -> Option<Effect> {
+        let it = self.items.get(i)?;
         let Some(c) = load_picture(&it.path, &self.pal) else {
-            return Effect::Log(format!(
+            return Some(Effect::Log(format!(
                 "imprimir: não consegui abrir {}",
                 it.path.display()
-            ));
+            )));
         };
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let path = dir.join(timestamp_name(now).replace("desenho-", "impressao-"));
-        if let Err(e) = save_png(&c, &self.pal, &path) {
-            return Effect::Log(format!("imprimir: {e}"));
+        self.balloon = None;
+        self.play(&[sfx::PRINTER, sfx::PREVIEW]);
+        self.print = Some(PrintPreview::new(
+            c,
+            self.pal.clone(),
+            self.dir.clone(),
+            &self.print_command,
+            assets,
+        ));
+        None
+    }
+
+    /// Outro quadro para a moldura que ficou vazia: um exemplo que não está
+    /// na parede (sorteado), ou qualquer quadro fora dela; nunca `except`.
+    fn replacement(&mut self, except: Option<usize>) -> Option<usize> {
+        let free = |s: bool| -> Vec<usize> {
+            (0..self.items.len())
+                .filter(|&i| {
+                    self.items[i].sample == s && !self.wall.contains(&Some(i)) && Some(i) != except
+                })
+                .collect()
+        };
+        let mut pool = free(true);
+        if pool.is_empty() {
+            pool = free(false);
         }
-        match std::process::Command::new("lp")
-            .arg(&path)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => Effect::Log(format!("imprimindo {}", path.display())),
-            Err(_) => Effect::Log(format!(
-                "sem impressora (lp): o desenho ficou em {}",
-                path.display()
-            )),
+        if pool.is_empty() {
+            return None;
         }
+        Some(pool[self.rng.below(pool.len())])
+    }
+
+    /// Põe outro quadro na moldura `k` e grava a parede.
+    fn refill(&mut self, k: usize) -> Option<Effect> {
+        let old = self.wall[k].take();
+        self.wall[k] = self.replacement(old);
+        self.save_wall()
     }
 
     /// Joga fora o quadro: só desenhos da criança (os exemplos ficam).
@@ -469,6 +810,7 @@ impl GalleryRoom {
             let _ = std::fs::remove_file(twin);
         }
         self.items.remove(i);
+        self.binder.rebuild(&self.items);
         for w in self.wall.iter_mut() {
             *w = match *w {
                 Some(j) if j == i => None,
@@ -480,26 +822,83 @@ impl GalleryRoom {
         fx
     }
 
-    fn folder_cell(k: usize) -> Rect {
-        (
-            PANEL.0 + 14 + CELL.0 * (k % COLS) as i32,
-            PANEL.1 + 30 + CELL.1 * (k / COLS) as i32,
-            THUMB_W as i32 + 4,
-            THUMB_H as i32 + 4,
-        )
+    /// Quadro solto na lixeira: os exemplos são recusados pelo Rex; os
+    /// desenhos da criança pedem confirmação.
+    fn drop_in_trash(&mut self, i: usize, from: Source, assets: &Assets) {
+        self.play(&[sfx::TRASH, sfx::ALERT]);
+        let slot = match from {
+            Source::Wall(k) => Some(k),
+            Source::Folder(_) => None,
+        };
+        if self.items[i].sample {
+            let k = if slot.is_some() {
+                NOT_YOURS_WALL
+            } else {
+                NOT_YOURS
+            };
+            self.alert(Modal::NotYours(slot), WHAT, k, ALERT_POS, assets);
+        } else {
+            let k = if slot.is_some() {
+                RECYCLE_WALL
+            } else {
+                RECYCLE
+            };
+            self.alert(Modal::Trash(i, slot), WHAT, k, ALERT_POS, assets);
+        }
     }
 
-    fn folder_pages(&self) -> usize {
-        self.items.len().div_ceil(PER_PAGE).max(1)
+    /// Clique com um aviso "EPA!" aberto.
+    fn alert_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        let Some(a) = &self.alert else { return };
+        let kind = a.kind;
+        if a.ids.is_empty() {
+            // sem opções: qualquer clique fecha
+            self.alert = None;
+            if let Modal::NotYours(Some(k)) = kind {
+                fx.extend(self.refill(k));
+            }
+            return;
+        }
+        let Some(pos) = a.balloon.hit_option(assets, x, y) else {
+            self.play(&[sfx::REFUSE]);
+            return;
+        };
+        let id = a.ids.get(pos).copied().unwrap_or(pos as u16);
+        self.alert = None;
+        self.play(&[sfx::CHOICE]);
+        match kind {
+            Modal::Quit => {
+                // no original, "Sair" é a opção 1 e "Continuar" a 0
+                if id == OPT_QUIT {
+                    fx.push(Effect::Quit);
+                }
+            }
+            Modal::NotYours(_) => {}
+            Modal::Trash(i, slot) => match id {
+                OPT_TRASH => {
+                    fx.extend(self.recycle(i));
+                    if let Some(k) = slot {
+                        fx.extend(self.refill(k));
+                    }
+                }
+                OPT_KEEP => {
+                    // "Tire da parede": o arquivo fica na pasta
+                    if let Some(k) = slot {
+                        fx.extend(self.refill(k));
+                    }
+                }
+                _ => {}
+            },
+        }
     }
 
     fn hit(&self, x: i32, y: i32) -> Option<Source> {
         if self.folder_open {
-            return (0..PER_PAGE)
-                .find(|&k| inside(Self::folder_cell(k), x, y))
-                .map(|k| self.folder_page * PER_PAGE + k)
-                .filter(|&i| i < self.items.len())
-                .map(Source::Folder);
+            // a miniatura da página direita pode ir para uma moldura
+            if self.binder.search_open() || !inside(portfolio::THUMB, x, y) {
+                return None;
+            }
+            return self.binder.selected().map(Source::Folder);
         }
         (0..3)
             .rev()
@@ -515,6 +914,10 @@ impl GalleryRoom {
     }
 
     fn press(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
+        if self.alert.is_some() {
+            self.alert_click(x, y, fx, assets);
+            return;
+        }
         if let Some((kind, b)) = &self.balloon {
             let kind = *kind;
             if let Some(k) = b.hit(assets, x, y) {
@@ -524,31 +927,35 @@ impl GalleryRoom {
             }
             let inside_balloon = b.contains(assets, x, y);
             self.balloon = None;
-            // o balão da varinha deixa o clique seguir
-            if inside_balloon || !self.bag.holding_wand {
+            // fora do balão, um quadro (clique duplo) e a varinha seguem
+            let on_frame = !self.folder_open && self.hit(x, y).is_some();
+            if inside_balloon || !(self.bag.holding_wand || on_frame) {
                 return;
             }
         }
-        if self.folder_open {
-            if inside(PANEL_CLOSE, x, y) {
-                self.folder_open = false;
-                if self.overlay {
-                    fx.push(Effect::Back);
-                }
+        if self.folder_open && self.hit(x, y).is_none() {
+            if !inside(portfolio::BINDER, x, y) && !self.binder.search_open() {
+                self.close_folder(fx);
                 return;
             }
-            if inside(PANEL_PREV, x, y) {
-                self.folder_page =
-                    (self.folder_page + self.folder_pages() - 1) % self.folder_pages();
-                return;
+            let clock = self.clock;
+            let mut sounds = Vec::new();
+            let action = self
+                .binder
+                .click(x, y, clock, &self.items, &mut sounds, assets);
+            fx.extend(sounds);
+            match action {
+                Some(Action::Close) => self.close_folder(fx),
+                Some(Action::Open(i)) => fx.extend(self.open(i)),
+                None => {}
             }
-            if inside(PANEL_NEXT, x, y) {
-                self.folder_page = (self.folder_page + 1) % self.folder_pages();
-                return;
-            }
+            return;
         }
         if let Some(src) = self.hit(x, y) {
             if self.item_of(src).is_some() {
+                if matches!(src, Source::Wall(_)) {
+                    self.play(&[sfx::PICK]);
+                }
                 self.drag = Some(Drag {
                     from: src,
                     start: (x, y),
@@ -558,18 +965,13 @@ impl GalleryRoom {
             }
             return;
         }
-        if self.folder_open {
-            if !inside(PANEL, x, y) {
-                self.folder_open = false;
-                if self.overlay {
-                    fx.push(Effect::Back);
-                }
-            }
-            return;
-        }
         if let Some(part) = self.bag.hit(x, y) {
             self.use_bag(part, fx, assets);
-        } else if self.bag.holding_wand && inside(MOUSE_HOLE, x, y) {
+        } else if inside(MOUSE_HOLE, x, y) {
+            if !self.bag.holding_wand {
+                self.play(&[sfx::MOUSE_HOLE]);
+                return;
+            }
             // a varinha no buraco do rato: uma surpresa, e ela volta à bolsa
             self.bag.holding_wand = false;
             fx.push(Effect::PlaySound(snd(objects::SND_WAND_HOLE)));
@@ -581,14 +983,27 @@ impl GalleryRoom {
                 None => self.bag.open = true,
             }
         } else if inside(LOBBY_ARROW, x, y) {
+            fx.push(Effect::PlaySound(snd(sfx::LOBBY)));
             fx.push(Effect::ChangeScene(SceneId::Building));
         } else if inside(TCHAU, x, y) {
-            fx.push(Effect::Quit);
+            self.play(&[sfx::BYE, sfx::ALERT]);
+            self.alert(Modal::Quit, QUIT_WHAT.0, QUIT_WHAT.1, QUIT_POS, assets);
+        } else if inside(PRINTER, x, y) {
+            self.play(&[sfx::PRINTER]);
+            self.tip(TIP_PRINT, (PRINTER.0 - 190, PRINTER.1 - 40), assets);
+        } else if inside(TRASH, x, y) {
+            self.play(&[sfx::TRASH]);
+            self.tip(TIP_TRASH, (TRASH.0 - 180, TRASH.1 - 120), assets);
         } else if let Some(c) = &self.character
             && x < 120
             && y > c.y
         {
-            self.ask(Ask::Welcome, WELCOME, assets);
+            self.play(&[sfx::MCZEE]);
+            if self.help_off {
+                self.ask(Ask::HelpOn, HELP_ON, assets);
+            } else {
+                self.ask(Ask::HelpOff, HELP_OFF, assets);
+            }
         }
     }
 
@@ -598,24 +1013,28 @@ impl GalleryRoom {
             return;
         };
         if !d.moved {
-            // clique: duplo abre o quadro
+            // clique: duplo abre o quadro; simples, na parede, pergunta
             if let Some((s, t)) = self.last_click
                 && s == d.from
                 && self.clock - t < DOUBLE_CLICK
             {
                 self.last_click = None;
+                self.balloon = None;
                 fx.extend(self.open(i));
                 return;
             }
             self.last_click = Some((d.from, self.clock));
+            if let Source::Wall(k) = d.from {
+                self.ask_work_on(i, k, assets);
+            }
             return;
         }
         if inside(PRINTER, x, y) {
-            fx.push(self.print(i));
+            fx.extend(self.print(i, assets));
             return;
         }
         if inside(TRASH, x, y) {
-            self.ask(Ask::Recycle(i), RECYCLE, assets);
+            self.drop_in_trash(i, d.from, assets);
             return;
         }
         if let Some(k) = (0..3).rev().find(|&k| inside(frame_rect(k), x, y)) {
@@ -628,15 +1047,24 @@ impl GalleryRoom {
     }
 
     fn answer(&mut self, kind: Ask, k: usize, fx: &mut Vec<Effect>, assets: &Assets) {
+        if kind != Ask::Tip {
+            self.play(&[sfx::CHOICE]);
+        }
         match (kind, k) {
             (Ask::Welcome, 0) => self.ask(Ask::Tip, TIP_REORGANIZE, assets),
             (Ask::Welcome, 1) => self.ask(Ask::Tip, TIP_OPEN, assets),
             (Ask::Welcome, 2) => self.ask(Ask::Tip, TIP_TRASH, assets),
-            (Ask::Welcome, 3) => self.folder_open = true,
+            (Ask::Welcome, 3) => self.ask(Ask::Tip, TIP_PORTFOLIO, assets),
             (Ask::Welcome, _) => self.ask(Ask::Welcome2, WELCOME2, assets),
             (Ask::Welcome2, 0) => self.ask(Ask::Tip, TIP_PRINT, assets),
             (Ask::Welcome2, _) => self.ask(Ask::Welcome, WELCOME, assets),
-            (Ask::Recycle(i), 0) => fx.extend(self.recycle(i)),
+            (Ask::WorkOn(i), 0) => fx.extend(self.open(i)),
+            (Ask::HelpOff, 0) => self.help_off = true,
+            (Ask::HelpOff, 1) => self.ask(Ask::Welcome, WELCOME, assets),
+            (Ask::HelpOn, 0) => {
+                self.help_off = false;
+                self.ask(Ask::Welcome, WELCOME, assets);
+            }
             _ => {}
         }
     }
@@ -722,44 +1150,6 @@ impl GalleryRoom {
             None => f.text(r.0 + 2, r.1 + 2, s, BLACK),
         }
     }
-
-    fn button(f: &mut Frame, a: &Assets, r: Rect, label: &str) {
-        f.rect(r.0, r.1, r.2, r.3, BLACK);
-        f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, WHITE);
-        Self::draw_text_centered(f, a, (r.0, r.1 + 6, r.2, r.3), label);
-    }
-
-    fn draw_folder(&self, f: &mut Frame, a: &Assets) {
-        let (x, y, w, h) = PANEL;
-        f.rect(x - 2, y - 2, w + 4, h + 4, BLACK);
-        f.rect(x, y, w, h, [255, 238, 76]);
-        let title = format!(
-            "Pasta: {} quadro(s), página {} de {}",
-            self.items.len(),
-            self.folder_page + 1,
-            self.folder_pages()
-        );
-        Self::draw_text_centered(f, a, (x, y + 8, w, 14), &title);
-        for k in 0..PER_PAGE {
-            let i = self.folder_page * PER_PAGE + k;
-            let Some(it) = self.items.get(i) else { break };
-            let r = Self::folder_cell(k);
-            f.rect(
-                r.0,
-                r.1,
-                r.2,
-                r.3,
-                if it.sample { [40, 80, 200] } else { BLACK },
-            );
-            self.draw_thumb(f, &it.thumb, r.0 + 2, r.1 + 2);
-            Self::draw_text_centered(f, a, (r.0, r.1 + r.3 + 2, r.2, 12), &it.name);
-        }
-        Self::button(f, a, PANEL_CLOSE, "Fechar");
-        if self.folder_pages() > 1 {
-            Self::button(f, a, PANEL_PREV, "Anterior");
-            Self::button(f, a, PANEL_NEXT, "Próxima");
-        }
-    }
 }
 
 /// Molduras guardadas em `galeria.txt`; o que faltar é preenchido com os
@@ -800,11 +1190,35 @@ impl Scene for GalleryRoom {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         self.clock += dt;
         let mut fx = self.common.update(input);
+        if !self.arrived {
+            self.arrived = true;
+            if !self.overlay {
+                self.play(&[sfx::ARRIVAL]);
+            }
+        }
+        if let Some(p) = &mut self.print {
+            // a prévia de impressão cobre a sala e recebe tudo
+            fx.extend(p.update(dt, assets));
+            let mut closed = false;
+            for i in input {
+                if p.input(i, assets, &mut fx) {
+                    closed = true;
+                    break;
+                }
+            }
+            if closed {
+                self.print = None;
+            }
+            self.pump_sounds(dt, &mut fx, assets);
+            return fx;
+        }
         if let Some(a) = &mut self.surprise {
             fx.extend(a.update(dt).into_iter().map(Effect::PlaySound));
             if a.is_finished() {
                 self.surprise = None;
                 self.bag.open = true;
+                // como no original, o balão de boas-vindas volta
+                self.ask(Ask::Welcome, WELCOME, assets);
             }
         }
         for i in input {
@@ -838,10 +1252,14 @@ impl Scene for GalleryRoom {
                     x,
                     y,
                 } => self.release(x, y, &mut fx, assets),
+                Input::Key { .. } | Input::Text(_) if self.folder_open => {
+                    self.binder.key(i, &self.items, &mut fx, assets);
+                }
                 _ => {}
             }
         }
         self.sync_cursor(&mut fx);
+        self.pump_sounds(dt, &mut fx, assets);
         fx
     }
 
@@ -851,7 +1269,7 @@ impl Scene for GalleryRoom {
 
     fn draw(&self, f: &mut Frame, a: &Assets) {
         if self.overlay {
-            self.draw_folder(f, a);
+            self.binder.draw(f, a, &self.items, &self.pal);
             return;
         }
         Self::draw_background(f);
@@ -889,7 +1307,7 @@ impl Scene for GalleryRoom {
             s.draw(f, a);
         }
         if self.folder_open {
-            self.draw_folder(f, a);
+            self.binder.draw(f, a, &self.items, &self.pal);
         }
         if let Some(d) = self.drag
             && d.moved
@@ -902,6 +1320,12 @@ impl Scene for GalleryRoom {
         }
         if let Some((_, b)) = &self.balloon {
             b.draw(f, a);
+        }
+        if let Some(al) = &self.alert {
+            al.balloon.draw(f, a);
+        }
+        if let Some(p) = &self.print {
+            p.draw(f, a);
         }
     }
 }
@@ -989,33 +1413,230 @@ mod tests {
         assert_eq!(g2.wall(), [Some(1), Some(0), Some(2)]);
     }
 
+    fn drag_to(g: &mut GalleryRoom, k: usize, to: (i32, i32), a: &Assets) -> Vec<Effect> {
+        let (x0, y0) = (FRAMES[k].0 + 100, FRAMES[k].1 + 60);
+        g.update(&[down(x0, y0), mv(to.0, to.1), up(to.0, to.1)], 0.1, a)
+    }
+
+    fn pick_option(g: &mut GalleryRoom, pos: usize, a: &Assets) -> Vec<Effect> {
+        let r = g
+            .alert
+            .as_ref()
+            .unwrap()
+            .balloon
+            .option_rect(a, pos)
+            .unwrap();
+        g.update(&[down(r.0 + 4, r.1 + 4), up(r.0 + 4, r.1 + 4)], 0.1, a)
+    }
+
+    const TRASH_AT: (i32, i32) = (TRASH.0 + 40, TRASH.1 + 50);
+
     #[test]
     fn trash_asks_and_deletes() {
         let (_d, dir, a) = setup(2);
         let mut g = room(dir.path(), &a);
         let path = g.wall_path(0).unwrap().to_path_buf();
-        let (x0, y0) = (FRAMES[0].0 + 100, FRAMES[0].1 + 60);
-        let (tx, ty) = (TRASH.0 + 40, TRASH.1 + 50);
-        g.update(&[down(x0, y0), mv(tx, ty), up(tx, ty)], 0.1, &a);
-        let (kind, b) = g.balloon.as_ref().unwrap();
-        assert!(matches!(kind, Ask::Recycle(0)));
-        let r = b.option_rect(&a, 0);
-        g.update(&[down(r.0 + 4, r.1 + 4), up(r.0 + 4, r.1 + 4)], 0.1, &a);
+        let fx = drag_to(&mut g, 0, TRASH_AT, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::TRASH))));
+        let al = g.alert.as_ref().unwrap();
+        assert_eq!(al.kind, Modal::Trash(0, Some(0)));
+        assert_eq!(al.balloon.options().len(), 3);
+        // fora das opções: a vinheta de recusa, e o aviso fica
+        let fx = g.update(&[down(5, 470), up(5, 470)], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::REFUSE))));
+        assert!(g.alert.is_some());
+        // "Jogue no lixo!"
+        pick_option(&mut g, 0, &a);
+        assert!(g.alert.is_none());
         assert!(!path.exists());
         assert_eq!(g.items().len(), 1);
         assert_eq!(g.wall(), [None, Some(0), None]);
     }
 
+    /// "Tire da parede": o arquivo fica na pasta e a moldura recebe outro.
+    #[test]
+    fn trash_take_off_the_wall_keeps_the_file() {
+        let (_d, dir, a) = setup(4);
+        let mut g = room(dir.path(), &a);
+        let path = g.wall_path(0).unwrap().to_path_buf();
+        drag_to(&mut g, 0, TRASH_AT, &a);
+        pick_option(&mut g, 1, &a);
+        assert!(path.exists());
+        assert_eq!(g.items().len(), 4);
+        assert_eq!(g.wall(), [Some(3), Some(1), Some(2)]);
+        // "Ops! Esquece": nada muda
+        drag_to(&mut g, 1, TRASH_AT, &a);
+        pick_option(&mut g, 2, &a);
+        assert_eq!(g.wall(), [Some(3), Some(1), Some(2)]);
+    }
+
+    /// Um exemplo na lixeira: o Rex recusa ("Não, obrigado…"); qualquer
+    /// clique fecha e a moldura ganha outro quadro.
+    #[test]
+    fn trash_refuses_samples() {
+        let (_d, dir, a) = setup(4);
+        let mut g = room(dir.path(), &a);
+        g.items[0].sample = true;
+        let path = g.wall_path(0).unwrap().to_path_buf();
+        let fx = drag_to(&mut g, 0, TRASH_AT, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::TRASH))));
+        assert_eq!(g.alert.as_ref().unwrap().kind, Modal::NotYours(Some(0)));
+        assert!(g.alert.as_ref().unwrap().balloon.options().is_empty());
+        g.update(&[down(5, 470), up(5, 470)], 0.1, &a);
+        assert!(g.alert.is_none());
+        assert!(path.exists());
+        assert_eq!(g.wall(), [Some(3), Some(1), Some(2)]);
+    }
+
+    /// Tchau: o "EPA!" modal com Sair / Continuar.
+    #[test]
+    fn tchau_asks_before_quitting() {
+        let (_d, dir, a) = setup(0);
+        let mut g = room(dir.path(), &a);
+        let (x, y) = (TCHAU.0 + 20, TCHAU.1 + 20);
+        let fx = g.update(&[down(x, y), up(x, y)], 0.1, &a);
+        assert!(!fx.contains(&Effect::Quit));
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::BYE))));
+        assert_eq!(g.alert.as_ref().unwrap().kind, Modal::Quit);
+        // a seta do saguão não responde enquanto o aviso está aberto
+        let fx = g.update(&[down(560, 295), up(560, 295)], 0.1, &a);
+        assert!(!fx.contains(&Effect::ChangeScene(SceneId::Building)));
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::REFUSE))));
+        // Continuar trabalhando
+        let fx = pick_option(&mut g, 1, &a);
+        assert!(!fx.contains(&Effect::Quit));
+        assert!(g.alert.is_none());
+        g.update(&[down(x, y), up(x, y)], 0.1, &a);
+        let fx = pick_option(&mut g, 0, &a);
+        assert!(fx.contains(&Effect::Quit));
+    }
+
+    /// Clique simples na moldura: "Se você quiser trabalhar neste quadro…";
+    /// "Estou pronto para ir!" abre a pintura com o título do quadro.
+    #[test]
+    fn single_click_asks_to_work_on_it() {
+        let (_d, dir, a) = setup(1);
+        let pal = a.palettes(Program::Artist).pal256.clone();
+        let mut c = Canvas::new(CANVAS_W, CANVAS_H);
+        c.px.fill(5);
+        crate::paint::store::save_mag_titled(&c, &pal, &dir.path().join("Casa.mag"), "Casa")
+            .unwrap();
+        let mut g = room(dir.path(), &a);
+        let k = (0..3)
+            .find(|&k| g.wall_path(k).is_some_and(|p| p.ends_with("Casa.mag")))
+            .unwrap();
+        let (x, y) = (FRAMES[k].0 + 100, FRAMES[k].1 + 60);
+        let fx = g.update(&[down(x, y), up(x, y)], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::PICK))));
+        let (kind, b) = g.balloon.as_ref().unwrap();
+        assert!(matches!(kind, Ask::WorkOn(_)));
+        // ao lado da moldura, dentro da tela
+        assert!(b.x >= 0 && b.x + b.w <= 640);
+        let r = b.option_rect(&a, 0);
+        let fx = g.update(&[down(r.0 + 4, r.1 + 4), up(r.0 + 4, r.1 + 4)], 0.1, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        assert_eq!(
+            crate::paint::store::load_name(dir.path()).as_deref(),
+            Some("Casa")
+        );
+        // um desenho sem título abre como "Quadro Novo"
+        let j = (0..3)
+            .find(|&j| {
+                g.wall_path(j)
+                    .is_some_and(|p| p.extension().is_some_and(|e| e == "png"))
+            })
+            .unwrap();
+        let (x, y) = (FRAMES[j].0 + 100, FRAMES[j].1 + 60);
+        g.update(&[down(x, y), up(x, y)], 0.1, &a);
+        let r = g.balloon.as_ref().unwrap().1.option_rect(&a, 0);
+        g.update(&[down(r.0 + 4, r.1 + 4), up(r.0 + 4, r.1 + 4)], 0.1, &a);
+        assert_eq!(crate::paint::store::load_name(dir.path()), None);
+    }
+
+    /// Impressora e lixeira com clique simples: som e dica (sem dica depois
+    /// de "Você quer me ver menos? Sim").
+    #[test]
+    fn printer_and_trash_clicks_show_tips() {
+        let (_d, dir, a) = setup(0);
+        let mut g = room(dir.path(), &a);
+        let (px, py) = (PRINTER.0 + 30, PRINTER.1 + 30);
+        let fx = g.update(&[down(px, py), up(px, py)], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::PRINTER))));
+        assert!(matches!(g.balloon, Some((Ask::Tip, _))));
+        g.balloon = None;
+        let fx = g.update(
+            &[down(TRASH_AT.0, TRASH_AT.1), up(TRASH_AT.0, TRASH_AT.1)],
+            0.1,
+            &a,
+        );
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::TRASH))));
+        assert!(matches!(g.balloon, Some((Ask::Tip, _))));
+        g.balloon = None;
+        g.help_off = true;
+        g.update(&[down(px, py), up(px, py)], 0.1, &a);
+        assert!(g.balloon.is_none());
+    }
+
+    /// McZee: "Você quer me ver menos?"; com "Sim", o próximo clique
+    /// pergunta se ele volta a ajudar.
+    #[test]
+    fn mczee_asks_to_be_seen_less() {
+        let (_d, dir, a) = setup(0);
+        let mut g = room(dir.path(), &a);
+        let Some(c) = &g.character else { return };
+        let (x, y) = (40, c.y + 60);
+        let fx = g.update(&[down(x, y), up(x, y)], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::MCZEE))));
+        let r = match &g.balloon {
+            Some((Ask::HelpOff, b)) => b.option_rect(&a, 0),
+            _ => panic!("sem o balão"),
+        };
+        g.update(&[down(r.0 + 4, r.1 + 4), up(r.0 + 4, r.1 + 4)], 0.1, &a);
+        assert!(g.help_off);
+        g.update(&[down(x, y), up(x, y)], 0.1, &a);
+        let r = match &g.balloon {
+            Some((Ask::HelpOn, b)) => b.option_rect(&a, 0),
+            _ => panic!("sem o balão de volta"),
+        };
+        g.update(&[down(r.0 + 4, r.1 + 4), up(r.0 + 4, r.1 + 4)], 0.1, &a);
+        assert!(!g.help_off);
+        assert!(matches!(g.balloon, Some((Ask::Welcome, _))));
+    }
+
+    #[test]
+    fn arrival_speech_once() {
+        let (_d, dir, a) = setup(0);
+        let mut g = room(dir.path(), &a);
+        let fx = g.update(&[], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::ARRIVAL))));
+        for _ in 0..200 {
+            let fx = g.update(&[], 0.1, &a);
+            assert!(!fx.contains(&Effect::PlaySound(snd(sfx::ARRIVAL))));
+        }
+    }
+
+    fn click_at(g: &mut GalleryRoom, p: (i32, i32), a: &Assets) -> Vec<Effect> {
+        g.update(&[down(p.0, p.1), up(p.0, p.1)], 0.1, a)
+    }
+
+    fn center(r: Rect) -> (i32, i32) {
+        (r.0 + r.2 / 2, r.1 + r.3 / 2)
+    }
+
+    /// A maleta abre o fichário; a miniatura do quadro escolhido vai para
+    /// uma moldura (o fichário some ao arrastar).
     #[test]
     fn folder_places_on_wall() {
         let (_d, dir, a) = setup(5);
         let mut g = room(dir.path(), &a);
-        let (fx_, fy) = (FOLDER.0 + 20, FOLDER.1 + 20);
-        g.update(&[down(fx_, fy), up(fx_, fy)], 0.1, &a);
+        click_at(&mut g, (FOLDER.0 + 20, FOLDER.1 + 20), &a);
         assert!(g.folder_open());
-        // a quinta figura da pasta vai para a moldura 2; a pasta fecha ao arrastar
-        let c = GalleryRoom::folder_cell(4);
-        let (cx, cy) = (c.0 + 20, c.1 + 20);
+        // escolhe o quinto quadro na lista
+        let p = g.binder.row_point(4).unwrap();
+        let fx = click_at(&mut g, p, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::SELECT))));
+        assert_eq!(g.binder.selected(), Some(4));
+        let (cx, cy) = center(portfolio::THUMB);
         let (wx, wy) = (FRAMES[2].0 + 100, FRAMES[2].1 + 60);
         g.update(
             &[down(cx, cy), mv(cx + 30, cy), mv(wx, wy), up(wx, wy)],
@@ -1026,27 +1647,70 @@ mod tests {
         assert_eq!(g.wall(), [Some(0), Some(1), Some(4)]);
     }
 
+    /// JÁ abre o escolhido; clique duplo numa linha também; X fecha.
     #[test]
-    fn printer_exports_png() {
-        let (_d, dir, a) = setup(1);
+    fn folder_buttons() {
+        let (_d, dir, a) = setup(3);
         let mut g = room(dir.path(), &a);
-        let (x0, y0) = (FRAMES[0].0 + 100, FRAMES[0].1 + 60);
-        let (px, py) = (PRINTER.0 + 30, PRINTER.1 + 30);
-        let fx = g.update(&[down(x0, y0), mv(px, py), up(px, py)], 0.1, &a);
-        assert!(
-            fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("impressao-")))
+        click_at(&mut g, (FOLDER.0 + 20, FOLDER.1 + 20), &a);
+        let p = g.binder.row_point(2).unwrap();
+        click_at(&mut g, p, &a);
+        let fx = click_at(&mut g, center(portfolio::BUTTON_GO), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::GO))));
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        let fx = g.update(
+            &[down(p.0, p.1), up(p.0, p.1), down(p.0, p.1), up(p.0, p.1)],
+            0.1,
+            &a,
         );
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        // seta do título: próximo quadro
+        click_at(&mut g, center(portfolio::TITLE_NEXT), &a);
+        assert_eq!(g.binder.selected(), Some(0));
+        let fx = click_at(&mut g, center(portfolio::BUTTON_CLOSE), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::CLOSE))));
+        assert!(!g.folder_open());
     }
 
+    /// O inseto procura pelo nome (sem acento nem maiúscula).
     #[test]
-    fn arrow_goes_to_lobby() {
-        let (_d, dir, a) = setup(0);
+    fn folder_search_finds_by_name() {
+        let (_d, dir, a) = setup(2);
+        let pal = a.palettes(Program::Artist).pal256.clone();
+        let c = Canvas::new(CANVAS_W, CANVAS_H);
+        crate::paint::store::save_mag_titled(&c, &pal, &dir.path().join("p.mag"), "Pássaro")
+            .unwrap();
         let mut g = room(dir.path(), &a);
-        let fx = g.update(&[down(560, 295), up(560, 295)], 0.1, &a);
-        assert!(fx.contains(&Effect::ChangeScene(SceneId::Building)));
-        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
-        g.draw(&mut f, &a);
+        let target = g
+            .items()
+            .iter()
+            .position(|it| it.name == "Pássaro")
+            .unwrap();
+        click_at(&mut g, (FOLDER.0 + 20, FOLDER.1 + 20), &a);
+        let fx = click_at(&mut g, center(portfolio::BUTTON_SEARCH), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::SEARCH))));
+        assert!(g.binder.search_open());
+        g.update(&[Input::Text("PASSA".into())], 0.1, &a);
+        let r = g
+            .binder
+            .search_balloon()
+            .unwrap()
+            .option_rect(&a, 0)
+            .unwrap();
+        click_at(&mut g, (r.0 + 4, r.1 + 4), &a);
+        assert!(!g.binder.search_open());
+        assert_eq!(g.binder.selected(), Some(target));
+        // nada achado: recusa e o balão fica
+        click_at(&mut g, center(portfolio::BUTTON_SEARCH), &a);
+        g.update(&[Input::Text("zzz".into())], 0.1, &a);
+        let enter = Input::Key {
+            key: crate::scene::Key::Enter,
+            ctrl: false,
+            alt: false,
+        };
+        let fx = g.update(&[enter], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::REFUSE))));
+        assert!(g.binder.search_open());
     }
 
     /// Só a pasta, aberta pela maleta de uma sala: por cima dela, clique
@@ -1057,8 +1721,7 @@ mod tests {
         let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
         assert!(g.overlay());
         assert!(g.folder_open());
-        let c = GalleryRoom::folder_cell(0);
-        let (cx, cy) = (c.0 + 20, c.1 + 20);
+        let (cx, cy) = center(portfolio::THUMB);
         // arrastar não tira a figura da pasta (não há parede aqui)
         g.update(&[down(cx, cy), mv(cx + 40, cy), up(cx + 40, cy)], 0.1, &a);
         assert!(g.folder_open());
@@ -1069,23 +1732,53 @@ mod tests {
         );
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
         let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
-        let fx = g.update(
-            &[
-                down(PANEL_CLOSE.0 + 5, PANEL_CLOSE.1 + 5),
-                up(PANEL_CLOSE.0 + 5, PANEL_CLOSE.1 + 5),
-            ],
-            0.1,
-            &a,
-        );
+        let fx = click_at(&mut g, center(portfolio::BUTTON_CLOSE), &a);
         assert!(fx.contains(&Effect::Back));
         let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
-        let fx = g.update(&[down(5, 5), up(5, 5)], 0.1, &a);
+        let fx = click_at(&mut g, (5, 5), &a);
         assert!(fx.contains(&Effect::Back));
-        // por cima da sala: só o painel é desenhado
+        // por cima da sala: só o fichário é desenhado
         let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
         f.fill([1, 2, 3]);
         g.draw(&mut f, &a);
         assert_eq!(f.pixel(5, 470)[..3], [1, 2, 3]);
+        // e sem fala de chegada
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        let fx = g.update(&[], 0.1, &a);
+        assert!(!fx.contains(&Effect::PlaySound(snd(sfx::ARRIVAL))));
+    }
+
+    /// Quadro solto na impressora: a prévia com o McZee; Para volta.
+    #[test]
+    fn printer_opens_the_preview() {
+        let (_d, dir, a) = setup(1);
+        let mut g = room(dir.path(), &a);
+        g.print_command = "/nao/existe/lp".into();
+        let fx = drag_to(&mut g, 0, (PRINTER.0 + 30, PRINTER.1 + 30), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(sfx::PRINTER))));
+        let p = g.print.as_ref().unwrap();
+        assert_eq!(p.stage(), super::super::gallery_print::Stage::Ready);
+        let r = p
+            .balloon()
+            .button_rect(&a, crate::text_balloon::Button::Stop)
+            .unwrap();
+        // a sala não responde por baixo da prévia
+        let fx = g.update(&[down(560, 295), up(560, 295)], 0.1, &a);
+        assert!(!fx.contains(&Effect::ChangeScene(SceneId::Building)));
+        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+        g.draw(&mut f, &a);
+        g.update(&[down(r.0 + 3, r.1 + 3), up(r.0 + 3, r.1 + 3)], 0.1, &a);
+        assert!(g.print.is_none());
+    }
+
+    #[test]
+    fn arrow_goes_to_lobby() {
+        let (_d, dir, a) = setup(0);
+        let mut g = room(dir.path(), &a);
+        let fx = g.update(&[down(560, 295), up(560, 295)], 0.1, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Building)));
+        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+        g.draw(&mut f, &a);
     }
 
     /// Bolsa aberta no chão da Galeria: livro conta a história, a varinha
@@ -1127,5 +1820,6 @@ mod tests {
         }
         assert!(!g.surprise_playing());
         assert!(g.bag().open && !g.bag().holding_wand);
+        assert!(matches!(g.balloon, Some((Ask::Welcome, _))));
     }
 }
