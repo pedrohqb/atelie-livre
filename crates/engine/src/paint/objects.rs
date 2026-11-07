@@ -4,6 +4,7 @@
 //! pintam o fundo, por baixo deles. Spec: `docs/superpowers/specs/2026-10-31-objetos-design.md`.
 
 use super::canvas::{BLACK, Canvas, Ink, ORIGIN, WHITE};
+use super::shaped::{Shadow, ShapedWords, WordShape};
 use super::stamp::Stamp;
 use super::text::{Align, BalloonShape, WordsStyle, text_pixels, words_layout};
 use crate::assets::SoundRef;
@@ -29,6 +30,10 @@ pub enum Source {
         style: WordsStyle,
         color: u8,
     },
+    /// Palavra com forma (Cavalete de palavras com forma).
+    Shaped(Box<ShapedWords>),
+    /// Dipitidu (ponteiro de balão) do rolo da Palavra: casa no rolo.
+    Tail(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -782,6 +787,22 @@ pub fn to_json(recs: &[Record], fingerprint: u64) -> String {
                     line.push_str(", \"fonte\": \"pequena\"");
                 }
             }
+            Source::Shaped(w) => {
+                let colors: Vec<String> = w.colors.iter().map(|c| c.to_string()).collect();
+                line.push_str(&format!(
+                    ", \"palavra_forma\": {}, \"tipo\": {}, \"molde\": \"{}\", \"estilos\": {}, \"cores\": \"{}\", \"padrao\": {}, \"sombra\": \"{}\", \"tamanho\": {}, \"giro\": {}",
+                    json_str(&w.text),
+                    json_str(&w.font),
+                    w.shape.name(),
+                    json_str(&w.styles()),
+                    colors.join(","),
+                    w.pattern,
+                    w.shadow.name(),
+                    w.size,
+                    w.angle
+                ));
+            }
+            Source::Tail(k) => line.push_str(&format!(", \"dipitidu\": {k}")),
         }
         line.push('}');
         if i + 1 < recs.len() {
@@ -843,6 +864,30 @@ pub fn parse_json(text: &str) -> Option<(u64, Vec<Record>)> {
             }
         } else if let Some(p) = field(line, "png") {
             Source::Png(p)
+        } else if let Some(text) = field(line, "palavra_forma") {
+            let mut w = ShapedWords::new(&text, 1);
+            w.font = field(line, "tipo").unwrap_or_default();
+            w.shape = field(line, "molde")
+                .and_then(|m| WordShape::from_name(&m))
+                .unwrap_or_default();
+            w.set_styles(&field(line, "estilos").unwrap_or_default());
+            let colors: Vec<u8> = field(line, "cores")
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|c| c.trim().parse().ok())
+                .collect();
+            if !colors.is_empty() {
+                w.colors = colors;
+            }
+            w.pattern = num("padrao").unwrap_or(0).clamp(0, 255) as u8;
+            w.shadow = field(line, "sombra")
+                .and_then(|m| Shadow::from_name(&m))
+                .unwrap_or_default();
+            w.size = num("tamanho").unwrap_or(w.size as i64).clamp(4, 400) as u32;
+            w.angle = num("giro").unwrap_or(0).rem_euclid(360) as i32;
+            Source::Shaped(Box::new(w))
+        } else if let Some(k) = num("dipitidu") {
+            Source::Tail(k.clamp(0, 1000) as usize)
         } else if let Some(text) = field(line, "texto") {
             let shape = match field(line, "forma").and_then(|f| BalloonShape::from_name(&f)) {
                 Some(s) => s,
@@ -949,6 +994,34 @@ mod store_tests {
         let mut again = again;
         let n = again.place(Rc::new(stamp()), 0, 0, Source::Png("x".into()));
         assert!(n > b);
+    }
+
+    #[test]
+    fn json_roundtrip_of_shaped_words_and_tails() {
+        let mut objs = Objects::default();
+        let mut w = ShapedWords::new("Oi, \"Ana\"", 5);
+        w.font = "DejaVu Sans".into();
+        w.shape = WordShape::Circle;
+        w.set_styles("negrito,contorno,vertical");
+        w.colors = vec![5, 9, 12];
+        w.pattern = 4;
+        w.shadow = Shadow::Converge;
+        w.size = 80;
+        w.angle = 345;
+        objs.place(Rc::new(stamp()), 1, 2, Source::Shaped(Box::new(w)));
+        objs.place(Rc::new(stamp()), 3, 4, Source::Tail(2));
+        let recs = objs.records();
+        let (_, back) = parse_json(&to_json(&recs, 1)).unwrap();
+        assert_eq!(back, recs);
+        // campos que faltam ficam no padrão
+        let text = "{\"quadro\": \"1\",\n\"objetos\": [\n{\"id\": 1, \"x\": 0, \"y\": 0, \"w\": 5, \"h\": 5, \"palavra_forma\": \"x\"}\n]}";
+        let (_, recs) = parse_json(text).unwrap();
+        let Source::Shaped(w) = &recs[0].source else {
+            panic!("não é palavra com forma");
+        };
+        assert_eq!((w.text.as_str(), w.font.as_str()), ("x", ""));
+        assert_eq!(w.shape, WordShape::Plain);
+        assert_eq!(w.colors, vec![1]);
     }
 
     #[test]
