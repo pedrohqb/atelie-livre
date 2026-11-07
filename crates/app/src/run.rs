@@ -49,7 +49,7 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         )
     };
     match id {
-        SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets)),
+        SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets).with_user(user.name())),
         SceneId::Gallery => Box::new(GalleryRoom::new(
             cfg.click_sound.clone(),
             drawings_dir(),

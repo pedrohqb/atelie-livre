@@ -16,7 +16,7 @@ use super::projects::dialogs::{After as DialogAfter, Dialog, Outcome, Step};
 use super::projects::flipbook::Flipbook;
 use super::projects::{Project, ProjectKind};
 use super::sounds::{SPOTS_NAME, Sounds};
-use super::stickers::{Placed, Stickers};
+use super::stickers::{Placed, Request, Stickers};
 use super::supertools::{GUIDES_NAME, Guides, Notice, Supertools};
 use super::transformers::Transformers;
 use super::wizard::{
@@ -45,6 +45,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use crate::paint::COLORS;
 const SWATCHES: usize = COLORS.len();
+
+mod find_pictures;
+mod sticker_easel;
+use find_pictures::FindPictures;
+use sticker_easel::StickerEasel;
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -520,6 +525,12 @@ pub struct Paint {
     print_strip: bool,
     /// Último ponto do quadro tocado (centro da lente ao ligar).
     last_canvas: (i32, i32),
+    /// Cavalete de adesivos aberto sobre o quadro.
+    easel: Option<StickerEasel>,
+    /// Diálogo do Cachorrinho (achar figuras) aberto.
+    finder: Option<FindPictures>,
+    /// Apelido do usuário, para o campo "Artista" do Cachorrinho.
+    artist: Option<String>,
 }
 
 impl Paint {
@@ -592,6 +603,9 @@ impl Paint {
             folder_pushed: false,
             print_strip: false,
             last_canvas: (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2),
+            easel: None,
+            finder: None,
+            artist: None,
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
@@ -599,6 +613,7 @@ impl Paint {
             if let Some(n) = load_name(d) {
                 p.title = n;
             }
+            p.stickers.load_user(d, &p.pal);
             p.sounds.load_spots(&d.join(SPOTS_NAME));
             if let Some(g) = Guides::load(&d.join(GUIDES_NAME)) {
                 p.supertools.guides = g;
@@ -797,15 +812,15 @@ impl Paint {
     /// Coloca um adesivo como objeto (uma ação do ovo).
     fn place_sticker(&mut self, placed: Placed) {
         self.history.record_all(&self.canvas, &self.objects);
-        self.objects.place(
-            Rc::new(placed.stamp),
-            placed.x,
-            placed.y,
-            Source::Roll {
+        let source = match placed.png {
+            Some(name) => Source::Png(name),
+            None => Source::Roll {
                 roll: placed.roll,
                 item: placed.item,
             },
-        );
+        };
+        self.objects
+            .place(Rc::new(placed.stamp), placed.x, placed.y, source);
         self.changed = true;
     }
 
@@ -828,7 +843,7 @@ impl Paint {
             (self.tool, self.vacuum),
             (Tool::Vacuum, VacuumMode::Stickers | VacuumMode::Copy)
                 | (Tool::Transformers | Tool::Supertools, _)
-        );
+        ) || (self.tool == Tool::Stickers && self.sticker_handles_objects());
         if !handles || !inside(canvas_rect(), self.mouse.0, self.mouse.1) {
             return None;
         }
@@ -1650,8 +1665,17 @@ impl Paint {
         }
     }
 
+    /// Ferramenta cujas opções a faixa mostra: com o Cavalete aberto, o pincel.
+    fn strip_tool(&self) -> Tool {
+        if self.easel.is_some() {
+            Tool::Brush
+        } else {
+            self.tool
+        }
+    }
+
     fn option_count(&self) -> usize {
-        match self.tool {
+        match self.strip_tool() {
             Tool::Stickers | Tool::Sounds | Tool::Transformers | Tool::Supertools => 0,
             Tool::Brush => 12,
             Tool::Bucket => BUCKET_BUTTONS.len(),
@@ -1661,7 +1685,11 @@ impl Paint {
     }
 
     fn options_x0(&self) -> i32 {
-        if self.tool == Tool::Bucket { 113 } else { 25 }
+        if self.strip_tool() == Tool::Bucket {
+            113
+        } else {
+            25
+        }
     }
 
     fn start_stroke(&mut self, cx: i32, cy: i32) {
@@ -1751,6 +1779,14 @@ impl Paint {
             }
             // clique fora fecha o balão e segue
         }
+        if self.finder.is_some() {
+            self.finder_click(x, y, fx, assets);
+            return;
+        }
+        if self.easel.is_some() {
+            self.easel_click(x, y, fx, assets);
+            return;
+        }
         self.stroke = None;
         // cria-lados e triângulo 2 terminam com um clique fora do quadro
         // (as tiras de cores e padrões não contam)
@@ -1774,7 +1810,8 @@ impl Paint {
         }
         if self.tool == Tool::Stickers {
             let before = (self.stickers.holding(), self.stickers.film_open());
-            match self.stickers.click(x, y, assets, &self.pal) {
+            let cpt = self.canvas_pt(x, y);
+            match self.stickers.click(x, y, cpt, assets, &self.pal) {
                 Some(placed) => {
                     let arrow = inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y);
                     let after = (self.stickers.holding(), self.stickers.film_open());
@@ -1782,10 +1819,22 @@ impl Paint {
                     if let Some(placed) = placed {
                         self.place_sticker(placed);
                     }
+                    self.sticker_strip_after(before, after, fx, assets);
                     return;
                 }
-                // qualquer outro clique solta o adesivo que estava na mão
-                None => self.stickers.reset(),
+                // qualquer outro clique solta o adesivo que estava na mão;
+                // sobre um adesivo colocado, começa a arrastá-lo
+                None => {
+                    self.stickers.reset();
+                    // (com a Varinha Mágica na mão, o clique toca o som do adesivo)
+                    if !self.wand
+                        && inside(canvas_rect(), x, y)
+                        && self.stickers.grab(cpt.0, cpt.1, &self.objects)
+                    {
+                        self.history.record_all(&self.canvas, &self.objects);
+                        return;
+                    }
+                }
             }
         }
         if self.tool == Tool::Sounds {
@@ -2434,7 +2483,7 @@ impl Paint {
             crate::text_balloon::blit_pic(f, a, c, cx, cy, true);
             return;
         }
-        let selected = match self.tool {
+        let selected = match self.strip_tool() {
             Tool::Brush => {
                 f.blit_masked(&a.image(&pic(0x1129)), &a.image(&pic(0x112b)), 4, 56);
                 let shapes = page_shapes(self.page);
@@ -2757,6 +2806,10 @@ impl Scene for Paint {
                     let (cx, cy) = self.canvas_pt(x, y);
                     self.drag_words_object(cx, cy);
                     self.extend_stroke(cx, cy);
+                    self.easel_move(x, y);
+                    if self.stickers.drag(cx, cy, &mut self.objects) {
+                        self.changed = true;
+                    }
                     if self.transformers.drag(cx, cy, &mut self.objects) {
                         self.changed = true;
                     }
@@ -2786,6 +2839,8 @@ impl Scene for Paint {
                     self.release_words_object();
                     self.transformers.release();
                     self.supertools.release();
+                    self.easel_release(x, y);
+                    self.sticker_release(assets);
                 }
                 Input::Key {
                     key,
@@ -2860,6 +2915,8 @@ impl Scene for Paint {
             self.time = (self.time + dt) % 3600.0;
         }
         self.spray_tick();
+        self.easel_tick();
+        self.sticker_notices(assets);
         self.sounds.update(dt);
         if self.transformers.update(dt, &mut self.objects) {
             self.changed = true;
@@ -2923,6 +2980,8 @@ impl Scene for Paint {
         if self.tool == Tool::Sounds {
             self.sounds.draw_overlay(frame, assets);
         }
+        self.easel_draw(frame, assets);
+        self.finder_draw(frame, assets);
         if self.menu_open {
             menu::draw(frame, assets);
         }
@@ -3828,6 +3887,197 @@ mod tests {
         assert_eq!(p.objects().len(), 1);
     }
 
+    /// Um pixel opaco do objeto, na tela.
+    fn opaque_point(p: &Paint, id: u32) -> (i32, i32) {
+        let o = p.objects().get(id).unwrap();
+        let (x, y) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y)
+    }
+
+    #[test]
+    fn sticker_tool_drags_placed_sticker_and_shows_outline() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        p.help = None;
+        let (x0, y0) = {
+            let o = p.objects().get(id).unwrap();
+            (o.x, o.y)
+        };
+        let (sx, sy) = opaque_point(&p, id);
+        p.update(&[mv(sx, sy)], 0.0, &a);
+        assert_eq!(p.hovered_object(), Some(id));
+        p.update(&[click(sx, sy)], 0.0, &a);
+        assert!(p.stickers().dragging());
+        p.update(&[mv(sx + 20, sy + 10), up(sx + 20, sy + 10)], 0.0, &a);
+        assert!(!p.stickers().dragging());
+        let o = p.objects().get(id).unwrap();
+        assert_eq!((o.x, o.y), (x0 + 20, y0 + 10));
+        assert!(p.easel().is_none(), "arrastar não abre o cavalete");
+        assert_eq!(p.stickers().held_animal(), None);
+        // o ovo desfaz o arrasto
+        p.update(&[click(270, 30)], 0.0, &a);
+        let o = p.objects().get(id).unwrap();
+        assert_eq!((o.x, o.y), (x0, y0));
+    }
+
+    #[test]
+    fn sticker_tool_click_on_canvas_paints_nothing() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+        assert_eq!(p.tool(), Tool::Stickers);
+        p.update(&[click(400, 420), mv(410, 425), up(410, 425)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        assert!(p.stroke.is_none());
+    }
+
+    #[test]
+    fn roll_ends_open_first_and_last_roll_of_the_page() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+        p.update(&[click(12, 78)], 0.0, &a);
+        assert!(p.stickers().film_open());
+        assert_eq!(p.stickers().roll(), 0);
+        // sem bibliotecas só há o rolo dos bichos e o do usuário: a ponta
+        // direita abre o último rolo da página
+        p.update(&[click(390, 78)], 0.0, &a);
+        assert!(p.stickers().film_open());
+        assert_eq!(p.stickers().roll(), p.stickers().user_roll());
+    }
+
+    #[test]
+    fn easel_paints_a_sticker_into_the_user_roll() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+        p.update(&[click(478, 78)], 0.0, &a);
+        assert!(p.easel().is_some());
+        // a faixa mostra o pincel; o clique no quadro fora do cavalete não pinta
+        assert_eq!(p.strip_tool(), Tool::Brush);
+        p.update(&[click(300, 420)], 0.0, &a);
+        p.update(&[click(300, 420), up(300, 420)], 0.0, &a);
+        assert_eq!(painted(&p), 0);
+        // pinta um traço no cavalete
+        p.update(&[click(200, 250), mv(240, 260), up(240, 260)], 0.0, &a);
+        let e = p.easel().unwrap();
+        assert!(e.canvas.px.iter().any(|&v| v != W));
+        // o ovo desfaz e refaz
+        p.update(&[click(282, 368)], 0.0, &a);
+        assert!(p.easel().unwrap().canvas.px.iter().all(|&v| v == W));
+        p.update(&[click(282, 368)], 0.0, &a);
+        assert!(p.easel().unwrap().canvas.px.iter().any(|&v| v != W));
+        // OK: adesivo gravado, rolo do usuário aberto na tira
+        p.update(&[click(468, 368)], 0.0, &a);
+        assert!(p.easel().is_none());
+        assert_eq!(p.stickers().user_stickers().len(), 1);
+        assert!(p.stickers().film_open());
+        assert_eq!(p.stickers().roll(), p.stickers().user_roll());
+        let name = p.stickers().user_stickers()[0].name.clone();
+        assert!(name.starts_with("adesivo-") && dir.path().join(&name).exists());
+        // pega o adesivo da tira aberta e o coloca: vira objeto com origem PNG
+        let film_x = p.stickers().film_x();
+        p.update(&[click(film_x + 20, 120)], 0.0, &a);
+        assert!(p.stickers().holding());
+        p.update(&[click(300, 300)], 0.0, &a);
+        let o = p.objects().items.last().expect("adesivo colocado");
+        assert!(matches!(&o.source, Source::Png(n) if *n == name));
+        // reabre: o adesivo do usuário volta
+        p.leave();
+        let q = Paint::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(q.objects().len(), 1);
+        assert_eq!(q.stickers().user_stickers().len(), 1);
+    }
+
+    #[test]
+    fn easel_no_closes_and_zoom_pans() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(129, 30), click(300, 300), click(478, 78)], 0.0, &a);
+        p.update(&[click(300, 300)], 0.0, &a); // fecha o balão
+        p.update(&[click(387, 368)], 0.0, &a);
+        assert!(p.easel().unwrap().zoomed());
+        p.update(&[click(300, 420)], 0.0, &a);
+        p.update(&[click(388, 355)], 0.0, &a); // seta para cima: já no topo
+        assert_eq!(p.easel().unwrap().view(), (0, 0));
+        p.update(&[click(400, 368)], 0.0, &a); // seta para a direita
+        assert_eq!(p.easel().unwrap().view().0, 40);
+        p.update(&[click(437, 368)], 0.0, &a);
+        assert!(p.easel().is_none());
+        assert_eq!(p.tool(), Tool::Stickers);
+    }
+
+    #[test]
+    fn clicking_a_placed_sticker_edits_it_in_the_easel() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        p.help = None;
+        let (sx, sy) = opaque_point(&p, id);
+        let center = p.objects().get(id).unwrap().center();
+        p.update(&[click(sx, sy), up(sx, sy)], 0.0, &a);
+        let e = p.easel().expect("cavalete com o adesivo");
+        assert_eq!(e.edited(), Some(id));
+        assert!(e.canvas.px.iter().any(|&v| v != W));
+        p.update(&[click(300, 300)], 0.0, &a); // fecha o balão
+        p.update(&[click(468, 368)], 0.0, &a);
+        let o = p.objects().get(id).unwrap();
+        assert!(matches!(o.source, Source::Png(_)));
+        assert_eq!(o.center(), center);
+        assert!(p.easel().is_none());
+    }
+
+    #[test]
+    fn dog_dialog_lists_drawings_and_makes_a_sticker() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        // um desenho guardado com um quadrado preto
+        let mut c = Canvas::new(CANVAS_W, CANVAS_H);
+        for y in 100..120 {
+            for x in 200..230 {
+                c.set(x, y, crate::paint::BLACK);
+            }
+        }
+        let pal = a.palettes(Program::Artist).pal256.clone();
+        crate::paint::store::save_png(&c, &pal, &dir.path().join("desenho-x.png")).unwrap();
+        let mut p = Paint::new(Some(dir.path().to_path_buf()), &a).with_user("bia");
+        p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+        p.update(&[click(425, 78)], 0.0, &a);
+        let fd = p.finder().expect("diálogo do cachorrinho");
+        assert_eq!(fd.entries().len(), 2);
+        assert_eq!(fd.entries()[0].title, "desenho-x");
+        assert_eq!(fd.entries()[0].artist, "bia");
+        p.update(&[click(300, 420)], 0.0, &a); // fecha o balão
+        // "Fora de Imaginópolis" pergunta; "Não" volta
+        p.update(&[click(200, 178 + 3 + 17 + 5)], 0.0, &a);
+        assert!(p.finder().unwrap().prompting());
+        p.update(&[click(260, 275)], 0.0, &a);
+        assert!(!p.finder().unwrap().prompting());
+        // escolhe o desenho e clica em JÁ
+        p.update(&[click(200, 185)], 0.0, &a);
+        assert_eq!(p.finder().unwrap().selected().unwrap().title, "desenho-x");
+        p.update(&[click(263, 340)], 0.0, &a);
+        assert!(p.finder().is_none());
+        assert!(p.stickers().holding());
+        assert!(dir.path().join("adesivo-desenho-x.png").exists());
+        let st = &p.stickers().user_stickers()[0].stamp;
+        assert_eq!((st.w, st.h), (30, 20));
+        p.update(&[click(300, 300)], 0.0, &a); // fecha a dica
+        p.update(&[click(300, 300)], 0.0, &a);
+        let o = p.objects().items.last().unwrap();
+        assert_eq!((o.w, o.h), (30, 20));
+        // X fecha o diálogo
+        p.update(&[click(425, 78)], 0.0, &a);
+        p.update(&[click(300, 420), click(222, 340)], 0.0, &a);
+        assert!(p.finder().is_none());
+    }
+
     #[test]
     fn blink_outline_only_with_thing_vacuum_over_object() {
         let (_d, a) = empty_assets();
@@ -3839,6 +4089,8 @@ mod tests {
             .find(|&(x, y)| o.pixel(x, y).is_some())
             .unwrap();
         let (sx, sy) = (ORIGIN.0 + o.x + x, ORIGIN.1 + o.y + y);
+        // com o pincel não há contorno
+        p.update(&[click(38, 40), click(300, 300)], 0.0, &a);
         p.update(&[Input::MouseMove { x: sx, y: sy }], 0.0, &a);
         assert_eq!(p.hovered_object(), None);
         p.update(&[click(328, 30), click(25 + 37 + 10, 70)], 0.0, &a);

@@ -43,8 +43,8 @@ const TAIL_PICTS: [u16; 4] = [16, 17, 18, 19];
 const TAIL_ICON: u16 = 20;
 /// Ampliação dos rabinhos como adesivos.
 const TAIL_SCALE: u32 = 2;
-/// Número do rolo de rabinhos (depois dos 28 de clip-art).
-pub const TAILS_ROLL_ID: u16 = 28;
+/// Número do rolo de rabinhos (depois dos 29 de clip-art, 0 a 28).
+pub const TAILS_ROLL_ID: u16 = 29;
 
 /// Silhueta (preto = dentro) ampliada `scale` vezes, como desenho de traço:
 /// contorno preto de 1 px e interior branco; o resto branco (transparente

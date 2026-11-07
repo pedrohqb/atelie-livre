@@ -95,6 +95,10 @@ impl Paint {
             }
             // clique fora fecha e segue
         }
+        // o Cavalete e o Cachorrinho cobrem a lente do quadro
+        if self.easel.is_some() || self.finder.is_some() {
+            return false;
+        }
         if let Some(z) = self.zoom.as_mut()
             && let Some(d) = zoom::arrow_at(x, y)
         {

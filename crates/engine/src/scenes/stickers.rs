@@ -7,9 +7,10 @@ use super::sticker_scripts::{SCRIPT_FPS, SCRIPTS, Script};
 use crate::assets::{Assets, ImageRef, Program};
 use crate::clipart::{ClipRoll, load_rolls};
 use crate::paint::stamp::Stamp;
-use crate::paint::{Cell, ORIGIN, Shape};
+use crate::paint::{Cell, ORIGIN, Objects, Shape};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
+use std::path::Path;
 use std::rc::Rc;
 
 /// Primeiro rolo: quadros de cada bicho em `ARTIST.PIC` (`N` cor, `N+6` máscara).
@@ -51,6 +52,16 @@ const ARROW_DOWN: (i32, i32, i32, i32) = (504, 90, 16, 14);
 const FILM_Y: i32 = 99;
 const FILM_H: i32 = 368;
 const FILM_W: i32 = 42;
+/// Pontas do rolo: fazem parte do primeiro e do último rolo da página.
+const CLIP_LEFT: Rect = (5, 62, 15, 33);
+const CLIP_RIGHT: Rect = (383, 62, 15, 33);
+/// Cachorrinho (achar figuras) e Cavalete de adesivos ("Fazer o seu").
+pub const DOG: Rect = (410, 60, 35, 38);
+pub const EASEL: Rect = (462, 60, 33, 38);
+/// Prefixo dos adesivos do usuário na pasta de desenhos.
+pub const USER_PREFIX: &str = "adesivo-";
+/// Lado das miniaturas dos adesivos do usuário na tira.
+const USER_THUMB: u32 = 30;
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -123,6 +134,8 @@ pub struct Placed {
     pub y: i32,
     pub roll: usize,
     pub item: usize,
+    /// Adesivo do usuário: nome do PNG na pasta de desenhos (origem do objeto).
+    pub png: Option<String>,
 }
 
 /// Adesivo escolhido, ainda não colocado.
@@ -130,6 +143,76 @@ enum Held {
     Animal(usize),
     /// Clip-art pronto e a casa do rolo de onde veio.
     Clip(Stamp, usize),
+    /// Adesivo do usuário: imagem, casa do rolo e nome do PNG.
+    User(Rc<Stamp>, usize, String),
+}
+
+/// Adesivo do usuário (`adesivo-*.png` na pasta de desenhos), no último rolo.
+pub struct UserSticker {
+    pub name: String,
+    pub stamp: Rc<Stamp>,
+    preview: Rc<Image>,
+}
+
+/// Miniatura do carimbo (vizinho mais próximo) que cabe em `side`×`side`;
+/// transparente fora da figura.
+pub fn stamp_thumb(st: &Stamp, pal: &[Rgb], side: u32) -> Image {
+    let k = st.w.max(st.h).div_ceil(side).max(1);
+    let (w, h) = ((st.w / k).max(1), (st.h / k).max(1));
+    let mut rgba = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let src = ((y * k) * st.w + x * k) as usize;
+            if let Some(Some(i)) = st.px.get(src) {
+                let c = pal
+                    .get(*i as usize)
+                    .copied()
+                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+                let o = ((y * w + x) * 4) as usize;
+                rgba[o..o + 4].copy_from_slice(&[c.r, c.g, c.b, 255]);
+            }
+        }
+    }
+    Image {
+        width: w,
+        height: h,
+        rgba,
+    }
+}
+
+/// Ícone do rolo do usuário vazio: um quadrinho branco de contorno preto.
+fn empty_roll_icon() -> Image {
+    let side = 24u32;
+    let mut rgba = vec![255u8; (side * side * 4) as usize];
+    for y in 0..side {
+        for x in 0..side {
+            if x == 0 || y == 0 || x == side - 1 || y == side - 1 {
+                let o = ((y * side + x) * 4) as usize;
+                rgba[o..o + 3].copy_from_slice(&[0, 0, 0]);
+            }
+        }
+    }
+    Image {
+        width: side,
+        height: side,
+        rgba,
+    }
+}
+
+/// Pedido ao dono da tela feito por um clique na faixa.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Request {
+    /// Cachorrinho: achar outras figuras.
+    FindPictures,
+    /// Cavalete de adesivos: fazer o seu.
+    Easel,
+}
+
+/// Arrasto de um adesivo já colocado (ferramenta de adesivos, mão vazia).
+struct Drag {
+    id: u32,
+    last: (i32, i32),
+    moved: bool,
 }
 
 /// Roteiro de um bicho lido de `A-MAG100.ANI` (`formats::atag`): células
@@ -202,6 +285,12 @@ pub struct Stickers {
     playing: Option<Playing>,
     /// Roteiros do `.ANI` (vazio se a biblioteca faltar: usa os gravados).
     ani: Vec<AniAnimal>,
+    /// Adesivos do usuário: último rolo.
+    user: Vec<UserSticker>,
+    drag: Option<Drag>,
+    /// Rolo do último adesivo colocado, para o balão de ajuda.
+    placed_notice: Option<usize>,
+    request: Option<Request>,
 }
 
 /// Lê os roteiros dos bichos de `A-MAG100.ANI`.
@@ -261,16 +350,125 @@ impl Stickers {
             scroll: 0,
             held: None,
             playing: None,
+            user: Vec::new(),
+            drag: None,
+            placed_notice: None,
+            request: None,
         }
     }
 
-    pub fn roll_count(&self) -> usize {
+    /// Lê os adesivos do usuário (`adesivo-*.png`) da pasta de desenhos.
+    pub fn load_user(&mut self, dir: &Path, pal: &[Rgb]) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut names: Vec<String> = rd
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.starts_with(USER_PREFIX) && n.ends_with(".png"))
+            .collect();
+        names.sort();
+        self.user.clear();
+        for name in names {
+            if let Some(st) = crate::paint::store::load_stamp_png(&dir.join(&name), pal) {
+                self.add_user(name, st, pal);
+            }
+        }
+    }
+
+    /// Acrescenta um adesivo do usuário ao rolo; devolve a casa dele.
+    pub fn add_user(&mut self, name: String, stamp: Stamp, pal: &[Rgb]) -> usize {
+        let preview = Rc::new(stamp_thumb(&stamp, pal, USER_THUMB));
+        if let Some(k) = self.user.iter().position(|u| u.name == name) {
+            self.user[k] = UserSticker {
+                name,
+                stamp: Rc::new(stamp),
+                preview,
+            };
+            return k;
+        }
+        self.user.push(UserSticker {
+            name,
+            stamp: Rc::new(stamp),
+            preview,
+        });
+        self.user.len() - 1
+    }
+
+    pub fn user_stickers(&self) -> &[UserSticker] {
+        &self.user
+    }
+
+    /// Índice do rolo dos adesivos do usuário (o último).
+    pub fn user_roll(&self) -> usize {
         1 + self.clip.len()
     }
 
     /// Acrescenta um rolo no fim (o de rabinhos, na história em quadrinhos).
     pub fn add_roll(&mut self, roll: ClipRoll) {
         self.clip.push(roll);
+    }
+
+    /// Abre a tira do rolo do usuário na casa `item` (depois de fazer um adesivo).
+    pub fn show_user(&mut self, item: usize) {
+        let roll = self.user_roll();
+        self.page = roll / ROLLS_PER_PAGE;
+        self.roll = roll;
+        self.held = None;
+        self.film_open = true;
+        let cells = self.film().cells();
+        self.scroll = (item + 1).saturating_sub(cells);
+    }
+
+    pub fn roll_count(&self) -> usize {
+        2 + self.clip.len()
+    }
+
+    /// Pedido feito pelo último clique (Cachorrinho ou Cavalete).
+    pub fn take_request(&mut self) -> Option<Request> {
+        self.request.take()
+    }
+
+    /// Rolo do adesivo que acabou de ser colocado, uma vez.
+    pub fn take_placed_notice(&mut self) -> Option<usize> {
+        self.placed_notice.take()
+    }
+
+    /// Começa a arrastar o objeto sob `(cx, cy)` do quadro, se houver.
+    pub fn grab(&mut self, cx: i32, cy: i32, objs: &Objects) -> bool {
+        let Some(id) = objs.hit(cx, cy) else {
+            return false;
+        };
+        self.drag = Some(Drag {
+            id,
+            last: (cx, cy),
+            moved: false,
+        });
+        true
+    }
+
+    /// Ponteiro movido com o botão apertado: move o adesivo. Verdadeiro se moveu.
+    pub fn drag(&mut self, cx: i32, cy: i32, objs: &mut Objects) -> bool {
+        let Some(d) = self.drag.as_mut() else {
+            return false;
+        };
+        if (cx, cy) == d.last {
+            return false;
+        }
+        objs.move_by(d.id, cx - d.last.0, cy - d.last.1);
+        d.last = (cx, cy);
+        d.moved = true;
+        true
+    }
+
+    /// Botão solto: devolve o objeto clicado sem arrastar (vai para o Cavalete).
+    pub fn release(&mut self) -> Option<u32> {
+        let d = self.drag.take()?;
+        (!d.moved).then_some(d.id)
+    }
+
+    pub fn dragging(&self) -> bool {
+        self.drag.is_some()
     }
 
     fn page_count(&self) -> usize {
@@ -287,6 +485,11 @@ impl Stickers {
 
     pub fn film_open(&self) -> bool {
         self.film_open
+    }
+
+    /// Borda esquerda da tira de filme do rolo atual, na tela.
+    pub fn film_x(&self) -> i32 {
+        self.film().x
     }
 
     pub fn holding(&self) -> bool {
@@ -312,6 +515,8 @@ impl Stickers {
     fn item_count(&self, roll: usize) -> usize {
         if roll == 0 {
             ANIMALS.len()
+        } else if roll == self.user_roll() {
+            self.user.len()
         } else {
             self.clip.get(roll - 1).map_or(0, |r| r.items.len())
         }
@@ -329,6 +534,7 @@ impl Stickers {
     pub fn reset(&mut self) {
         self.film_open = false;
         self.held = None;
+        self.drag = None;
     }
 
     /// Termina a animação em curso: devolve a imagem de repouso a colocar no
@@ -336,12 +542,14 @@ impl Stickers {
     pub fn finish(&mut self) -> Option<Placed> {
         let p = self.playing.take()?;
         let (stamp, x, y) = p.rest?;
+        self.placed_notice = Some(0);
         Some(Placed {
             stamp,
             x,
             y,
             roll: 0,
             item: p.animal,
+            png: None,
         })
     }
 
@@ -378,6 +586,9 @@ impl Stickers {
                     pal,
                 ),
             });
+        }
+        if roll == self.user_roll() {
+            return self.user.get(item).map(|u| (*u.stamp).clone());
         }
         let art = self.clip.get(roll - 1)?.items.get(item)?.art()?;
         Some(line_art_stamp(&art, pal))
@@ -417,10 +628,13 @@ impl Stickers {
 
     /// Clique com a ferramenta de adesivos: `None` se não era daqui,
     /// `Some(Some(adesivo))` se um adesivo de clip-art foi colocado.
+    /// Clique em `(x, y)` da tela; `cpt` é o mesmo ponto no quadro (com a
+    /// lente ligada não é `(x, y) - ORIGIN`).
     pub fn click(
         &mut self,
         x: i32,
         y: i32,
+        cpt: (i32, i32),
         assets: &Assets,
         pal: &[Rgb],
     ) -> Option<Option<Placed>> {
@@ -456,7 +670,26 @@ impl Stickers {
             self.reset();
             return Some(None);
         }
-        if let Some(k) = (0..ROLLS_PER_PAGE).find(|&k| inside(slot_rect(k), x, y)) {
+        if inside(DOG, x, y) {
+            self.reset();
+            self.request = Some(Request::FindPictures);
+            return Some(None);
+        }
+        if inside(EASEL, x, y) {
+            self.reset();
+            self.request = Some(Request::Easel);
+            return Some(None);
+        }
+        let slot = (0..ROLLS_PER_PAGE)
+            .find(|&k| inside(slot_rect(k), x, y))
+            .or_else(|| inside(CLIP_LEFT, x, y).then_some(0))
+            .or_else(|| {
+                inside(CLIP_RIGHT, x, y).then(|| {
+                    // ponta direita: o último rolo que a página tem
+                    (self.roll_count() - self.page * ROLLS_PER_PAGE).min(ROLLS_PER_PAGE) - 1
+                })
+            });
+        if let Some(k) = slot {
             let roll = self.page * ROLLS_PER_PAGE + k;
             if roll < self.roll_count() {
                 if self.film_open && roll == self.roll {
@@ -471,16 +704,30 @@ impl Stickers {
             return Some(None);
         }
         if self.held.is_some() && inside(canvas_rect(), x, y) {
-            let (cx, cy) = (x - ORIGIN.0, y - ORIGIN.1);
+            let (cx, cy) = cpt;
             match self.held.take() {
                 Some(Held::Clip(stamp, item)) => {
                     let (x, y) = (cx - stamp.w as i32 / 2, cy - stamp.h as i32 / 2);
+                    self.placed_notice = Some(self.roll);
                     return Some(Some(Placed {
                         stamp,
                         x,
                         y,
                         roll: self.roll,
                         item,
+                        png: None,
+                    }));
+                }
+                Some(Held::User(stamp, item, name)) => {
+                    let (x, y) = (cx - stamp.w as i32 / 2, cy - stamp.h as i32 / 2);
+                    self.placed_notice = Some(self.roll);
+                    return Some(Some(Placed {
+                        stamp: (*stamp).clone(),
+                        x,
+                        y,
+                        roll: self.roll,
+                        item,
+                        png: Some(name),
                     }));
                 }
                 Some(Held::Animal(animal)) => {
@@ -527,9 +774,22 @@ impl Stickers {
         None
     }
 
+    /// Põe na mão um adesivo do usuário que não está no rolo (achado pelo
+    /// Cachorrinho ou feito no Cavalete), já gravado como `name`.
+    pub fn hold_user(&mut self, name: String, stamp: Stamp, pal: &[Rgb]) {
+        let item = self.add_user(name.clone(), stamp, pal);
+        self.roll = self.user_roll();
+        self.film_open = false;
+        self.held = Some(Held::User(self.user[item].stamp.clone(), item, name));
+    }
+
     fn make_held(&self, item: usize, pal: &[Rgb]) -> Option<Held> {
         if self.roll == 0 {
             return Some(Held::Animal(item));
+        }
+        if self.roll == self.user_roll() {
+            let u = self.user.get(item)?;
+            return Some(Held::User(u.stamp.clone(), item, u.name.clone()));
         }
         let art = self.clip.get(self.roll - 1)?.items.get(item)?.art()?;
         Some(Held::Clip(line_art_stamp(&art, pal), item))
@@ -559,6 +819,14 @@ impl Stickers {
             f.blit_masked(&a.image(&pic(frame)), &a.image(&pic(mask)), r.0, r.1);
             let icon = if roll == 0 {
                 Some(a.image(&pic(THUMBS[0])))
+            } else if roll == self.user_roll() {
+                // rolo do usuário: o último adesivo feito, ou o cavalete
+                Some(
+                    self.user
+                        .last()
+                        .map(|u| u.preview.clone())
+                        .unwrap_or_else(|| Rc::new(empty_roll_icon())),
+                )
             } else {
                 self.clip.get(roll - 1).and_then(|c| c.icon.clone())
             };
@@ -626,24 +894,8 @@ impl Stickers {
                     let (x, y) = (mouse.0 + dx, mouse.1 + dy);
                     blit_clipped(f, &a.image(&pic(id)), &a.image(&pic(id + 6)), x, y, clip);
                 }
-                Some(Held::Clip(stamp, _)) => {
-                    let x0 = mouse.0 - stamp.w as i32 / 2;
-                    let y0 = mouse.1 - stamp.h as i32 / 2;
-                    for (k, v) in stamp.px.iter().enumerate() {
-                        let Some(v) = v else { continue };
-                        let (x, y) = (
-                            x0 + (k as u32 % stamp.w) as i32,
-                            y0 + (k as u32 / stamp.w) as i32,
-                        );
-                        if inside(clip, x, y) {
-                            let c =
-                                pal.get(*v as usize)
-                                    .copied()
-                                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                            f.put(x, y, [c.r, c.g, c.b]);
-                        }
-                    }
-                }
+                Some(Held::Clip(stamp, _)) => draw_stamp(f, stamp, pal, mouse, clip),
+                Some(Held::User(stamp, _, _)) => draw_stamp(f, stamp, pal, mouse, clip),
                 None => {}
             }
         }
@@ -690,6 +942,8 @@ impl Stickers {
             }
             let img = if self.roll == 0 {
                 Some(a.image(&pic(THUMBS[item])))
+            } else if self.roll == self.user_roll() {
+                Some(self.user[item].preview.clone())
             } else {
                 self.clip[self.roll - 1].items[item].preview.clone()
             };
@@ -698,6 +952,26 @@ impl Stickers {
         let (u, d) = (film.up(), film.down());
         f.blit_masked(&a.image(&pic(0x02db)), &a.image(&pic(0x02dd)), u.0, u.1);
         f.blit_masked(&a.image(&pic(0x02df)), &a.image(&pic(0x02e1)), d.0, d.1);
+    }
+}
+
+/// Carimbo centrado em `mouse`, recortado a `clip`.
+fn draw_stamp(f: &mut Frame, stamp: &Stamp, pal: &[Rgb], mouse: (i32, i32), clip: Rect) {
+    let x0 = mouse.0 - stamp.w as i32 / 2;
+    let y0 = mouse.1 - stamp.h as i32 / 2;
+    for (k, v) in stamp.px.iter().enumerate() {
+        let Some(v) = v else { continue };
+        let (x, y) = (
+            x0 + (k as u32 % stamp.w) as i32,
+            y0 + (k as u32 / stamp.w) as i32,
+        );
+        if inside(clip, x, y) {
+            let c = pal
+                .get(*v as usize)
+                .copied()
+                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+            f.put(x, y, [c.r, c.g, c.b]);
+        }
     }
 }
 

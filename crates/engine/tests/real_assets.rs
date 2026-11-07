@@ -458,3 +458,49 @@ fn glossary_words_fill_the_balloon_text() {
     let b = engine::balloon::Balloon::from_block(&w, 9, 0, 0, "x").unwrap();
     assert!(b.text.contains("clique duplo"), "{}", b.text);
 }
+
+/// Balões da ferramenta de adesivos (`WHAT 1005`): dica ao abrir a tira (2),
+/// ao pegar (3), depois de colocar um bicho (9), no Cavalete (6), na lupa
+/// (14) e no Cachorrinho (12).
+#[test]
+fn sticker_help_balloons_follow_the_original() {
+    use engine::scene::{Input, MouseButton, Scene};
+    use engine::scenes::paint::Paint;
+    let Some(d) = data_dir() else { return };
+    let a = Assets::open(&d).unwrap();
+    let click = |x, y| Input::Click {
+        button: MouseButton::Left,
+        x,
+        y,
+    };
+    let mut p = Paint::new(None, &a);
+    p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+    p.update(&[click(40, 80)], 0.0, &a);
+    let h = p.help().expect("dica da tira");
+    assert_eq!((h.block, h.index), (0x1005, 2));
+    assert!(h.x < 200 && h.y > 200, "ao lado da tira: {} {}", h.x, h.y);
+    p.update(&[click(54, 152)], 0.0, &a);
+    assert_eq!(p.help().map(|h| h.index), Some(3));
+    p.update(&[click(300, 300)], 0.0, &a); // fecha a dica
+    p.update(&[click(300, 300)], 0.0, &a); // coloca
+    p.update(&[], 10.0, &a);
+    assert_eq!(p.help().map(|h| h.index), Some(9));
+    p.update(&[click(300, 420)], 0.0, &a);
+    // cavalete e lupa
+    p.update(&[click(478, 78)], 0.0, &a);
+    let h = p.help().expect("balão do cavalete");
+    assert_eq!((h.index, h.x, h.y), (6, 229, 149));
+    p.update(&[click(100, 420)], 0.0, &a);
+    p.update(&[click(387, 368)], 0.0, &a);
+    assert_eq!(p.help().map(|h| h.index), Some(14));
+    p.update(&[click(100, 420)], 0.0, &a);
+    p.update(&[click(437, 368)], 0.0, &a);
+    assert_eq!(p.help().map(|h| h.index), Some(0));
+    p.update(&[click(300, 420)], 0.0, &a);
+    // cachorrinho
+    p.update(&[click(425, 78)], 0.0, &a);
+    assert_eq!(p.help().map(|h| h.index), Some(12));
+    assert!(p.finder().is_some());
+    // o rolo de cenários (CARO 28) é o segundo da página 5
+    assert_eq!(p.stickers().roll_count(), 1 + 29 + 1);
+}

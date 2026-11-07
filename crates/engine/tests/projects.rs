@@ -492,8 +492,9 @@ fn comics_have_the_tails_roll_in_real_data() {
     let plain = Paint::new(None, &a);
     let mut p = Paint::new_project(ProjectKind::Comics, None, &a);
     assert_eq!(p.stickers().roll_count(), plain.stickers().roll_count() + 1);
-    let roll = p.stickers().roll_count() - 1;
-    // ferramenta de adesivos, última página, último rolo, primeiro rabinho, cola no quadro
+    // o rolo de rabinhos fica logo antes do rolo do usuário (o último)
+    let roll = p.stickers().user_roll() - 1;
+    // ferramenta de adesivos, última página, rolo de rabinhos, primeiro rabinho, cola no quadro
     p.update(&[click(129, 30)], 0.0, &a);
     let page = roll / engine::scenes::stickers::ROLLS_PER_PAGE;
     for _ in 0..page {
