@@ -9,6 +9,7 @@ mod front;
 pub mod menu;
 pub mod print_machine;
 pub mod rename;
+pub mod vacuum;
 pub mod words;
 pub mod zoom;
 
@@ -70,6 +71,8 @@ const EXIT: (i32, i32, i32, i32) = (580, 18, 56, 88);
 const NICHE: (i32, i32, i32, i32) = (533, 56, 47, 48);
 /// Canto do balão de ajuda, à direita do quadro.
 const HELP_POS: (i32, i32) = (445, 115);
+/// Ponta do rabicho dos balões do McZee: embaixo do nicho.
+const HELP_TAIL: (i32, i32) = (528, 104);
 /// Blocos `WHAT` da ajuda de cada ferramenta.
 const WHAT_BRUSH: u16 = 0x1002;
 const WHAT_BUCKET: u16 = 0x1003;
@@ -483,6 +486,8 @@ pub struct Paint {
     artist: Option<String>,
     /// Máquina de impressão aberta (modal), pela faixa do Imprimir.
     print_machine: Option<print_machine::PrintMachine>,
+    /// Arrasto do aspirador pelo caminho do mouse.
+    vacuum_path: Option<vacuum::VacuumPath>,
 }
 
 impl Paint {
@@ -559,6 +564,7 @@ impl Paint {
             finder: None,
             artist: None,
             print_machine: None,
+            vacuum_path: None,
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
@@ -676,6 +682,9 @@ impl Paint {
             return;
         }
         self.open_help_at(block, index, HELP_POS, assets);
+        if let Some(h) = self.help.as_mut() {
+            h.tail = Some(HELP_TAIL);
+        }
     }
 
     /// Como `open_help`, com o balão em `pos`.
@@ -1699,7 +1708,7 @@ impl Paint {
                         Some((id, false)) => fx.push(sfx::play(id)),
                         None => {}
                     }
-                    self.vacuum_press(cx, cy);
+                    self.vacuum_down(cx, cy, assets);
                 }
                 Tool::Transformers => {
                     if self.transformers.press(
@@ -2457,6 +2466,7 @@ impl Scene for Paint {
                     if self.stickers.drag(cx, cy, &mut self.objects) {
                         self.changed = true;
                     }
+                    self.vacuum_drag(cx, cy);
                     if self.transformers.drag(cx, cy, &mut self.objects) {
                         self.changed = true;
                     }
@@ -2483,6 +2493,7 @@ impl Scene for Paint {
                     if self.vacuum_anchor.is_some() {
                         self.vacuum_release(cx, cy);
                     }
+                    self.vacuum_up(assets);
                     self.release_words_object(assets);
                     self.transformers.release();
                     self.supertools.release();
@@ -2615,6 +2626,7 @@ impl Scene for Paint {
         {
             frame.frame_rect(ORIGIN.0 + x0, ORIGIN.1 + y0, w, h, 1, BLACK);
         }
+        self.draw_vacuum_path(frame);
         self.draw_preview(frame);
         self.stickers
             .draw_overlay(frame, assets, &self.pal, self.mouse);
@@ -3288,11 +3300,14 @@ mod tests {
         p.update(&[click(320, 30), click(40, 79)], 0.0, &a);
         assert_eq!(p.vacuum_mode(), VacuumMode::Cut);
         // arrasta um retângulo em volta do carimbo (centro 100,200; raio 8)
+        // com Shift, o aspirador tira o retângulo (tecla de atalho do original)
         p.update(
             &[
+                Input::Shift(true),
                 click(80, 180),
                 Input::MouseMove { x: 120, y: 220 },
                 up(120, 220),
+                Input::Shift(false),
             ],
             0.0,
             &a,
@@ -3324,7 +3339,12 @@ mod tests {
         assert_eq!(painted(&p), 208);
         // aspira-cores com a cor ativa (índice 8 da coluna) num retângulo que cobre tudo
         p.update(
-            &[click(40 + 37 * 5 + 16, 79), click(30, 120), up(600, 450)],
+            &[
+                click(40 + 37 * 5 + 16, 79),
+                Input::Shift(true),
+                click(30, 120),
+                up(600, 450),
+            ],
             0.0,
             &a,
         );
