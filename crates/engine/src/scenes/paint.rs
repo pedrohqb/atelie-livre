@@ -1850,6 +1850,7 @@ impl Paint {
             if self.supertools.click_strip(x, y) {
                 fx.extend(strip_sound(x, y, sfx::supertool_option));
                 if inside(crate::scenes::supertools::SWITCH, x, y) {
+                    fx.push(sfx::play(self.supertools.switch_sound()));
                     self.open_help(WHAT_SUPERTOOLS, 17, assets);
                 } else {
                     self.show_help(true, assets);
@@ -2583,7 +2584,9 @@ impl Scene for Paint {
         } else {
             self.draw_canvas(frame);
         }
-        self.supertools.guides.draw(frame);
+        self.supertools
+            .guides
+            .draw_for(frame, self.tool == Tool::Supertools);
         self.draw_blink(frame);
         self.draw_bucket_overlay(frame, assets);
         if self.tool == Tool::Transformers {

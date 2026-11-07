@@ -18,14 +18,35 @@ type Point = (i32, i32);
 
 pub const GUIDES_NAME: &str = "ultimo.guias.json";
 const RED: [u8; 3] = [250, 0, 57];
-const GRID_GREEN: [u8; 3] = [0, 200, 0];
-const LINE_GREEN: [u8; 3] = [0, 150, 0];
-const BLUE: [u8; 3] = [60, 60, 230];
+/// Verde de todas as linhas guia no original (quadriculado, horizonte, PF,
+/// linhas do PF e eixos).
+const GUIDE_GREEN: [u8; 3] = [92, 203, 83];
+/// Interruptor mágico: desligar e ligar as guias.
+pub const SND_SWITCH_OFF: u16 = 0x0256;
+pub const SND_SWITCH_ON: u16 = 0x0257;
 /// Passo dos quadriculados, em pixels.
 pub const BIG_GRID: i32 = 48;
 pub const SMALL_GRID: i32 = 24;
-/// Raio do ponto de fuga e distância para pegar pontas e linhas.
-const VP_R: i32 = 5;
+/// Círculo do ponto de fuga (raio 3, medido no original): deslocamentos.
+const VP_RING: [(i32, i32); 16] = [
+    (-1, -3),
+    (0, -3),
+    (1, -3),
+    (-2, -2),
+    (2, -2),
+    (-3, -1),
+    (3, -1),
+    (-3, 0),
+    (3, 0),
+    (-3, 1),
+    (3, 1),
+    (-2, 2),
+    (2, 2),
+    (-1, 3),
+    (0, 3),
+    (1, 3),
+];
+/// Distância para pegar pontas e linhas.
 const GRAB: f32 = 6.0;
 /// Velocidade de Aproximar/Afastar do PF, em pixels por segundo.
 const SLIDE_SPEED: f32 = 60.0;
@@ -192,6 +213,12 @@ impl Guides {
 
     /// Desenha as guias sobre o quadro (só na tela).
     pub fn draw(&self, f: &mut Frame) {
+        self.draw_for(f, true);
+    }
+
+    /// Como `draw`; com outra ferramenta escolhida (`tool` falso), a linha do
+    /// horizonte e o círculo do PF ficam escondidos, como no original.
+    pub fn draw_for(&self, f: &mut Frame, tool: bool) {
         if !self.visible {
             return;
         }
@@ -205,14 +232,14 @@ impl Guides {
             for x in (step..w).step_by(step as usize) {
                 for y in 0..h {
                     if y % 4 < 2 {
-                        f.put(ORIGIN.0 + x, ORIGIN.1 + y, GRID_GREEN);
+                        f.put(ORIGIN.0 + x, ORIGIN.1 + y, GUIDE_GREEN);
                     }
                 }
             }
             for y in (step..h).step_by(step as usize) {
                 for x in 0..w {
                     if x % 4 < 2 {
-                        f.put(ORIGIN.0 + x, ORIGIN.1 + y, GRID_GREEN);
+                        f.put(ORIGIN.0 + x, ORIGIN.1 + y, GUIDE_GREEN);
                     }
                 }
             }
@@ -227,23 +254,20 @@ impl Guides {
         };
         if let Some(vp) = self.vp() {
             for &e in &self.vp_lines {
-                line(e, vp, LINE_GREEN);
+                line(e, vp, GUIDE_GREEN);
             }
         }
         for &(a, b) in &self.axes {
-            line(a, b, LINE_GREEN);
+            line(a, b, GUIDE_GREEN);
         }
-        if let Some((hy, vx)) = self.horizon {
-            line((0, hy), (w - 1, hy), BLUE);
-            for dy in -VP_R..=VP_R {
-                for dx in -VP_R..=VP_R {
-                    let d = dx * dx + dy * dy;
-                    if d <= VP_R * VP_R && d > (VP_R - 2) * (VP_R - 2) {
-                        let (x, y) = (vx + dx, hy + dy);
-                        if clip(x, y) {
-                            f.put(ORIGIN.0 + x, ORIGIN.1 + y, BLUE);
-                        }
-                    }
+        if let Some((hy, vx)) = self.horizon
+            && tool
+        {
+            line((0, hy), (w - 1, hy), GUIDE_GREEN);
+            for (dx, dy) in VP_RING {
+                let (x, y) = (vx + dx, hy + dy);
+                if clip(x, y) {
+                    f.put(ORIGIN.0 + x, ORIGIN.1 + y, GUIDE_GREEN);
                 }
             }
         }
@@ -383,6 +407,15 @@ impl Supertools {
     pub fn reset(&mut self) {
         self.drag = None;
         self.slide = None;
+    }
+
+    /// Som do Interruptor mágico depois do clique (desligou ou ligou).
+    pub fn switch_sound(&self) -> u16 {
+        if self.guides.visible {
+            SND_SWITCH_ON
+        } else {
+            SND_SWITCH_OFF
+        }
     }
 
     /// Clique na faixa de opções: verdadeiro se foi tratado aqui.
@@ -761,6 +794,36 @@ mod tests {
     }
 
     #[test]
+    fn switch_sounds_follow_the_new_state() {
+        let mut t = Supertools::new();
+        assert!(t.click_strip(470, 70));
+        assert_eq!(t.switch_sound(), SND_SWITCH_OFF);
+        assert!(t.click_strip(470, 70));
+        assert_eq!(t.switch_sound(), SND_SWITCH_ON);
+    }
+
+    #[test]
+    fn horizon_and_vp_marker_only_with_the_tool() {
+        let mut g = Guides::new();
+        g.horizon = Some((100, 200));
+        g.vp_lines = vec![(0, 100)];
+        let at = |f: &Frame, x: i32, y: i32| f.pixel((ORIGIN.0 + x) as u32, (ORIGIN.1 + y) as u32);
+        let mut f = Frame::new(640, 480);
+        g.draw_for(&mut f, true);
+        // linha do horizonte longe do PF, e o círculo de raio 3 (topo e lado)
+        assert_eq!(at(&f, 400, 100)[..3], GUIDE_GREEN);
+        assert_eq!(at(&f, 200, 97)[..3], GUIDE_GREEN);
+        assert_eq!(at(&f, 197, 99)[..3], GUIDE_GREEN);
+        assert_eq!(at(&f, 200, 99)[..3], [0, 0, 0]);
+        // com outra ferramenta: só as linhas do PF
+        let mut f = Frame::new(640, 480);
+        g.draw_for(&mut f, false);
+        assert_eq!(at(&f, 400, 100)[..3], [0, 0, 0]);
+        assert_eq!(at(&f, 200, 97)[..3], [0, 0, 0]);
+        assert_eq!(at(&f, 100, 100)[..3], GUIDE_GREEN);
+    }
+
+    #[test]
     fn draw_strip_and_guides_with_empty_assets() {
         let (_d, a) = crate::scenes::testutil::empty_assets();
         let mut t = Supertools::new();
@@ -773,11 +836,11 @@ mod tests {
         t.guides.draw(&mut f);
         assert_eq!(
             f.pixel((ORIGIN.0 + 48) as u32, ORIGIN.1 as u32)[..3],
-            GRID_GREEN
+            GUIDE_GREEN
         );
         assert_eq!(
             f.pixel((ORIGIN.0 + 10) as u32, (ORIGIN.1 + 100) as u32)[..3],
-            BLUE
+            GUIDE_GREEN
         );
         t.guides.visible = false;
         let mut g = Frame::new(640, 480);
