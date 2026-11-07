@@ -49,7 +49,12 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    moldura da esquerda (`420b`, `4210`, `4211`, `4218`, `423b`, `4273`,
    `4293`, `4299`, `42b3`, `42b9`, `42f3`) e legenda ou foto na da direita
    (`424b`, `4219`, `4223`, `4241`, `426b`, `428b`, `42a1`, `4281`, `42cb`,
-   `42e1`). Segue, Enter ou um clique no balão passam a página; Para sai.
+   `42e1`). Segue, Enter, → ou um clique no balão ou na página direita do
+   álbum passam a página (rótulo "mais", `42c1`, no canto da página direita
+   enquanto há seguinte); Volta, ←, PageUp ou um clique na página esquerda
+   voltam; Para sai. *No port:* as figuras `422b` (Max) e `4233` (McZee
+   voando) não são usadas; o comportamento delas no original não foi
+   confirmado.
 4. **Imaginópolis** (`6cfd`, 641×480, alinhado à esquerda): a porta "Entre"
    do Museu Mágico, por volta de (302,172), leva à rua. O McZee passa no
    carrinho da montanha-russa (roteiro `ATAG` 0x2bc) logo ao chegar
@@ -207,20 +212,34 @@ remontagem "usável primeiro". Código em
   (`3a6f`): 4000 / 2000 / 1000 / 500 / 250 ms por figura, padrão 1000;
   botões desenhados (cartões brancos, Pablo 8 pt): **Pasta** (300,59),
   **<** / **>** (364 e 388), **Efeito** (414,59, mostra o efeito do espaço
-  escolhido e cicla ao clicar), **Som** (300,82) e **Legenda** (364,82);
-  "N figura(s)" em x 440.
-- **Quadro parado**: grade 3×3 de espaços numerados (células de 198×115),
-  cada um com a miniatura a 1/4 (148×86), o dígito colorido do original
-  (`3a78`…`3a97` com a máscara) no canto, a legenda embaixo e uma bolinha
-  amarela quando tem som. Clique num espaço cheio escolhe (contorno
-  vermelho); escolhido, clicar noutro troca as duas (ou move, se vazio);
-  clicar de novo desescolhe; **Delete** (ou Backspace) esvazia; ← / →
-  mostram uma figura de cada vez, em pausa. Avisos ("Primeiro preencha os
-  espaços!") aparecem numa faixa amarela no alto do quadro.
-- **Pasta**: lista dentro do quadro, 4×3 miniaturas por página, com os
-  desenhos da pasta (`.png` e `.mag`, como a galeria) seguidos das amostras
-  de `SHARED/USERS/*`; clique numa figura = vai para o primeiro espaço
-  vazio; **Fechar**, **<**, **>** na base.
+  escolhido e cicla ao clicar), **Som** (300,82), **Legenda** (364,82) e
+  **Mais espaços** (438,82, a seta de acrescentar espaços do original);
+  "N figura(s), M espaços" no canto inferior direito do quadro.
+- **Barra de ferramentas**: as ferramentas de pintura ficam escurecidas
+  (pontilhado) e não reagem; só **Imprimir** funciona: grava a folha com
+  as figuras numeradas e as legendas (`impressao-….png`, e `lp` se houver).
+  O **nicho do McZee** abre a apresentação da Maggie (`WHAT 3a00[2]`, com
+  as ligações do roteiro) no lugar do painel do projeto.
+- **Quadro parado**: tira de espaços numerados numa grade 4×3 (células de
+  148×115), de 4 espaços ao começar até 10 (**Mais espaços** acrescenta um,
+  só com todos preenchidos; senão o Rex avisa "Primeiro preencha os
+  espaços!"); cada espaço com a miniatura a 1/5 (118×69), o dígito colorido
+  do original (`3a78`…`3a97` com a máscara; o 10 em texto) no canto, a
+  legenda embaixo e uma bolinha amarela quando tem som. Clique num espaço
+  cheio escolhe (contorno vermelho); escolhido, clicar noutro troca as duas
+  (ou move, se vazio); clicar de novo desescolhe; **arrastar** uma figura
+  (a miniatura segue o mouse) a outro espaço troca ou move, e à **Pasta**
+  fechada tira a figura; **clique duplo** numa figura abre a tela de
+  pintura com ela (cena `FlipbookFigure` por cima; a porta de saída grava e
+  volta, e a figura modificada entra no lugar, com efeito, som e legenda);
+  **Delete** (ou Backspace) esvazia; ← / → mostram uma figura de cada vez,
+  em pausa. Avisos aparecem numa faixa amarela no alto do quadro.
+- **Pasta**: lista dentro do quadro, 4×4 miniaturas por página (lidas só
+  quando a página aparece), com os desenhos da pasta (`.png` e `.mag`, como
+  a galeria) seguidos das amostras de `SHARED/USERS/*`; clique numa figura =
+  vai para o primeiro espaço vazio; segurar e arrastar leva a figura ao
+  espaço escolhido (a pasta fecha enquanto arrasta); **Fechar**, **<**,
+  **>** na base.
 - **Som**: duas listas dentro do quadro, categorias de `MAG100.SND` à
   esquerda e os sons ("Sem som" primeiro) à direita; o escolhido toca na
   hora e ao começar a figura.
@@ -234,9 +253,9 @@ remontagem "usável primeiro". Código em
 - **Guardar**: ao sair, `animacao-AAAAMMDD-HHMMSS/` na pasta de desenhos e a
   cópia `ultimo-animacao/`, reaberta ao entrar de novo — ver
   [`docs/formats/animacao.md`](../formats/animacao.md).
-- Fora, por enquanto: arrastar figuras, clique duplo para editar a figura na
-  pintura, desenho de abertura com título girado, figura "Fim", Varinha
-  Mágica na pausa, nome do desenho animado e seta de acrescentar espaços.
+- Fora, por enquanto: desenho de abertura com título girado, figura "Fim"
+  (dá para fazer qualquer figura com a pintura e o clique duplo), Varinha
+  Mágica na pausa, nome do desenho animado, dado para o som.
 
 ## Objetos das salas e elevador
 

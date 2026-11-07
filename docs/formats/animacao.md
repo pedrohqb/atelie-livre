@@ -30,7 +30,8 @@ Ao regravar `ultimo-animacao/`, as `figura-*.png` antigas são apagadas antes.
     {"arquivo": "Praia.mag", "efeito": "dissolver", "som": "Agudo/3", "legenda": ""},
     {"arquivo": "desenho-20261031-153400.png", "efeito": "dado", "som": "AnimalDeFazenda/0", "legenda": "Fim"}
   ],
-  "intervalo_ms": 1000
+  "intervalo_ms": 1000,
+  "espacos": 4
 }
 ```
 
@@ -45,10 +46,19 @@ Ao regravar `ultimo-animacao/`, as `figura-*.png` antigas são apagadas antes.
   figura ao tocar; `"` e `\` vêm escapados com `\`.
 - `intervalo_ms`: tempo por figura: 4000, 2000, 1000, 500 ou 250 (as cinco
   paradas da régua TEMPO).
+- `espacos`: quantos espaços numerados a tira tinha (4 a 10; a seta "Mais
+  espaços" acrescenta um de cada vez). Ao reabrir, a tira tem pelo menos
+  esse tanto, e nunca menos que as figuras.
 
 O leitor é tolerante: cada figura é um objeto numa linha; uma figura sem o
 seu PNG é pulada; um efeito desconhecido vira `corte`; um intervalo fora da
-lista mantém o padrão (1000 ms).
+lista mantém o padrão (1000 ms); sem `espacos`, a tira tem 4 espaços ou o
+tanto de figuras.
+
+Enquanto uma figura está aberta na tela de pintura (clique duplo), ela fica
+em `ultimo-animacao/figura-em-edicao.png`; a porta de saída da pintura
+regrava o arquivo e, de volta ao desenho animado, ele entra no lugar da
+figura e é apagado.
 
 ## `animacao.gif`
 
