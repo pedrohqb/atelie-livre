@@ -119,3 +119,39 @@ fn lesson_without_data_draws() {
     let mut f = engine::Frame::new(engine::SCREEN_W, engine::SCREEN_H);
     p.draw(&mut f, &a);
 }
+
+/// Leva a lição básica ao passo 8 ("Oba! … Desafio", com a lâmpada).
+fn basic_to_step_8(p: &mut Paint, a: &Assets) {
+    option(p, a, 0);
+    next(p, a);
+    next(p, a);
+    click(p, a, MAGGIE_PANEL.0 + 150, MAGGIE_PANEL.1 + 140);
+    next(p, a);
+    click(p, a, MAGGIE_PANEL.0 + 80, MAGGIE_PANEL.1 + 136);
+    for (x, y, w, h) in engine::scenes::tricks_basic::PIG_CIRCLES {
+        click(p, a, MAGGIE_PANEL.0 + x + w / 2, MAGGIE_PANEL.1 + y + h / 2);
+    }
+    next(p, a);
+    assert_eq!(p.wizard().unwrap().current(), 8);
+}
+
+#[test]
+fn lamp_opens_the_tip_and_a_click_outside_only_closes_it() {
+    let Some(a) = data() else { return };
+    let mut p = Paint::new_tricks(TrickKind::Basic, None, &a);
+    basic_to_step_8(&mut p, &a);
+    let b = p.wizard().unwrap().balloon(&a, "").unwrap();
+    assert!(!b.links.is_empty(), "o passo 8 tem a dica Desafio");
+    let r = b.link_rect(&a, 0);
+    click(&mut p, &a, r.0 + 20, r.1 + r.3 / 2);
+    assert!(p.help().is_some(), "a lâmpada abre a dica");
+    assert_eq!(p.wizard().unwrap().current(), 8);
+    // o clique fora fecha a dica e não pinta
+    let before = p.composed();
+    click(&mut p, &a, 560, 420);
+    assert!(p.help().is_none());
+    assert!(
+        p.composed().px == before.px,
+        "o clique que fecha a dica pintou"
+    );
+}

@@ -901,7 +901,12 @@ impl Paint {
     fn wizard_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) -> bool {
         let Some(w) = &self.wizard else { return false };
         // a dica aberta por cima do balão: ligação segue, clique fora fecha
-        if let Some(h) = self.help.take() {
+        // (no quadro, só fecha; em botão, opção ou ferramenta, vale também)
+        // — trabalhando sozinho, a ajuda é a da pintura
+        let mut closed_tip = false;
+        if !w.paused()
+            && let Some(h) = self.help.take()
+        {
             if h.contains(assets, x, y) {
                 self.help = match h.link_at(assets, x, y) {
                     Some(target) => h.follow(target).or(Some(h)),
@@ -909,6 +914,7 @@ impl Paint {
                 };
                 return true;
             }
+            closed_tip = true;
         }
         if w.paused() {
             // trabalhando por conta própria: só o McZee chama a Maggie de volta
@@ -954,7 +960,7 @@ impl Paint {
                 true
             }
             // o balão é opaco: clique dentro dele sem opção não vai para o quadro
-            None => b.contains(assets, x, y),
+            None => b.contains(assets, x, y) || (closed_tip && inside(canvas_rect(), x, y)),
         }
     }
 
@@ -971,9 +977,15 @@ impl Paint {
             }
             _ => false,
         };
-        if entered {
+        if entered && let Some(w) = self.wizard.as_ref() {
+            // uma linha por passo, para quem acompanha a lição (e a varredura)
+            let (block, k) = w.step().record;
+            fx.push(Effect::Log(format!(
+                "lição: passo {} ({block:04x}[{k}])",
+                w.current()
+            )));
             self.help = None;
-            if let Some(id) = self.wizard.as_ref().and_then(|w| w.step().your_area) {
+            if let Some(id) = w.step().your_area {
                 self.paint_guide_picture(id, assets);
             }
         }
