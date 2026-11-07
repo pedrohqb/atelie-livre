@@ -517,8 +517,8 @@ fn comics_have_the_tails_roll_in_real_data() {
         o.w,
         o.h
     );
-    assert!(o.image.px.iter().any(|p| *p == Some(BLACK)));
-    assert!(o.image.px.iter().any(|p| *p == Some(WHITE)));
+    assert!(o.image.px.contains(&Some(BLACK)));
+    assert!(o.image.px.contains(&Some(WHITE)));
     assert!(o.image.px.iter().any(|p| p.is_none()));
 }
 
