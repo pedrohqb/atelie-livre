@@ -3925,6 +3925,77 @@ mod tests {
     }
 
     #[test]
+    fn sticker_tool_places_and_drags_through_the_magnifier() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(530, 470)], 0.0, &a);
+        let z = p.zoom.unwrap();
+        let (sx, sy) = (ORIGIN.0 + 150, ORIGIN.1 + 120);
+        let id = place_fish(&mut p, &a, sx, sy);
+        p.help = None;
+        // colocado no ponto do quadro sob a lente, não em (sx, sy) - ORIGIN
+        let (cx, cy) = z.to_canvas(sx, sy);
+        let c = p.objects().get(id).unwrap().center();
+        assert!(
+            (c.0 - cx).abs() < 40 && (c.1 - cy).abs() < 40,
+            "{c:?} {cx} {cy}"
+        );
+        // um pixel opaco do adesivo, na tela ampliada
+        let (x0, y0) = {
+            let o = p.objects().get(id).unwrap();
+            (o.x, o.y)
+        };
+        let o = p.objects().get(id).unwrap();
+        let (px, py) = (0..o.h as i32)
+            .flat_map(|y| (0..o.w as i32).map(move |x| (x, y)))
+            .find(|&(x, y)| o.pixel(x, y).is_some())
+            .unwrap();
+        let (hx, hy) = (
+            ORIGIN.0 + (x0 + px - z.ox) * zoom::FACTOR + 1,
+            ORIGIN.1 + (y0 + py - z.oy) * zoom::FACTOR + 1,
+        );
+        assert_eq!(z.to_canvas(hx, hy), (x0 + px, y0 + py));
+        p.update(&[mv(hx, hy)], 0.0, &a);
+        assert_eq!(p.hovered_object(), Some(id));
+        let d = 5 * zoom::FACTOR;
+        p.update(&[click(hx, hy), mv(hx + d, hy + d), up(hx + d, hy + d)], 0.0, &a);
+        let o = p.objects().get(id).unwrap();
+        assert_eq!((o.x, o.y), (x0 + 5, y0 + 5));
+    }
+
+    #[test]
+    fn magic_wand_on_a_sticker_does_not_grab_it() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        let id = place_fish(&mut p, &a, 300, 300);
+        p.help = None;
+        let (sx, sy) = opaque_point(&p, id);
+        p.wand = true;
+        p.update(&[click(sx, sy)], 0.0, &a);
+        assert!(!p.wand, "a varinha foi usada");
+        assert!(!p.stickers().dragging());
+        p.update(&[up(sx, sy)], 0.0, &a);
+        assert!(p.easel().is_none());
+    }
+
+    #[test]
+    fn sticker_tips_stay_closed_without_mczee() {
+        let (_d, a) = empty_assets();
+        let mut p = Paint::new(None, &a);
+        p.update(&[click(129, 30), click(300, 300)], 0.0, &a);
+        p.help_on = false;
+        p.update(&[click(40, 80)], 0.0, &a);
+        assert!(p.stickers().film_open());
+        assert!(p.help().is_none());
+        p.update(&[click(54, 152), click(300, 300), mv(0, 0)], 10.0, &a);
+        p.update(&[], 10.0, &a);
+        assert!(p.help().is_none());
+        p.update(&[click(478, 78)], 0.0, &a);
+        assert!(p.easel().is_some());
+        assert!(p.help().is_none());
+    }
+
+    #[test]
     fn sticker_tool_click_on_canvas_paints_nothing() {
         let (_d, a) = empty_assets();
         let mut p = Paint::new(None, &a);

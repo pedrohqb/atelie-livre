@@ -31,8 +31,10 @@ JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
 - `id`, `x`, `y` (canto, coordenadas do quadro), `w`, `h` (tamanho mostrado),
   `inv_h`, `inv_v`, `giros` (0–3, de 90° horários); `corrente` (id do objeto
   grudado); `som` e `som_indice` (som preso: biblioteca e índice).
-- Origem, uma de: `rolo` + `casa` (adesivo de um rolo; rolo 0 = bichos, 1–28
-  clip-art, 29 = rabinhos de balão nos quadrinhos); `png` (adesivo do usuário,
+- Origem, uma de: `rolo` + `casa` (adesivo de um rolo; rolo 0 = bichos, 1–29
+  clip-art (29 = cenários de `C-MAG100.ART`), 30 = rabinhos de balão nos
+  quadrinhos; o rolo do usuário, sempre o último, não aparece aqui: os
+  adesivos dele são gravados como `png`); `png` (adesivo do usuário,
   arquivo na pasta de desenhos); `texto` (palavra).
 - Palavra: `balao` (bool, sempre gravado) e `cor` (índice da paleta). Os
   campos do Cavalete de balões só aparecem quando fogem do texto solto ou do

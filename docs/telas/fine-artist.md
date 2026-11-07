@@ -275,7 +275,8 @@ qualquer outro clique fecha o painel e devolve a faixa às opções da ferrament
   (texto solto e balão "Oi!"). Os balões ovais são geométricos; as silhuetas
   de `B-MAG100.CHK` servem de referência.
 - **Dipitidus** (3e00 [22]): nos quadrinhos, a ferramenta de adesivos ganha,
-  depois dos rolos de clip-art, o rolo "Dipitidus" com os quatro rabinhos de
+  depois dos rolos de clip-art (e antes do rolo do usuário), o rolo
+  "Dipitidus" com os quatro rabinhos de
   balão de `SHARED/STUFF/B-MAG100.CHK` (`PICT` 16–19, ampliados 2×, contorno
   preto e interior branco; o ícone é o `PICT` 20). Mudam de lugar e de
   tamanho pelos Transformadores. O bitmap `10b0` que o roteiro cita não
