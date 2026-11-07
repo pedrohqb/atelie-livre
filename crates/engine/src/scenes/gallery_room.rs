@@ -12,6 +12,7 @@
 
 use super::gags::{self, Character};
 use super::gallery_print::PrintPreview;
+use super::portfolio::{self, Action, Binder};
 use super::room_objects::{self as objects, BagPart, MagicBag, Target, snd};
 use crate::Frame;
 use crate::anim::Animator;
@@ -55,16 +56,6 @@ const MOUSE_HOLE: Rect = (445, 348, 54, 47);
 #[cfg(test)]
 const FOLDER: Rect = (304, 391, 99, 74);
 
-/// Pasta aberta: painel com 4×3 miniaturas e setas.
-const PANEL: Rect = (40, 40, 560, 360);
-const COLS: usize = 4;
-const ROWS: usize = 3;
-const PER_PAGE: usize = COLS * ROWS;
-const CELL: (i32, i32) = (134, 112);
-const PANEL_PREV: Rect = (60, 368, 80, 24);
-const PANEL_NEXT: Rect = (500, 368, 80, 24);
-const PANEL_CLOSE: Rect = (280, 368, 80, 24);
-
 /// Bloco `WHAT` das salas: boas-vindas da galeria e reciclagem.
 const WHAT: u16 = 0x100d;
 const WELCOME: usize = 6;
@@ -95,6 +86,7 @@ const QUIT_WHAT: (u16, usize) = (0x1001, 2);
 /// Índices do original nas opções da lixeira (`22C000n`).
 const OPT_KEEP: u16 = 0;
 const OPT_TRASH: u16 = 1;
+const OPT_QUIT: u16 = 1;
 /// Posição dos avisos "EPA!" (medida em `gallery_o_dtrash_own_1.png`).
 const ALERT_POS: (i32, i32) = (178, 145);
 const QUIT_POS: (i32, i32) = (214, 179);
@@ -137,7 +129,6 @@ const DOUBLE_CLICK: f32 = 0.4;
 pub const WALL_FILE: &str = "galeria.txt";
 
 const BLACK: [u8; 3] = [0, 0, 0];
-const WHITE: [u8; 3] = [255, 255, 255];
 const WALL_A: [u8; 3] = [136, 136, 230];
 const WALL_B: [u8; 3] = [71, 140, 80];
 const FLOOR_A: [u8; 3] = [100, 100, 100];
@@ -162,6 +153,13 @@ pub struct Item {
     pub author: String,
     pub sample: bool,
     thumb: Canvas,
+}
+
+impl Item {
+    /// Miniatura 1/4 do quadro.
+    pub fn thumb(&self) -> &Canvas {
+        &self.thumb
+    }
 }
 
 /// Título e autor do `.MAG` do quadro (o próprio arquivo ou o gêmeo do `.png`).
@@ -277,7 +275,8 @@ pub struct GalleryRoom {
     /// Índice em `items` do quadro de cada moldura.
     wall: [Option<usize>; 3],
     folder_open: bool,
-    folder_page: usize,
+    /// O fichário verde (a pasta de trabalhos).
+    binder: Binder,
     drag: Option<Drag>,
     last_click: Option<(Source, f32)>,
     clock: f32,
@@ -331,6 +330,14 @@ impl GalleryRoom {
         );
         add(super::gallery::list_samples(assets.data_dir()), true);
         let wall = load_wall(dir.as_deref(), &items);
+        let folder = dir
+            .as_ref()
+            .and_then(|d| d.file_name())
+            .map_or("(sem pasta)".to_string(), |n| {
+                format!("{}/", n.to_string_lossy())
+            });
+        let mut binder = Binder::new(folder);
+        binder.rebuild(&items);
         let mut rng = XorShift::from_clock();
         let character = Character::pick(gags::MCZEE_COSTUMES, gags::MCZEE_LOBBY, &mut rng);
         let mut g = GalleryRoom {
@@ -340,7 +347,7 @@ impl GalleryRoom {
             items,
             wall,
             folder_open: false,
-            folder_page: 0,
+            binder,
             drag: None,
             last_click: None,
             clock: 0.0,
@@ -419,7 +426,8 @@ impl GalleryRoom {
         let fallback_ids: Vec<u16> = match kind {
             Modal::Trash(_, Some(_)) => vec![OPT_TRASH, OPT_KEEP, 2],
             Modal::Trash(_, None) => vec![OPT_TRASH, OPT_KEEP],
-            _ => (0..opts.len() as u16).collect(),
+            Modal::Quit => vec![OPT_QUIT, 0],
+            Modal::NotYours(_) => Vec::new(),
         };
         let (balloon, ids) = match assets.dialogs(Program::Artist, block).get(k) {
             Some(r) => (
@@ -452,8 +460,26 @@ impl GalleryRoom {
         let mut g = GalleryRoom::new(click, dir, assets);
         g.balloon = None;
         g.overlay = true;
-        g.folder_open = true;
+        g.open_folder(assets);
         g
+    }
+
+    /// A criança (apelido e bicho), para a árvore do fichário.
+    pub fn with_user(mut self, user: &str, animal: Option<usize>) -> GalleryRoom {
+        self.binder.set_user(user, animal, &self.items);
+        self
+    }
+
+    fn open_folder(&mut self, assets: &Assets) {
+        self.folder_open = true;
+        self.binder.open(!self.help_off, assets);
+    }
+
+    fn close_folder(&mut self, fx: &mut Vec<Effect>) {
+        self.folder_open = false;
+        if self.overlay {
+            fx.push(Effect::Back);
+        }
     }
 
     pub fn bag(&self) -> &MagicBag {
@@ -478,7 +504,7 @@ impl GalleryRoom {
             }
             BagPart::Suitcase => {
                 fx.push(Effect::PlaySound(snd(objects::SND_SUITCASE)));
-                self.folder_open = true;
+                self.open_folder(assets);
             }
             BagPart::Book => {
                 fx.extend(objects::SND_BOOK.map(|id| Effect::PlaySound(snd(id))));
@@ -657,7 +683,8 @@ impl GalleryRoom {
                     + "\n"
             })
             .collect();
-        std::fs::write(dir.join(WALL_FILE), text)
+        std::fs::create_dir_all(dir)
+            .and_then(|()| std::fs::write(dir.join(WALL_FILE), text))
             .err()
             .map(|e| Effect::Log(format!("galeria: {e}")))
     }
@@ -674,7 +701,9 @@ impl GalleryRoom {
                 it.path.display()
             ))];
         };
-        if let Err(e) = save_png(&c, &self.pal, &dir.join(LAST_NAME)) {
+        if let Err(e) = std::fs::create_dir_all(dir)
+            .and_then(|()| save_png(&c, &self.pal, &dir.join(LAST_NAME)))
+        {
             return vec![Effect::Log(format!("galeria: {e}"))];
         }
         let name_file = dir.join(NAME_FILE);
@@ -762,6 +791,7 @@ impl GalleryRoom {
             let _ = std::fs::remove_file(twin);
         }
         self.items.remove(i);
+        self.binder.rebuild(&self.items);
         for w in self.wall.iter_mut() {
             *w = match *w {
                 Some(j) if j == i => None,
@@ -819,7 +849,8 @@ impl GalleryRoom {
         self.play(&[sfx::CHOICE]);
         match kind {
             Modal::Quit => {
-                if id == 0 {
+                // no original, "Sair" é a opção 1 e "Continuar" a 0
+                if id == OPT_QUIT {
                     fx.push(Effect::Quit);
                 }
             }
@@ -842,26 +873,13 @@ impl GalleryRoom {
         }
     }
 
-    fn folder_cell(k: usize) -> Rect {
-        (
-            PANEL.0 + 14 + CELL.0 * (k % COLS) as i32,
-            PANEL.1 + 30 + CELL.1 * (k / COLS) as i32,
-            THUMB_W as i32 + 4,
-            THUMB_H as i32 + 4,
-        )
-    }
-
-    fn folder_pages(&self) -> usize {
-        self.items.len().div_ceil(PER_PAGE).max(1)
-    }
-
     fn hit(&self, x: i32, y: i32) -> Option<Source> {
         if self.folder_open {
-            return (0..PER_PAGE)
-                .find(|&k| inside(Self::folder_cell(k), x, y))
-                .map(|k| self.folder_page * PER_PAGE + k)
-                .filter(|&i| i < self.items.len())
-                .map(Source::Folder);
+            // a miniatura da página direita pode ir para uma moldura
+            if self.binder.search_open() || !inside(portfolio::THUMB, x, y) {
+                return None;
+            }
+            return self.binder.selected().map(Source::Folder);
         }
         (0..3)
             .rev()
@@ -896,23 +914,23 @@ impl GalleryRoom {
                 return;
             }
         }
-        if self.folder_open {
-            if inside(PANEL_CLOSE, x, y) {
-                self.folder_open = false;
-                if self.overlay {
-                    fx.push(Effect::Back);
-                }
+        if self.folder_open && self.hit(x, y).is_none() {
+            if !inside(portfolio::BINDER, x, y) && !self.binder.search_open() {
+                self.close_folder(fx);
                 return;
             }
-            if inside(PANEL_PREV, x, y) {
-                self.folder_page =
-                    (self.folder_page + self.folder_pages() - 1) % self.folder_pages();
-                return;
+            let clock = self.clock;
+            let mut sounds = Vec::new();
+            let action = self
+                .binder
+                .click(x, y, clock, &self.items, &mut sounds, assets);
+            fx.extend(sounds);
+            match action {
+                Some(Action::Close) => self.close_folder(fx),
+                Some(Action::Open(i)) => fx.extend(self.open(i)),
+                None => {}
             }
-            if inside(PANEL_NEXT, x, y) {
-                self.folder_page = (self.folder_page + 1) % self.folder_pages();
-                return;
-            }
+            return;
         }
         if let Some(src) = self.hit(x, y) {
             if self.item_of(src).is_some() {
@@ -925,15 +943,6 @@ impl GalleryRoom {
                     pos: (x, y),
                     moved: false,
                 });
-            }
-            return;
-        }
-        if self.folder_open {
-            if !inside(PANEL, x, y) {
-                self.folder_open = false;
-                if self.overlay {
-                    fx.push(Effect::Back);
-                }
             }
             return;
         }
@@ -1122,44 +1131,6 @@ impl GalleryRoom {
             None => f.text(r.0 + 2, r.1 + 2, s, BLACK),
         }
     }
-
-    fn button(f: &mut Frame, a: &Assets, r: Rect, label: &str) {
-        f.rect(r.0, r.1, r.2, r.3, BLACK);
-        f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, WHITE);
-        Self::draw_text_centered(f, a, (r.0, r.1 + 6, r.2, r.3), label);
-    }
-
-    fn draw_folder(&self, f: &mut Frame, a: &Assets) {
-        let (x, y, w, h) = PANEL;
-        f.rect(x - 2, y - 2, w + 4, h + 4, BLACK);
-        f.rect(x, y, w, h, [255, 238, 76]);
-        let title = format!(
-            "Pasta: {} quadro(s), página {} de {}",
-            self.items.len(),
-            self.folder_page + 1,
-            self.folder_pages()
-        );
-        Self::draw_text_centered(f, a, (x, y + 8, w, 14), &title);
-        for k in 0..PER_PAGE {
-            let i = self.folder_page * PER_PAGE + k;
-            let Some(it) = self.items.get(i) else { break };
-            let r = Self::folder_cell(k);
-            f.rect(
-                r.0,
-                r.1,
-                r.2,
-                r.3,
-                if it.sample { [40, 80, 200] } else { BLACK },
-            );
-            self.draw_thumb(f, &it.thumb, r.0 + 2, r.1 + 2);
-            Self::draw_text_centered(f, a, (r.0, r.1 + r.3 + 2, r.2, 12), &it.name);
-        }
-        Self::button(f, a, PANEL_CLOSE, "Fechar");
-        if self.folder_pages() > 1 {
-            Self::button(f, a, PANEL_PREV, "Anterior");
-            Self::button(f, a, PANEL_NEXT, "Próxima");
-        }
-    }
 }
 
 /// Molduras guardadas em `galeria.txt`; o que faltar é preenchido com os
@@ -1260,6 +1231,9 @@ impl Scene for GalleryRoom {
                     x,
                     y,
                 } => self.release(x, y, &mut fx, assets),
+                Input::Key { .. } | Input::Text(_) if self.folder_open => {
+                    self.binder.key(i, &self.items, &mut fx, assets);
+                }
                 _ => {}
             }
         }
@@ -1274,7 +1248,7 @@ impl Scene for GalleryRoom {
 
     fn draw(&self, f: &mut Frame, a: &Assets) {
         if self.overlay {
-            self.draw_folder(f, a);
+            self.binder.draw(f, a, &self.items, &self.pal);
             return;
         }
         Self::draw_background(f);
@@ -1312,7 +1286,7 @@ impl Scene for GalleryRoom {
             s.draw(f, a);
         }
         if self.folder_open {
-            self.draw_folder(f, a);
+            self.binder.draw(f, a, &self.items, &self.pal);
         }
         if let Some(d) = self.drag
             && d.moved
@@ -1620,16 +1594,28 @@ mod tests {
         }
     }
 
+    fn click_at(g: &mut GalleryRoom, p: (i32, i32), a: &Assets) -> Vec<Effect> {
+        g.update(&[down(p.0, p.1), up(p.0, p.1)], 0.1, a)
+    }
+
+    fn center(r: Rect) -> (i32, i32) {
+        (r.0 + r.2 / 2, r.1 + r.3 / 2)
+    }
+
+    /// A maleta abre o fichário; a miniatura do quadro escolhido vai para
+    /// uma moldura (o fichário some ao arrastar).
     #[test]
     fn folder_places_on_wall() {
         let (_d, dir, a) = setup(5);
         let mut g = room(dir.path(), &a);
-        let (fx_, fy) = (FOLDER.0 + 20, FOLDER.1 + 20);
-        g.update(&[down(fx_, fy), up(fx_, fy)], 0.1, &a);
+        click_at(&mut g, (FOLDER.0 + 20, FOLDER.1 + 20), &a);
         assert!(g.folder_open());
-        // a quinta figura da pasta vai para a moldura 2; a pasta fecha ao arrastar
-        let c = GalleryRoom::folder_cell(4);
-        let (cx, cy) = (c.0 + 20, c.1 + 20);
+        // escolhe o quinto quadro na lista
+        let p = g.binder.row_point(4).unwrap();
+        let fx = click_at(&mut g, p, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::SELECT))));
+        assert_eq!(g.binder.selected(), Some(4));
+        let (cx, cy) = center(portfolio::THUMB);
         let (wx, wy) = (FRAMES[2].0 + 100, FRAMES[2].1 + 60);
         g.update(
             &[down(cx, cy), mv(cx + 30, cy), mv(wx, wy), up(wx, wy)],
@@ -1638,6 +1624,107 @@ mod tests {
         );
         assert!(!g.folder_open());
         assert_eq!(g.wall(), [Some(0), Some(1), Some(4)]);
+    }
+
+    /// JÁ abre o escolhido; clique duplo numa linha também; X fecha.
+    #[test]
+    fn folder_buttons() {
+        let (_d, dir, a) = setup(3);
+        let mut g = room(dir.path(), &a);
+        click_at(&mut g, (FOLDER.0 + 20, FOLDER.1 + 20), &a);
+        let p = g.binder.row_point(2).unwrap();
+        click_at(&mut g, p, &a);
+        let fx = click_at(&mut g, center(portfolio::BUTTON_GO), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::GO))));
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        let fx = g.update(
+            &[down(p.0, p.1), up(p.0, p.1), down(p.0, p.1), up(p.0, p.1)],
+            0.1,
+            &a,
+        );
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        // seta do título: próximo quadro
+        click_at(&mut g, center(portfolio::TITLE_NEXT), &a);
+        assert_eq!(g.binder.selected(), Some(0));
+        let fx = click_at(&mut g, center(portfolio::BUTTON_CLOSE), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::CLOSE))));
+        assert!(!g.folder_open());
+    }
+
+    /// O inseto procura pelo nome (sem acento nem maiúscula).
+    #[test]
+    fn folder_search_finds_by_name() {
+        let (_d, dir, a) = setup(2);
+        let pal = a.palettes(Program::Artist).pal256.clone();
+        let c = Canvas::new(CANVAS_W, CANVAS_H);
+        crate::paint::store::save_mag_titled(&c, &pal, &dir.path().join("p.mag"), "Pássaro")
+            .unwrap();
+        let mut g = room(dir.path(), &a);
+        let target = g
+            .items()
+            .iter()
+            .position(|it| it.name == "Pássaro")
+            .unwrap();
+        click_at(&mut g, (FOLDER.0 + 20, FOLDER.1 + 20), &a);
+        let fx = click_at(&mut g, center(portfolio::BUTTON_SEARCH), &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::SEARCH))));
+        assert!(g.binder.search_open());
+        g.update(&[Input::Text("PASSA".into())], 0.1, &a);
+        let r = g
+            .binder
+            .search_balloon()
+            .unwrap()
+            .option_rect(&a, 0)
+            .unwrap();
+        click_at(&mut g, (r.0 + 4, r.1 + 4), &a);
+        assert!(!g.binder.search_open());
+        assert_eq!(g.binder.selected(), Some(target));
+        // nada achado: recusa e o balão fica
+        click_at(&mut g, center(portfolio::BUTTON_SEARCH), &a);
+        g.update(&[Input::Text("zzz".into())], 0.1, &a);
+        let enter = Input::Key {
+            key: crate::scene::Key::Enter,
+            ctrl: false,
+            alt: false,
+        };
+        let fx = g.update(&[enter], 0.1, &a);
+        assert!(fx.contains(&Effect::PlaySound(snd(portfolio::sfx::REFUSE))));
+        assert!(g.binder.search_open());
+    }
+
+    /// Só a pasta, aberta pela maleta de uma sala: por cima dela, clique
+    /// duplo abre o quadro e fechar volta à sala.
+    #[test]
+    fn portfolio_over_a_room() {
+        let (_d, dir, a) = setup(2);
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        assert!(g.overlay());
+        assert!(g.folder_open());
+        let (cx, cy) = center(portfolio::THUMB);
+        // arrastar não tira a figura da pasta (não há parede aqui)
+        g.update(&[down(cx, cy), mv(cx + 40, cy), up(cx + 40, cy)], 0.1, &a);
+        assert!(g.folder_open());
+        let fx = g.update(
+            &[down(cx, cy), up(cx, cy), down(cx, cy), up(cx, cy)],
+            0.1,
+            &a,
+        );
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        let fx = click_at(&mut g, center(portfolio::BUTTON_CLOSE), &a);
+        assert!(fx.contains(&Effect::Back));
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        let fx = click_at(&mut g, (5, 5), &a);
+        assert!(fx.contains(&Effect::Back));
+        // por cima da sala: só o fichário é desenhado
+        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+        f.fill([1, 2, 3]);
+        g.draw(&mut f, &a);
+        assert_eq!(f.pixel(5, 470)[..3], [1, 2, 3]);
+        // e sem fala de chegada
+        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
+        let fx = g.update(&[], 0.1, &a);
+        assert!(!fx.contains(&Effect::PlaySound(snd(sfx::ARRIVAL))));
     }
 
     /// Quadro solto na impressora: a prévia com o McZee; Para volta.
@@ -1671,45 +1758,6 @@ mod tests {
         assert!(fx.contains(&Effect::ChangeScene(SceneId::Building)));
         let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
         g.draw(&mut f, &a);
-    }
-
-    /// Só a pasta, aberta pela maleta de uma sala: por cima dela, clique
-    /// duplo abre o quadro e fechar volta à sala.
-    #[test]
-    fn portfolio_over_a_room() {
-        let (_d, dir, a) = setup(2);
-        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
-        assert!(g.overlay());
-        assert!(g.folder_open());
-        let c = GalleryRoom::folder_cell(0);
-        let (cx, cy) = (c.0 + 20, c.1 + 20);
-        // arrastar não tira a figura da pasta (não há parede aqui)
-        g.update(&[down(cx, cy), mv(cx + 40, cy), up(cx + 40, cy)], 0.1, &a);
-        assert!(g.folder_open());
-        let fx = g.update(
-            &[down(cx, cy), up(cx, cy), down(cx, cy), up(cx, cy)],
-            0.1,
-            &a,
-        );
-        assert!(fx.contains(&Effect::ChangeScene(SceneId::Paint)));
-        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
-        let fx = g.update(
-            &[
-                down(PANEL_CLOSE.0 + 5, PANEL_CLOSE.1 + 5),
-                up(PANEL_CLOSE.0 + 5, PANEL_CLOSE.1 + 5),
-            ],
-            0.1,
-            &a,
-        );
-        assert!(fx.contains(&Effect::Back));
-        let mut g = GalleryRoom::portfolio(None, Some(dir.path().to_path_buf()), &a);
-        let fx = g.update(&[down(5, 5), up(5, 5)], 0.1, &a);
-        assert!(fx.contains(&Effect::Back));
-        // por cima da sala: só o painel é desenhado
-        let mut f = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
-        f.fill([1, 2, 3]);
-        g.draw(&mut f, &a);
-        assert_eq!(f.pixel(5, 470)[..3], [1, 2, 3]);
     }
 
     /// Bolsa aberta no chão da Galeria: livro conta a história, a varinha

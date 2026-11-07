@@ -39,6 +39,12 @@ impl UserContext {
     fn name(&self) -> &str {
         self.user.as_deref().unwrap_or(DEFAULT_USER)
     }
+
+    /// Bicho preferido do cadastro, para a pasta de trabalhos.
+    fn animal(&self) -> Option<usize> {
+        let u = self.user.as_deref()?;
+        engine::users::load(&users_dir()?, u).map(|p| p.bicho)
+    }
 }
 
 fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) -> Box<dyn Scene> {
@@ -50,11 +56,10 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     };
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets).with_user(user.name())),
-        SceneId::Gallery => Box::new(GalleryRoom::new(
-            cfg.click_sound.clone(),
-            drawings_dir(),
-            assets,
-        )),
+        SceneId::Gallery => Box::new(
+            GalleryRoom::new(cfg.click_sound.clone(), drawings_dir(), assets)
+                .with_user(user.name(), user.animal()),
+        ),
         SceneId::Building => room(Floor::Lobby),
         SceneId::Studio => room(Floor::Studio),
         SceneId::TricksFloor => room(Floor::Tricks),
@@ -73,11 +78,10 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         }
         SceneId::Story => Box::new(Story::new(cfg.click_sound.clone(), assets)),
         SceneId::BookStory => Box::new(Story::new(cfg.click_sound.clone(), assets).over_room()),
-        SceneId::Portfolio => Box::new(GalleryRoom::portfolio(
-            cfg.click_sound.clone(),
-            drawings_dir(),
-            assets,
-        )),
+        SceneId::Portfolio => Box::new(
+            GalleryRoom::portfolio(cfg.click_sound.clone(), drawings_dir(), assets)
+                .with_user(user.name(), user.animal()),
+        ),
         SceneId::Imaginopolis => Box::new(Imaginopolis::new(cfg.click_sound.clone())),
         SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
         SceneId::Browser => Box::new(Browser::new()),

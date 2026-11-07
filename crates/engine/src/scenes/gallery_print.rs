@@ -190,7 +190,9 @@ impl PrintPreview {
         };
         let path =
             dir.join(crate::paint::store::timestamp_name(now).replace("desenho-", "impressao-"));
-        if let Err(e) = save_png(&self.picture, &self.pal, &path) {
+        if let Err(e) =
+            std::fs::create_dir_all(dir).and_then(|()| save_png(&self.picture, &self.pal, &path))
+        {
             fx.push(Effect::Log(format!("imprimir: {e}")));
             self.result = Some(false);
             return;
