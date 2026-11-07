@@ -183,7 +183,43 @@ seção 4. Resumo:
   adesivo e grava 10 s com o ffmpeg; `tools/wine/analyze.py` acha as imagens em
   cada quadro. Rolar a tira de filme no Wine derruba o programa.
 - **Lata de tinta**: faixa com 10 opções (`1590`, `1591`, `1593` … `15a1`) e,
-  à esquerda, uma amostra da tinta atual.
+  à esquerda, o **rolo de papéis de parede** (`10af` em (9, 58), com as duas
+  manivelas; o branco ligado à borda da figura é transparente) com a amostra
+  de 30×30 em (39, 65), de cantos arredondados: a tinta atual, ou o ladrilho
+  do papel escolhido encolhido de 32 para 30.
+  - Clique nas manivelas ou na amostra, (8, 56)–(80, 100): abre ou fecha a
+    **coluna suspensa** (som `0233` ao abrir; fechar não tem som) e o balão
+    "Rolo de papéis de parede" (`WHAT` 1003, registro 18). A coluna tem bordas
+    pretas em x = 33 e 74, de y = 99 a 442; casas brancas de 40 px com 1 px de
+    divisa: "Normal" em y = 100, os papéis a partir de y = 141 (miniatura
+    32×32 a 4 px do canto da casa), 7 à vista; setas ▲ `02db` em (39, 429) e
+    ▼ `02df` em (57, 429), que rolam uma casa (sons `02bc`–`02bf`).
+  - Escolher um papel toca `022d` e fecha a coluna; "Normal" volta à cor e ao
+    padrão (no Ateliê Livre, escolher outra cor ou padrão nas tiras também).
+    Os ícones das opções não mudam (conferido pixel a pixel nas capturas).
+  - Os papéis vêm de `SHARED/STUFF/W-MAG100.CHK` (ver
+    [chnk.md](../formats/chnk.md)): 13 que se mexem (`APAT`) e 22 parados,
+    35 ao todo. O ladrilho começa no canto do quadro; os que se mexem trocam
+    de quadro a cada 0,25 s (valor do Ateliê Livre) enquanto o pixel ainda
+    tiver o quadro esperado.
+  - Opções (balões `WHAT` 1003, registros 1–10), como implementadas
+    (`crates/engine/src/paint/bucket_fx.rs`): 1 normal (área da mesma cor do
+    que se vê); 2 troca-cores (todos os pixels da cor clicada, no quadro ou
+    só no adesivo); 3 troca-padrões (a área desenhada com um padrão da tira
+    passa ao padrão atual, mesma cor); 4 contorno (3 px em volta da área ou
+    do adesivo, que cresce); 5 mistura-cores (da cor da tinta no centro até a
+    cor clicada na borda, pontilhado ordenado 4×4); 6 pontinhos (cada pixel
+    da área copia um vizinho sorteado a até 3 px: as bordas ficam
+    salpicadas); 7 pop (o quadro encolhe pela metade e se repete 2×2; cada
+    clique dobra); 8 bolhas (6 anéis por clique perto do ponto, com brilho);
+    9 troca-cores em seqüência (todas as cores andam na roda das 38 da tira,
+    posição p → 25p + 11 mod 38: branco vira vinho e preto vira verde, como
+    no original); 10 surpresa (figura por cima do quadro, sem mudar a
+    pintura: pegadas e manchas `122f`/`1231`, rastro de passarinho
+    `1233`/`1235`, patas `123b`/`123d`, passos de dança `122b`/`122d`,
+    em (21, 106), uma a cada clique, aparecendo de baixo à esquerda para
+    cima à direita; some ao trocar de ferramenta ou de opção). Os atalhos
+    com Alt ("em todos os lugares") e Ctrl ("permanente") não foram feitos.
 - **Aspirador**: 8 opções (`1557`, `1559`, `1567`, `1561`, `155f`, `155b`,
   `155c`, `1569`); a primeira limpa o quadro.
 - **Cores**: 38 caixas na coluna esquerda (índices da `LOGPALETTE` 8).

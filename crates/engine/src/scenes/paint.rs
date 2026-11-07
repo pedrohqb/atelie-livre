@@ -2,6 +2,7 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+mod bucket;
 pub mod exit_dialog;
 mod front;
 pub mod menu;
@@ -456,6 +457,8 @@ pub struct Paint {
     /// Forma escolhida: (página, botão).
     brush: (u8, usize),
     bucket_option: usize,
+    /// Papéis de parede, coluna suspensa, áreas que se mexem e surpresa.
+    bucket: bucket::Bucket,
     /// Opção da Palavra: 0 = texto simples, 1 = balão de fala.
     words_option: usize,
     /// Estilo do Cavalete de balões (história em quadrinhos).
@@ -563,6 +566,7 @@ impl Paint {
             page: 1,
             brush: (1, 0),
             bucket_option: 0,
+            bucket: bucket::Bucket::new(assets, &assets.palettes(Program::Artist).pal256),
             words_option: 0,
             words_style: WordsStyle::balloon(),
             words: None,
@@ -1685,38 +1689,7 @@ impl Paint {
     /// pinta o próprio objeto (como no original); no fundo, as bordas dos
     /// objetos seguram a tinta.
     fn pour(&mut self, cx: i32, cy: i32) {
-        let ink = self.ink();
-        if let Some(id) = self.objects.hit(cx, cy) {
-            self.history.record_all(&self.canvas, &self.objects);
-            let Some(o) = self.objects.get_mut(id) else {
-                return;
-            };
-            let (ox, oy) = (cx - o.x, cy - o.y);
-            if !o.fill_at(ox, oy, &ink) {
-                return;
-            }
-            // a imagem mudou: passa a ser um adesivo do usuário, gravado ao lado
-            let name = format!(
-                "adesivo-{}-{id}.png",
-                crate::paint::store::timestamp(now_secs())
-            );
-            if let Some(dir) = &self.drawings
-                && std::fs::create_dir_all(dir).is_ok()
-                && crate::paint::store::save_stamp_png(&o.image, &self.pal, &dir.join(&name))
-                    .is_ok()
-            {
-                o.source = Source::Png(name);
-            }
-            self.changed = true;
-            return;
-        }
-        let seen = self.composed();
-        let before = self.canvas.px.clone();
-        self.canvas.fill_within(cx, cy, &ink, &seen.px);
-        if self.canvas.px != before {
-            self.history.record_previous(before);
-            self.changed = true;
-        }
+        self.pour_bucket(cx, cy);
     }
 
     fn ink(&self) -> Ink {
@@ -1934,6 +1907,9 @@ impl Paint {
                 }
                 None => self.sounds.reset(),
             }
+        }
+        if self.bucket_click(x, y, fx, assets) {
+            return;
         }
         if inside(canvas_rect(), x, y) {
             // com o Imprimir escolhido, o quadro não responde (como no original)
@@ -2579,18 +2555,7 @@ impl Paint {
                 (self.brush.0 == self.page).then_some(self.brush.1)
             }
             Tool::Bucket => {
-                f.blit_masked(&a.image(&pic(0x1121)), &a.image(&pic(0x1123)), 92, 56);
-                f.rect(12, 60, 66, 40, BLACK);
-                let ink = self.ink();
-                for y in 62..98 {
-                    for x in 14..76 {
-                        f.put(x, y, self.rgb(ink.index_at(x, y)));
-                    }
-                }
-                for (k, id) in BUCKET_BUTTONS.iter().enumerate() {
-                    let r = option_rect(113, k);
-                    f.blit(&a.image(&pic(*id)), r.0, r.1);
-                }
+                self.draw_bucket_strip(f, a, &BUCKET_BUTTONS);
                 Some(self.bucket_option)
             }
             Tool::Stickers => {
@@ -2976,6 +2941,7 @@ impl Scene for Paint {
         self.spray_tick();
         self.easel_tick();
         self.sticker_notices(assets);
+        self.bucket_tick(dt);
         self.sounds.update(dt);
         if self.transformers.update(dt, &mut self.objects) {
             self.changed = true;
@@ -3022,6 +2988,7 @@ impl Scene for Paint {
         }
         self.supertools.guides.draw(frame);
         self.draw_blink(frame);
+        self.draw_bucket_overlay(frame, assets);
         if self.tool == Tool::Transformers {
             self.transformers.draw_overlay(frame, &self.objects);
         }
