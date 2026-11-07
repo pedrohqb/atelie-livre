@@ -8,6 +8,8 @@ use std::io;
 use std::path::Path;
 
 pub const LAST_NAME: &str = "ultimo.png";
+/// Nome que o usuário deu ao último quadro, ao lado de `ultimo.png`.
+pub const NAME_FILE: &str = "ultimo.nome.txt";
 /// Título dos desenhos gravados em `.MAG`.
 pub const MAG_TITLE: &str = "Quadro Novo";
 
@@ -179,10 +181,15 @@ pub fn load_picture(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
 
 /// Grava o quadro como `.MAG` do Fine Artist (título "Quadro Novo", sem autor).
 pub fn save_mag(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
+    save_mag_titled(c, pal, path, MAG_TITLE)
+}
+
+/// Como `save_mag`, com o título dado pelo usuário.
+pub fn save_mag_titled(c: &Canvas, pal: &[Rgb], path: &Path, title: &str) -> io::Result<()> {
     let mut palette = pal.iter().take(256).copied().collect::<Vec<_>>();
     palette.resize(256, Rgb { r: 0, g: 0, b: 0 });
     let pic = mag::Picture {
-        title: MAG_TITLE.into(),
+        title: title.into(),
         author: String::new(),
         palette,
         width: c.w as u16,
@@ -304,21 +311,76 @@ pub fn save_drawing_objects(
     changed: bool,
     now: u64,
 ) -> Result<(), String> {
+    save_drawing_named(dir, c, objs, pal, changed, now, None)
+}
+
+/// Como `save_drawing_objects`, com o nome que o usuário deu ao quadro:
+/// a cópia (sempre gravada, mesmo sem mudança) fica em `<nome>.png` e
+/// `<nome>.mag` (com esse título) em vez do carimbo de data, e o nome vai
+/// para `ultimo.nome.txt`, para o rótulo voltar ao reabrir.
+pub fn save_drawing_named(
+    dir: &Path,
+    c: &Canvas,
+    objs: &Objects,
+    pal: &[Rgb],
+    changed: bool,
+    now: u64,
+    name: Option<&str>,
+) -> Result<(), String> {
     let fail = |e: io::Error, p: &Path| format!("não consegui gravar {}: {e}", p.display());
     std::fs::create_dir_all(dir).map_err(|e| fail(e, dir))?;
     let flat = compose_unclipped(c, objs);
     let last = dir.join(LAST_NAME);
     save_png(&flat, pal, &last).map_err(|e| fail(e, &last))?;
     save_objects(dir, "ultimo", c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
-    if changed {
-        let stem = timestamp_stem(now);
+    let name_file = dir.join(NAME_FILE);
+    match name {
+        Some(n) => std::fs::write(&name_file, n).map_err(|e| fail(e, &name_file))?,
+        None => {
+            let _ = std::fs::remove_file(&name_file);
+        }
+    }
+    if changed || name.is_some() {
+        let (stem, title) = match name {
+            Some(n) => (name_stem(n).unwrap_or_else(|| timestamp_stem(now)), n),
+            None => (timestamp_stem(now), MAG_TITLE),
+        };
         let named = dir.join(format!("{stem}.png"));
         save_png(&flat, pal, &named).map_err(|e| fail(e, &named))?;
         let named = dir.join(format!("{stem}.mag"));
-        save_mag(&flat, pal, &named).map_err(|e| fail(e, &named))?;
+        save_mag_titled(&flat, pal, &named, title).map_err(|e| fail(e, &named))?;
         save_objects(dir, &stem, c, objs, &flat, pal).map_err(|e| fail(e, dir))?;
     }
     Ok(())
+}
+
+/// Nome do arquivo para um nome de quadro: só o que é seguro num caminho
+/// (sem barras, pontos no início nem caracteres de controle); `None` para o
+/// nome padrão ("Quadro Novo"), que fica com o carimbo de data.
+pub fn name_stem(name: &str) -> Option<String> {
+    let t = name.trim();
+    if t.is_empty() || t == MAG_TITLE {
+        return None;
+    }
+    let s: String = t
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let s = s.trim_start_matches('.').to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+/// Nome dado ao último quadro (`ultimo.nome.txt`), se houver.
+pub fn load_name(dir: &Path) -> Option<String> {
+    let s = std::fs::read_to_string(dir.join(NAME_FILE)).ok()?;
+    let s = s.trim();
+    (!s.is_empty()).then(|| s.to_string())
 }
 
 /// Composição achatada para gravar: o recorte retangular (quadrinho em
