@@ -100,10 +100,15 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    desenho animado; aprender truques de desenho; copiar, apagar ou limpar
    desenhos.
 7. **Ateliê de Pintura** (clique em "Ateliê de Pintura", (150,86) no
-   saguão): Maggie pergunta "Pintar alguma coisa nova", "Trabalhar na minha
-   última obra", "Trabalhar em um quadro mais antigo", "Outra coisa?". Com
-   "Pintar alguma coisa nova", o cavalete mostra "Quadro Novo"; um duplo
-   clique no quadro abre a tela de pintura.
+   saguão): o McZee pergunta "Pintar alguma coisa nova", "Trabalhar na
+   minha última obra", "Trabalhar em um quadro mais antigo", "Outra
+   coisa?". O cavalete mostra sempre uma tela em branco com a plaqueta
+   "Quadro Novo"; o quadro da parede (`6c6d` em (264,63)) mostra a última
+   coisa salva, reduzida, com o nome na plaqueta. Clique simples no
+   cavalete ou na parede só mostra a dica (`WHAT 100d[27]`/`[28]`, som
+   `21c`); o clique duplo abre a pintura com um quadro novo ou com o último
+   quadro. As opções do balão de chegada também só apontam (dicas, som
+   `254`). Detalhes em [`salas-baloes.md`](salas-baloes.md).
 8. **Tela de pintura**: descrita abaixo.
 
 ## Tela de pintura
@@ -471,9 +476,14 @@ fechada / aberta / maleta / livro / varinha):
   - em outro lugar: só fecha o balão (a varinha continua na mão).
   Depois da surpresa a bolsa reaparece aberta, com a varinha dentro.
   Durante a surpresa os cliques esperam.
-- **Mastro de bombeiro**: sobe um andar (som `2f3`; nos Truques o original
-  sobe a um sótão escuro de onde se desce ao saguão, o port vai direto ao
-  saguão). **Abertura do mastro** no chão (`682b`): desce um andar (`2f2`).
+- **Mastro de bombeiro**: sobe um andar (som `2f3`). **Abertura do
+  mastro** no chão (`682b`): desce um andar (`2f2`). O mastro é um ciclo
+  de cinco posições — saguão, Ateliê, Projetos, Truques e um **sótão
+  escuro** acima dos Truques — com volta: dos Truques o mastro sobe ao
+  sótão, a abertura do saguão desce ao sótão; Ctrl+clique anda dois.
+  No sótão (tela preta, só o aro do mastro em (368,27)-(461,91), som
+  `287` ao chegar) o aro sobe ao saguão e o escuro toca um som sorteado
+  (quase sempre `2e6`).
 - **Skate** "LÁ FORA" (`6c33`, saguão): volta para a rua (som `2fc`).
   Skate "ELEVADOR" (`6843`, andares): entra no elevador (`2fc`, `311`).
 
