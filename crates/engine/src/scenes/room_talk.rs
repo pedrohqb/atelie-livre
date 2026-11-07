@@ -145,10 +145,18 @@ fn fallback(w: i32, text: &str, options: &[&str], links: &[(usize, &str)]) -> Ba
     }
 }
 
+/// Posição, largura, texto reserva e ligações de uma dica.
+type TipSpec = (
+    (i32, i32),
+    i32,
+    &'static str,
+    &'static [(usize, &'static str)],
+);
+
 /// Dica (sem opções) do registro `k`: posição medida no original e texto
 /// reserva.
 pub fn tip(assets: &Assets, k: usize, user: &str) -> Balloon {
-    let (pos, w, text, links): ((i32, i32), i32, &str, &[(usize, &str)]) = match k {
+    let (pos, w, text, links): TipSpec = match k {
         rec::LOBBY_STUDIO => (
             (34, 111),
             167,

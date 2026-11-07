@@ -550,9 +550,11 @@ impl Room {
         assets: &Assets,
     ) -> Room {
         let pal = assets.palettes(Program::Artist).pal256.clone();
+        // um último quadro todo em branco é como nenhum (parede vazia)
         let last_drawing = drawings
             .as_ref()
-            .and_then(|d| load_png(&d.join(LAST_NAME), &pal));
+            .and_then(|d| load_png(&d.join(LAST_NAME), &pal))
+            .filter(|c| c.px.iter().any(|&v| v != crate::paint::WHITE));
         let last_name = drawings.as_deref().and_then(load_name);
         let mut rng = XorShift::from_clock();
         let character = floor.character(&mut rng);
@@ -1596,7 +1598,8 @@ mod tests {
     fn wall_label_renames_the_last_picture() {
         let (_d, a) = empty_assets();
         let dir = tempfile::tempdir().unwrap();
-        let c = Canvas::new(crate::paint::CANVAS_W, crate::paint::CANVAS_H);
+        let mut c = Canvas::new(crate::paint::CANVAS_W, crate::paint::CANVAS_H);
+        c.px.fill(3);
         crate::paint::store::save_drawing_named(
             dir.path(),
             &c,

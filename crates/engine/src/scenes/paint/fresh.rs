@@ -26,9 +26,12 @@ impl Paint {
     }
 
     /// Ao sair do Ateliê livre: um quadro em branco, sem objetos e sem
-    /// mudanças não é guardado por cima do último.
+    /// mudanças não é guardado por cima do último que já existe.
     pub(super) fn keeps_last(&self) -> bool {
-        self.project.is_none()
+        self.drawings
+            .as_ref()
+            .is_some_and(|d| d.join(crate::paint::store::LAST_NAME).exists())
+            && self.project.is_none()
             && self.trick.is_none()
             && self.edit_file.is_none()
             && !self.changed
