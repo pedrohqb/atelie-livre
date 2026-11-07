@@ -7,6 +7,7 @@ pub mod exit_dialog;
 mod fresh;
 mod front;
 pub mod menu;
+pub mod print_machine;
 pub mod rename;
 pub mod words;
 pub mod zoom;
@@ -480,6 +481,8 @@ pub struct Paint {
     finder: Option<FindPictures>,
     /// Apelido do usuário, para o campo "Artista" do Cachorrinho.
     artist: Option<String>,
+    /// Máquina de impressão aberta (modal), pela faixa do Imprimir.
+    print_machine: Option<print_machine::PrintMachine>,
 }
 
 impl Paint {
@@ -555,6 +558,7 @@ impl Paint {
             easel: None,
             finder: None,
             artist: None,
+            print_machine: None,
         };
         p.set_brush(1, 0);
         p.restore_objects(&records, assets);
@@ -1831,14 +1835,16 @@ impl Paint {
             if inside((qx, qy, qw, qh), x, y) {
                 fx.push(sfx::play(sfx::TOOLS[9]));
                 self.sfx.tool_clicked(9);
-                fx.push(self.print());
+                self.open_print_machine(true, fx, assets);
             } else if inside((cx, cy, cw, ch), x, y) {
                 fx.push(sfx::play(SND_PRINT_MACHINE));
-                fx.push(Effect::Log(
-                    "máquina de impressão: ainda não disponível; imprimindo direto".into(),
-                ));
                 self.sfx.tool_clicked(9);
-                fx.push(self.print());
+                self.open_print_machine(false, fx, assets);
+            } else if let Some(k) = (0..SWATCHES).find(|&k| inside(color_rect(k), x, y)) {
+                // as cores e os padrões continuam valendo (como no original)
+                self.color = k;
+            } else if let Some(k) = (0..SWATCHES).find(|&k| inside(pattern_rect(k), x, y)) {
+                self.pattern = k;
             }
             return;
         }
@@ -2406,6 +2412,9 @@ impl Scene for Paint {
             && self.exit_dialog.is_none()
             && self.rename.is_none();
         for i in input {
+            if self.print_machine_input(i, &mut fx, assets) {
+                continue;
+            }
             if self.dialog.is_some() && !matches!(i, Input::Click { .. } | Input::MouseMove { .. })
             {
                 self.dialog_input(i, &mut fx, assets);
@@ -2533,6 +2542,7 @@ impl Scene for Paint {
                 _ => {}
             }
         }
+        self.print_machine_update(dt, &mut fx, assets);
         if let Some(Project::Flipbook(fb)) = self.project.as_mut() {
             fx.extend(fb.update(dt));
             return fx;
@@ -2641,6 +2651,7 @@ impl Scene for Paint {
         if let Some(d) = &self.exit_dialog {
             d.draw(frame, assets);
         }
+        self.draw_print_machine(frame, assets);
     }
 
     fn leave(&mut self) -> Vec<Effect> {
@@ -3421,11 +3432,21 @@ mod tests {
         let mut f = Frame::new(640, 480);
         p.draw(&mut f, &a);
         let (_, qx, qy, _, _) = PRINT_QUICK;
-        let fx = p.update(&[click(qx + 10, qy + 10)], 0.0, &a);
+        // "depressa" mostra a prévia; Segue (Enter) imprime; sem lp, o "Epa!"
+        p.update(&[click(qx + 10, qy + 10)], 0.0, &a);
+        p.print_machine_mut().unwrap().lp = "/nao/existe/lp".into();
+        let enter = Input::Key {
+            key: Key::Enter,
+            ctrl: false,
+            alt: false,
+        };
+        let fx = p.update(&[enter], 0.0, &a);
         assert!(
             fx.iter()
                 .any(|e| matches!(e, Effect::Log(s) if s.contains("impressao-")))
         );
+        p.update(&[click(300, 300)], 0.0, &a);
+        assert!(p.print_machine().is_none());
         // escolher outra ferramenta fecha a faixa
         p.update(&[click(25, 30)], 0.0, &a);
         assert!(!p.print_strip);

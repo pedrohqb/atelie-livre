@@ -5,6 +5,7 @@ pub mod bucket_fx;
 pub mod canvas;
 pub mod geom;
 pub mod objects;
+pub mod print;
 pub mod shape;
 pub mod shaped;
 pub mod stamp;
