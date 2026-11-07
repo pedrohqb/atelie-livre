@@ -91,6 +91,19 @@ impl Comics {
         self.panels = n.clamp(1, MAX_PANELS);
     }
 
+    /// Metadados gravados ao lado do trabalho.
+    pub fn meta(&self) -> Vec<(String, String)> {
+        vec![("quadrinhos".into(), self.panels.to_string())]
+    }
+
+    pub fn apply_meta(&mut self, key: &str, value: &str) {
+        if key == "quadrinhos"
+            && let Ok(n) = value.trim().parse::<usize>()
+        {
+            self.set_panels(n);
+        }
+    }
+
     pub fn rects(&self) -> Vec<(i32, i32, i32, i32)> {
         layout(self.panels)
     }

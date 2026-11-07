@@ -14,4 +14,7 @@ pub use canvas::{
 };
 pub use objects::{Object, Objects, Source};
 pub use shape::{Cell, Shape, page_shapes};
-pub use text::{balloon_pixels, text_pixels, text_size};
+pub use text::{
+    Align, BalloonShape, WordsLayout, WordsStyle, balloon_pixels, text_pixels, text_size,
+    words_layout,
+};

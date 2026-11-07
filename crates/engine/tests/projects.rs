@@ -93,8 +93,9 @@ fn comics_four_panels_clip_to_panel_and_png_has_no_frames() {
     // guardar: o PNG tem o desenho, sem as molduras; o último reabre
     let fx = p.leave();
     assert!(matches!(&fx[..], [Effect::Log(s)] if s.contains("guardado")));
-    assert_eq!(files(dir.path(), "ultimo-").len(), 1);
-    assert_eq!(files(dir.path(), "quadrinhos-").len(), 1);
+    // o PNG e o `.projeto.txt` (número de quadrinhos)
+    assert_eq!(files(dir.path(), "ultimo-").len(), 2);
+    assert_eq!(files(dir.path(), "quadrinhos-").len(), 2);
     let pal = a.palettes(Program::Artist).pal256.clone();
     let saved = load_png(&dir.path().join("ultimo-quadrinhos.png"), &pal).unwrap();
     assert_eq!(painted(&saved), painted(p.canvas()));
@@ -187,7 +188,7 @@ fn button_print_sheet_has_six_copies_and_sticker_twelve() {
     // adesivo: 3×4 cópias reduzidas (outra pasta: o nome leva só a hora)
     let dir = tempfile::tempdir().unwrap();
     let mut s = Paint::new_project(ProjectKind::Sticker, Some(dir.path().to_path_buf()), &a);
-    assert!(matches!(s.project(), Some(Project::Button(b)) if b.kind() == Kind::Sticker));
+    assert!(matches!(s.project(), Some(Project::Button(b)) if b.kind() == Kind::Rect));
     s.update(&[click(479, 30)], 0.0, &a);
     let name = files(dir.path(), "impressao-").pop().unwrap();
     let (w, h, px) = read_png(&dir.path().join(name));
@@ -213,7 +214,7 @@ fn button_switch_shape_whitens_outside_and_saves_by_kind() {
     let mut p = Paint::new_project(ProjectKind::Button, Some(dir.path().to_path_buf()), &a);
     let (cx, cy) = (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2);
     // canto do botão quadrado: fora do redondo
-    let r = card_rect(1);
+    let r = card_rect(1, 3);
     p.update(&[click(r.0 + 5, r.1 + 5)], 0.0, &a);
     assert!(matches!(p.project(), Some(Project::Button(b)) if b.kind() == Kind::Square));
     p.update(&stroke(cx + 120, cy - 120, cx + 120, cy - 120), 0.0, &a);
@@ -221,7 +222,7 @@ fn button_switch_shape_whitens_outside_and_saves_by_kind() {
     assert!(n > 0);
     // abre o painel pelo nicho e volta ao redondo: o canto some; o ovo desfaz
     p.update(&[click(540, 70)], 0.0, &a);
-    let r = card_rect(0);
+    let r = card_rect(0, 3);
     p.update(&[click(r.0 + 5, r.1 + 5)], 0.0, &a);
     assert!(matches!(p.project(), Some(Project::Button(b)) if b.kind() == Kind::Round));
     assert_eq!(painted(p.canvas()).len(), 0);
@@ -229,12 +230,12 @@ fn button_switch_shape_whitens_outside_and_saves_by_kind() {
     assert_eq!(painted(p.canvas()).len(), n);
     let fx = p.leave();
     assert!(matches!(&fx[..], [Effect::Log(s)] if s.contains("guardado")));
-    assert_eq!(files(dir.path(), "ultimo-botao").len(), 1);
-    assert_eq!(files(dir.path(), "botao-").len(), 1);
+    assert_eq!(files(dir.path(), "ultimo-botao").len(), 2);
+    assert_eq!(files(dir.path(), "botao-").len(), 2);
     assert!(files(dir.path(), "ultimo.png").is_empty());
     let mut s = Paint::new_project(ProjectKind::Sticker, Some(dir.path().to_path_buf()), &a);
     s.leave();
-    assert_eq!(files(dir.path(), "ultimo-adesivo").len(), 1);
+    assert_eq!(files(dir.path(), "ultimo-adesivo").len(), 2);
     assert!(files(dir.path(), "adesivo-").is_empty());
 }
 
@@ -274,4 +275,176 @@ fn digits_exist_in_real_data() {
             assert_eq!((img.width, img.height), (w, h), "{id:#x}");
         }
     }
+}
+
+#[test]
+fn sticker_shape_and_panel_count_survive_reopening() {
+    let (_d, a) = empty_assets();
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = Paint::new_project(ProjectKind::Sticker, Some(dir.path().to_path_buf()), &a);
+    // 4.º cartão de 6: oval alto
+    let r = card_rect(3, 6);
+    s.update(&[click(r.0 + 5, r.1 + 5)], 0.0, &a);
+    assert!(matches!(s.project(), Some(Project::Button(b)) if b.kind() == Kind::TallOval));
+    s.leave();
+    assert!(dir.path().join("ultimo-adesivo.projeto.txt").exists());
+    let s = Paint::new_project(ProjectKind::Sticker, Some(dir.path().to_path_buf()), &a);
+    assert!(matches!(s.project(), Some(Project::Button(b)) if b.kind() == Kind::TallOval));
+    let mut k = Paint::new_project(ProjectKind::Comics, Some(dir.path().to_path_buf()), &a);
+    let r = digit_rect(2);
+    k.update(&[click(r.0 + 10, r.1 + 10)], 0.0, &a);
+    k.leave();
+    let k = Paint::new_project(ProjectKind::Comics, Some(dir.path().to_path_buf()), &a);
+    assert!(matches!(k.project(), Some(Project::Comics(c)) if c.panels == 3));
+}
+
+fn text(s: &str) -> Input {
+    Input::Text(s.into())
+}
+
+fn enter() -> Input {
+    Input::Key {
+        key: engine::scene::Key::Enter,
+        ctrl: false,
+        alt: false,
+    }
+}
+
+/// Opção `k` de uma faixa que começa em `x0` (como `option_rect` da pintura).
+fn opt(x0: i32, k: i32) -> (i32, i32) {
+    (x0 + 37 * k + 16, 63 + 16)
+}
+
+#[test]
+fn comics_easel_styles_moves_and_resizes_balloons() {
+    use engine::paint::{Align, BalloonShape, Source};
+    let (_d, a) = empty_assets();
+    let mut p = Paint::new_project(ProjectKind::Comics, None, &a);
+    // fecha o painel dos dígitos (1 quadrinho) e escolhe a Palavra
+    let r = digit_rect(0);
+    p.update(&[click(r.0 + 10, r.1 + 10), click(228, 30)], 0.0, &a);
+    assert_eq!(p.tool(), engine::scenes::paint::Tool::Words);
+    // cavalete: fonte pequena, oval com rabicho, centrado
+    let (fx, fy) = opt(25, 1);
+    let (sx, sy) = opt(25 + 2 * 37 + 8, 2);
+    let (ax, ay) = opt(25 + 2 * 37 + 8 + 6 * 37 + 8, 1);
+    p.update(&[click(fx, fy), click(sx, sy), click(ax, ay)], 0.0, &a);
+    // digita um balão
+    p.update(
+        &[
+            click(ORIGIN.0 + 100, ORIGIN.1 + 100),
+            text("Oi tudo bem"),
+            enter(),
+        ],
+        0.0,
+        &a,
+    );
+    assert_eq!(p.objects().len(), 1);
+    let o = p.objects().items[0].clone();
+    let Source::Words { style, text: t, .. } = &o.source else {
+        panic!("não é palavra");
+    };
+    assert_eq!(t, "Oi tudo bem");
+    assert_eq!(style.shape, BalloonShape::OvalTail);
+    assert_eq!(style.align, Align::Center);
+    assert!(style.small);
+    assert_eq!(style.width, 0);
+    // o texto fica onde foi o clique: o balão começa antes
+    assert!(o.x < 100 && o.y < 100);
+    let (ox, oy, ow, oh) = (o.x, o.y, o.w, o.h);
+    // arrastar o balão move, em vez de começar outro texto
+    let (gx, gy) = (ORIGIN.0 + 100, ORIGIN.1 + 100);
+    p.update(
+        &[click(gx, gy), mv(gx + 30, gy + 20), up(gx + 30, gy + 20)],
+        0.0,
+        &a,
+    );
+    assert_eq!(p.objects().len(), 1);
+    let o = p.objects().get(o.id).unwrap().clone();
+    assert_eq!((o.x, o.y), (ox + 30, oy + 20));
+    assert!(p.words_text().is_none());
+    // Shift+arrasto muda a largura: o texto quebra e o balão fica mais estreito e alto
+    let (gx, gy) = (gx + 30, gy + 20);
+    p.update(
+        &[
+            Input::Shift(true),
+            click(gx, gy),
+            mv(gx - 40, gy),
+            up(gx - 40, gy),
+            Input::Shift(false),
+        ],
+        0.0,
+        &a,
+    );
+    let o = p.objects().get(o.id).unwrap().clone();
+    let Source::Words { style, .. } = &o.source else {
+        panic!()
+    };
+    assert!(style.width > 0 && style.width < 80, "{}", style.width);
+    assert!(o.w < ow && o.h > oh, "{}x{} vs {ow}x{oh}", o.w, o.h);
+    // o ovo desfaz a largura
+    p.update(&[click(270, 30)], 0.0, &a);
+    let o2 = p.objects().get(o.id).unwrap().clone();
+    assert_eq!((o2.w, o2.h), (ow, oh));
+    p.update(&[click(270, 30), click(228, 30)], 0.0, &a);
+    // clicar sem mover reabre o texto no mesmo lugar e estilo; Backspace e Enter gravam
+    let o = p.objects().get(o.id).unwrap().clone();
+    let (cx, cy) = (ORIGIN.0 + o.x + o.w / 2, ORIGIN.1 + o.y + 8);
+    p.update(&[click(cx, cy), up(cx, cy)], 0.0, &a);
+    assert_eq!(p.objects().len(), 0);
+    assert_eq!(p.words_text(), Some("Oi tudo bem"));
+    p.update(&[text("!"), enter()], 0.0, &a);
+    assert_eq!(p.objects().len(), 1);
+    let n = p.objects().items[0].clone();
+    assert!(
+        matches!(&n.source, Source::Words { text, style, .. } if text == "Oi tudo bem!" && style.shape == BalloonShape::OvalTail && style.width == o_width(&o))
+    );
+    assert_eq!((n.x, n.y), (o.x, o.y));
+    // "espaço em branco": sem balão
+    let (bx, by) = opt(25 + 2 * 37 + 8, 5);
+    p.update(
+        &[
+            click(bx, by),
+            click(ORIGIN.0 + 300, ORIGIN.1 + 200),
+            text("x"),
+            enter(),
+        ],
+        0.0,
+        &a,
+    );
+    let last = p.objects().items.last().unwrap();
+    assert!(
+        matches!(&last.source, Source::Words { style, .. } if style.shape == BalloonShape::None)
+    );
+    assert_eq!((last.x, last.y), (300, 200));
+}
+
+fn o_width(o: &engine::paint::Object) -> u32 {
+    match &o.source {
+        engine::paint::Source::Words { style, .. } => style.width,
+        _ => 0,
+    }
+}
+
+#[test]
+fn plain_paint_keeps_two_word_options() {
+    let (_d, a) = empty_assets();
+    let mut p = Paint::new(None, &a);
+    p.update(&[click(228, 30)], 0.0, &a);
+    // opção 2 = balão "Oi!"; o cavalete não existe fora dos quadrinhos
+    let (x, y) = opt(25, 1);
+    p.update(
+        &[
+            click(x, y),
+            click(ORIGIN.0 + 50, ORIGIN.1 + 50),
+            text("a"),
+            enter(),
+        ],
+        0.0,
+        &a,
+    );
+    let o = &p.objects().items[0];
+    assert!(
+        matches!(&o.source, engine::paint::Source::Words { style, .. } if *style == engine::paint::WordsStyle::balloon())
+    );
 }

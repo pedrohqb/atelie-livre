@@ -5,7 +5,7 @@
 
 use super::canvas::{BLACK, Canvas, Ink, ORIGIN, WHITE};
 use super::stamp::Stamp;
-use super::text::{balloon_pixels, text_pixels, text_size};
+use super::text::{Align, BalloonShape, WordsStyle, text_pixels, words_layout};
 use crate::assets::SoundRef;
 use formats::fnt::Font;
 use std::rc::Rc;
@@ -23,10 +23,10 @@ pub enum Source {
     Roll { roll: usize, item: usize },
     /// Adesivo do usuário: arquivo PNG na pasta de desenhos.
     Png(String),
-    /// Palavra: texto, com balão ou não, índice da cor.
+    /// Palavra: texto, estilo (balão, posição, largura, fonte) e índice da cor.
     Words {
         text: String,
-        balloon: bool,
+        style: WordsStyle,
         color: u8,
     },
 }
@@ -219,29 +219,25 @@ impl Object {
 }
 
 /// Imagem de uma palavra (texto e, se for o caso, balão de fala), como objeto.
-pub fn words_stamp(font: Option<&Font>, text: &str, balloon: bool, color: u8) -> Stamp {
-    let (tw, th) = text_size(font, text);
-    let (tw, th) = (tw as i32, th as i32);
-    // folga do balão (com rabicho) em volta do texto
-    let (pad, tail) = if balloon {
-        (super::text::BALLOON_PAD, 8)
-    } else {
-        (0, 0)
-    };
-    let w = (tw + 2 * pad).max(1);
-    let h = (th + 2 * pad + tail).max(1);
-    let mut px = vec![None; (w * h) as usize];
+pub fn words_stamp(font: Option<&Font>, text: &str, style: &WordsStyle, color: u8) -> Stamp {
+    let l = words_layout(font, text, style);
+    let (w, h) = (l.grid.w.max(1), l.grid.h.max(1));
+    let mut px: Vec<Option<u8>> = l
+        .grid
+        .px
+        .iter()
+        .map(|p| p.map(|edge| if edge { BLACK } else { WHITE }))
+        .collect();
+    px.resize((w * h) as usize, None);
     let mut put = |x: i32, y: i32, v: u8| {
         if x >= 0 && y >= 0 && x < w && y < h {
             px[(y * w + x) as usize] = Some(v);
         }
     };
-    if balloon {
-        balloon_pixels(pad, pad, tw as u32, th as u32, |x, y, edge| {
-            put(x, y, if edge { BLACK } else { WHITE })
-        });
+    for (k, (line, dx)) in l.lines.iter().enumerate() {
+        let (x0, y0) = (l.grid.pad_x + dx, l.grid.pad_y + k as i32 * l.line_h);
+        text_pixels(font, line, |dx, dy| put(x0 + dx, y0 + dy, color));
     }
-    text_pixels(font, text, |dx, dy| put(pad + dx, pad + dy, color));
     Stamp {
         w: w as u32,
         h: h as u32,
@@ -574,13 +570,55 @@ mod tests {
 
     #[test]
     fn words_stamp_sizes() {
-        let s = words_stamp(None, "ab", false, 7);
+        let s = words_stamp(None, "ab", &WordsStyle::plain(), 7);
         assert_eq!((s.w, s.h), (16, 8));
         assert!(s.px.contains(&Some(7)));
-        let b = words_stamp(None, "ab", true, 7);
+        let b = words_stamp(None, "ab", &WordsStyle::balloon(), 7);
         assert!(b.w > 16 && b.h > 8);
         assert!(b.px.contains(&Some(BLACK)));
         assert!(b.px.contains(&Some(WHITE)));
+        // largura quebra em duas linhas, centradas
+        let style = WordsStyle {
+            shape: BalloonShape::Oval,
+            align: Align::Center,
+            width: 40,
+            small: false,
+        };
+        let o = words_stamp(None, "abc de", &style, 7);
+        let one = words_stamp(None, "abc de", &WordsStyle::plain(), 7);
+        assert!(o.h > one.h + 8);
+        assert!(o.w < one.w + 12);
+    }
+
+    #[test]
+    fn json_reads_old_balao_flag_and_new_style_fields() {
+        let text = "{\"quadro\": \"1\",\n\"objetos\": [\n{\"id\": 1, \"x\": 0, \"y\": 0, \"w\": 5, \"h\": 5, \"inv_h\": false, \"inv_v\": false, \"giros\": 0, \"texto\": \"a\", \"balao\": true, \"cor\": 3},\n{\"id\": 2, \"x\": 0, \"y\": 0, \"w\": 5, \"h\": 5, \"inv_h\": false, \"inv_v\": false, \"giros\": 0, \"texto\": \"b\", \"balao\": false, \"cor\": 3, \"forma\": \"oval\", \"alinha\": \"direita\", \"largura\": 50, \"fonte\": \"pequena\"}\n]}";
+        let (_, recs) = parse_json(text).unwrap();
+        assert!(
+            matches!(&recs[0].source, Source::Words { style, .. } if *style == WordsStyle::balloon())
+        );
+        assert!(matches!(
+            &recs[1].source,
+            Source::Words { style, .. }
+                if style.shape == BalloonShape::Oval && style.align == Align::Right && style.width == 50 && style.small
+        ));
+        // o texto solto não grava campos extras
+        let objs = {
+            let mut o = Objects::default();
+            o.place(
+                stamp(),
+                0,
+                0,
+                Source::Words {
+                    text: "x".into(),
+                    style: WordsStyle::plain(),
+                    color: 1,
+                },
+            );
+            o
+        };
+        let j = to_json(&objs.records(), 0);
+        assert!(j.contains("\"balao\": false") && !j.contains("forma"));
     }
 
     #[test]
@@ -724,14 +762,26 @@ pub fn to_json(recs: &[Record], fingerprint: u64) -> String {
                 line.push_str(&format!(", \"rolo\": {roll}, \"casa\": {item}"));
             }
             Source::Png(p) => line.push_str(&format!(", \"png\": {}", json_str(p))),
-            Source::Words {
-                text,
-                balloon,
-                color,
-            } => line.push_str(&format!(
-                ", \"texto\": {}, \"balao\": {balloon}, \"cor\": {color}",
-                json_str(text)
-            )),
+            Source::Words { text, style, color } => {
+                line.push_str(&format!(
+                    ", \"texto\": {}, \"balao\": {}, \"cor\": {color}",
+                    json_str(text),
+                    style.has_balloon()
+                ));
+                // só o que foge do texto solto / balão "Oi!"
+                if !matches!(style.shape, BalloonShape::None | BalloonShape::RectTail) {
+                    line.push_str(&format!(", \"forma\": \"{}\"", style.shape.name()));
+                }
+                if style.align != Align::Left {
+                    line.push_str(&format!(", \"alinha\": \"{}\"", style.align.name()));
+                }
+                if style.width > 0 {
+                    line.push_str(&format!(", \"largura\": {}", style.width));
+                }
+                if style.small {
+                    line.push_str(", \"fonte\": \"pequena\"");
+                }
+            }
         }
         line.push('}');
         if i + 1 < recs.len() {
@@ -794,9 +844,21 @@ pub fn parse_json(text: &str) -> Option<(u64, Vec<Record>)> {
         } else if let Some(p) = field(line, "png") {
             Source::Png(p)
         } else if let Some(text) = field(line, "texto") {
+            let shape = match field(line, "forma").and_then(|f| BalloonShape::from_name(&f)) {
+                Some(s) => s,
+                None if flag("balao") => BalloonShape::RectTail,
+                None => BalloonShape::None,
+            };
             Source::Words {
                 text,
-                balloon: flag("balao"),
+                style: WordsStyle {
+                    shape,
+                    align: field(line, "alinha")
+                        .and_then(|a| Align::from_name(&a))
+                        .unwrap_or_default(),
+                    width: num("largura").unwrap_or(0).clamp(0, 10_000) as u32,
+                    small: field(line, "fonte").is_some_and(|f| f == "pequena"),
+                },
                 color: num("cor").unwrap_or(1).clamp(0, 255) as u8,
             }
         } else {
@@ -848,7 +910,12 @@ mod store_tests {
             4,
             Source::Words {
                 text: "Oi \"você\"\\ aí".into(),
-                balloon: true,
+                style: WordsStyle {
+                    shape: BalloonShape::Thought,
+                    align: Align::Center,
+                    width: 120,
+                    small: true,
+                },
                 color: 9,
             },
         );
