@@ -390,6 +390,30 @@ impl Balloon {
         (self.x + PAD, y0 - 2, self.w - 2 * PAD, n * lh + 4)
     }
 
+    /// Retângulo da palavra `word` dentro da opção `k`, como foi quebrada
+    /// em linhas (a palavra do glossário numa opção: "parecer
+    /// *tridimensional*").
+    pub fn option_word_rect(
+        &self,
+        a: &Assets,
+        k: usize,
+        word: &str,
+    ) -> Option<(i32, i32, i32, i32)> {
+        let font = Self::font(a);
+        let lay = self.layout(a, font.as_deref());
+        let lh = Self::line_h(font.as_deref());
+        let r = self.option_rect(a, k);
+        let width = |s: &str| match font.as_deref() {
+            Some(f) => f.width(s) as i32,
+            None => 8 * s.chars().count() as i32,
+        };
+        lay.opts.get(k)?.iter().enumerate().find_map(|(j, line)| {
+            let at = line.find(word)?;
+            let x = r.0 + BULLET + 4 + width(&line[..at]);
+            Some((x, r.1 + 2 + j as i32 * lh, width(word), lh))
+        })
+    }
+
     /// Índice da opção clicada em (x, y), se houver.
     pub fn hit(&self, a: &Assets, x: i32, y: i32) -> Option<usize> {
         (0..self.options.len()).find(|&k| {

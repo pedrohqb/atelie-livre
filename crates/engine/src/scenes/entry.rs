@@ -435,7 +435,7 @@ impl Entry {
     }
 
     /// "EPA! O que você quer fazer?" (`1001[2]`): Sair / Continuar.
-    fn quit_balloon(assets: &Assets) -> TextBalloon {
+    pub(crate) fn quit_balloon(assets: &Assets) -> TextBalloon {
         let fallback = TextBalloon::new(
             ALERT_QUIT.0,
             ALERT_QUIT.1,

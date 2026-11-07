@@ -1,5 +1,6 @@
 //! Cenas do Ateliê Livre.
 
+pub mod attic;
 pub mod browser;
 pub mod chooser;
 pub mod elevator;
@@ -13,6 +14,7 @@ pub mod paint_sfx;
 pub mod projects;
 pub mod room;
 pub mod room_objects;
+pub mod room_talk;
 pub mod rooms_data;
 pub mod sounds;
 pub mod splash;
@@ -20,6 +22,7 @@ pub mod sticker_scripts;
 pub mod stickers;
 pub mod story;
 pub mod street;
+pub mod studio_wall;
 pub mod supertools;
 pub mod transformers;
 pub mod tricks_3d;

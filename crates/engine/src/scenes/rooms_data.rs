@@ -60,6 +60,14 @@ pub const LOBBY: &[Element] = &[
         x: 95,
         y: 316,
     },
+    // aro do mastro no chão (o mesmo dos andares; posição pelo mastro,
+    // como no Ateliê: 44 px à esquerda dele), por baixo do skate
+    Element {
+        id: 0x682b,
+        mask: 0x6831,
+        x: 552,
+        y: 389,
+    },
     Element {
         id: 0x6c33,
         mask: 0x0000,

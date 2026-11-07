@@ -55,10 +55,19 @@ const BUTTONS: [Rect; 4] = [
     (556, 160, 62, 36),
     (552, 118, 62, 42),
 ];
-/// Luminária "Tchau".
+/// Números do mostrador no alto (S, 2, 3, 4): também são botões de andar.
+const INDICATOR_BUTTONS: [Rect; 4] = [
+    (266, 6, 30, 32),
+    (296, 6, 30, 32),
+    (326, 6, 30, 32),
+    (357, 6, 32, 32),
+];
+/// Porta com a escotilha: abre as portas no andar em que se está.
+const DOOR: Rect = (100, 40, 400, 440);
+/// Luminária "Tchau" (corpo e placa).
 const TCHAU_IMG: (u16, u16) = (0x681b, 0x6821);
 const TCHAU_POS: (i32, i32) = (46, 6);
-const TCHAU: Rect = (46, 90, 56, 45);
+const TCHAU: Rect = (46, 6, 56, 130);
 /// McZee à esquerda (medido no original).
 pub const MCZEE_POS: (i32, i32) = (-30, 180);
 
@@ -81,8 +90,10 @@ const ASK: usize = 64;
 pub enum Outcome {
     /// As portas se abriram neste andar.
     Arrived(Floor),
-    /// Clique no "Tchau".
+    /// Clique na luminária ou no "Tchau".
     Quit,
+    /// Clique no McZee: a sala abre o menu dele.
+    Helper,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -110,6 +121,8 @@ pub struct Elevator {
     phase: Phase,
     ride: Option<Animator>,
     balloon: Option<Balloon>,
+    /// "Subindo? Ou descendo?", para mostrar de novo.
+    ask: Balloon,
     character: Option<Character>,
 }
 
@@ -150,7 +163,8 @@ impl Elevator {
             target: at,
             phase: Phase::Waiting,
             ride: None,
-            balloon: Some(balloon),
+            balloon: Some(balloon.clone()),
+            ask: balloon,
             character,
         }
     }
@@ -165,6 +179,11 @@ impl Elevator {
 
     pub fn balloon_open(&self) -> bool {
         self.balloon.is_some()
+    }
+
+    /// Mostra (ou esconde, com a ajuda desligada) o "Subindo? Ou descendo?".
+    pub fn set_ask(&mut self, on: bool) {
+        self.balloon = on.then(|| self.ask.clone());
     }
 
     fn start_step(&mut self, assets: &Assets, fx: &mut Vec<Effect>) {
@@ -258,12 +277,24 @@ impl Elevator {
             };
             // qualquer clique fecha o balão do McZee
             self.balloon = None;
-            if let Some(k) = BUTTONS.iter().position(|&r| inside(r, x, y)) {
-                self.choose(ORDER[k], assets, fx);
+            if let Some(k) = BUTTONS
+                .iter()
+                .chain(&INDICATOR_BUTTONS)
+                .position(|&r| inside(r, x, y))
+            {
+                self.choose(ORDER[k % 4], assets, fx);
                 return None;
             }
             if inside(TCHAU, x, y) {
                 return Some(Outcome::Quit);
+            }
+            if self.character.as_ref().is_some_and(|c| c.hit(assets, x, y)) {
+                return Some(Outcome::Helper);
+            }
+            if inside(DOOR, x, y) {
+                let at = self.at;
+                self.choose(at, assets, fx);
+                return None;
             }
         }
         None
@@ -455,6 +486,46 @@ mod tests {
             run(&mut e, 1.1, &a, &mut fx),
             Some(Outcome::Arrived(Floor::Lobby))
         );
+    }
+
+    /// Números do mostrador são botões de andar; a porta abre no andar em
+    /// que se está; o McZee pede o menu dele à sala.
+    #[test]
+    fn indicator_door_and_mczee() {
+        let (_d, a) = empty_assets();
+        let mut e = Elevator::new(Floor::Lobby, Some(0x6d93), &a, "ana");
+        let mut fx = Vec::new();
+        e.update(&[click(343, 22)], 0.0, &a, &mut fx);
+        assert!(e.moving());
+        assert_eq!(e.target, Floor::Projects);
+        let mut e = Elevator::new(Floor::Studio, Some(0x6d93), &a, "ana");
+        let mut fx = Vec::new();
+        e.update(&[click(320, 230)], 0.0, &a, &mut fx);
+        assert_eq!(sounds(&fx), [SND_DOORS]);
+        assert_eq!(
+            run(&mut e, 1.1, &a, &mut fx),
+            Some(Outcome::Arrived(Floor::Studio))
+        );
+        let mut e = Elevator::new(Floor::Lobby, None, &a, "ana");
+        let mut fx = Vec::new();
+        // sem dados, o McZee é o quadrado de 32×32 em MCZEE_POS
+        assert_eq!(
+            e.update(
+                &[click(MCZEE_POS.0 + 10, MCZEE_POS.1 + 10)],
+                0.0,
+                &a,
+                &mut fx
+            ),
+            Some(Outcome::Helper)
+        );
+        assert_eq!(
+            e.update(&[click(70, 40)], 0.0, &a, &mut fx),
+            Some(Outcome::Quit)
+        );
+        e.set_ask(true);
+        assert!(e.balloon_open());
+        e.set_ask(false);
+        assert!(!e.balloon_open());
     }
 
     /// Com os dados reais: a escotilha passa pela barra preta de 0x190 na

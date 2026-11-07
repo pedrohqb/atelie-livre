@@ -74,6 +74,28 @@ impl Character {
         })
     }
 
+    /// O ponto (x, y) da tela cai no personagem: na parte opaca da máscara,
+    /// ou no retângulo da figura quando ela não tem máscara.
+    pub fn hit(&self, assets: &Assets, x: i32, y: i32) -> bool {
+        let img = assets.image(&ImageRef::Pic(Program::Artist, self.image));
+        let (dx, dy) = (x - self.x, y - self.y);
+        if dx < 0 || dy < 0 || dx >= img.width as i32 || dy >= img.height as i32 {
+            return false;
+        }
+        let mask = assets
+            .pic_next_id(Program::Artist, self.image, 2)
+            .map(|m| assets.image(&ImageRef::Pic(Program::Artist, m)))
+            .filter(|m| m.height == img.height && m.width.abs_diff(img.width) <= 1);
+        match mask {
+            Some(m) if (dx as u32) < m.width => {
+                let i = ((dy as u32 * m.width + dx as u32) * 4) as usize;
+                let p = &m.rgba[i..i + 3];
+                (p[0] as u32 + p[1] as u32 + p[2] as u32) < 384
+            }
+            _ => true,
+        }
+    }
+
     pub fn draw(&self, frame: &mut Frame, assets: &Assets) {
         let img = assets.image(&ImageRef::Pic(Program::Artist, self.image));
         let mask = assets
