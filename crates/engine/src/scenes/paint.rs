@@ -4011,8 +4011,8 @@ mod tests {
             (o.x, o.y)
         };
         let o = p.objects().get(id).unwrap();
-        let (px, py) = (0..o.h as i32)
-            .flat_map(|y| (0..o.w as i32).map(move |x| (x, y)))
+        let (px, py) = (0..o.h)
+            .flat_map(|y| (0..o.w).map(move |x| (x, y)))
             .find(|&(x, y)| o.pixel(x, y).is_some())
             .unwrap();
         let (hx, hy) = (
