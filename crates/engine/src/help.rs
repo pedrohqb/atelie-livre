@@ -6,7 +6,7 @@
 
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
-use crate::balloon::{draw_box, draw_lamp};
+use crate::balloon::draw_box;
 use formats::fnt::Font;
 use formats::what::{Item, PIC_GLOSSARY, PIC_HELP, PIC_TIP, PIC_TIP_MAX, Record};
 use std::rc::Rc;
