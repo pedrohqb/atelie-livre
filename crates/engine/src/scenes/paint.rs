@@ -845,6 +845,11 @@ impl Paint {
             ))));
             return p;
         }
+        if kind == ProjectKind::Comics
+            && let Some(tails) = crate::clipart::load_tails(assets)
+        {
+            p.stickers.add_roll(tails);
+        }
         if let Some((c, records)) = p
             .drawings
             .as_ref()

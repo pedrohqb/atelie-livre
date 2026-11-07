@@ -474,3 +474,43 @@ fn comic_backgrounds_exist_in_real_data() {
     assert!(painted(p.canvas()).len() > before + 1000);
     assert!(matches!(p.project(), Some(Project::Comics(c)) if !c.pending_background));
 }
+
+#[test]
+fn comics_have_the_tails_roll_in_real_data() {
+    let Some(d) = std::env::var_os("ATELIE_DATA").map(PathBuf::from) else {
+        eprintln!("aviso: ATELIE_DATA não definida; teste com dados reais pulado");
+        return;
+    };
+    let a = Assets::open(&d).unwrap();
+    let plain = Paint::new(None, &a);
+    let mut p = Paint::new_project(ProjectKind::Comics, None, &a);
+    assert_eq!(p.stickers().roll_count(), plain.stickers().roll_count() + 1);
+    let roll = p.stickers().roll_count() - 1;
+    // ferramenta de adesivos, última página, último rolo, primeiro rabinho, cola no quadro
+    p.update(&[click(129, 30)], 0.0, &a);
+    let page = roll / engine::scenes::stickers::ROLLS_PER_PAGE;
+    for _ in 0..page {
+        p.update(&[click(510, 95)], 0.0, &a);
+    }
+    let slot = roll % engine::scenes::stickers::ROLLS_PER_PAGE;
+    p.update(&[click(23 + 52 * slot as i32 + 20, 75)], 0.0, &a);
+    assert!(p.stickers().film_open());
+    // primeira célula da tira (logo abaixo da seta de subir)
+    let fx = 33 + 52 * slot as i32 + 20;
+    p.update(&[click(fx, 130)], 0.0, &a);
+    assert!(p.stickers().holding());
+    p.update(&[click(ORIGIN.0 + 200, ORIGIN.1 + 200)], 0.0, &a);
+    assert_eq!(p.objects().len(), 1);
+    let o = &p.objects().items[0];
+    assert!(matches!(o.source, engine::paint::Source::Roll { roll: r, item: 0 } if r == roll));
+    // rabinho ampliado 2×: entre 20 e 70 px, com contorno preto e interior branco
+    assert!(
+        o.w >= 20 && o.w <= 70 && o.h >= 20 && o.h <= 70,
+        "{}x{}",
+        o.w,
+        o.h
+    );
+    assert!(o.image.px.iter().any(|p| *p == Some(BLACK)));
+    assert!(o.image.px.iter().any(|p| *p == Some(WHITE)));
+    assert!(o.image.px.iter().any(|p| p.is_none()));
+}
