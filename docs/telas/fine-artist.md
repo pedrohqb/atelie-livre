@@ -134,7 +134,47 @@ seção 4. Resumo:
 - **Rolos de clip-art**: os 28 `CARO` de `MAXMAG10.ART`, `MAX100.ART` e
   `MAG100.ART`, na ordem dos números (spec
   [2d](../superpowers/specs/2026-10-31-adesivos-2-design.md)); tira amarela
-  pontilhada, 8 casas de 34×34 a cada 41 px.
+  pontilhada, 8 casas de 34×34 a cada 41 px. O `CARO` 28 de `C-MAG100.ART`
+  é o rolo de cenários (Caverna, Fazenda, Selva…), o segundo da página 5,
+  ao lado do rolo de reciclagem. As pontas do rolo (x≈12 e x≈390) fazem
+  parte do primeiro e do último rolo da página. Som de abrir um rolo:
+  `0233`.
+- **Adesivos colocados** (ferramenta Seleciona-adesivos com a mão vazia): o
+  contorno do adesivo sob o ponteiro pisca e arrastá-lo o move (uma ação do
+  ovo); um clique parado nele o leva ao Cavalete de adesivos para modificar
+  (o balão `1005[4]` do original promete isso). Balões do `WHAT 1005`:
+  `2` ao abrir a tira ("Clique no adesivo…", ao lado da tira), `3` ao pegar,
+  `9` depois de colocar um bicho ("Você viu isso?"), `4` depois de colocar
+  um adesivo estático.
+- **Cavalete de adesivos** ("Fazer o seu", ícone `123f` em (456, 59);
+  `scenes/paint/sticker_easel.rs`): mini-quadro de 331×166 em (154, 177)
+  com moldura laranja de 5 px (149, 172)–(489, 392); barra própria em
+  y 348–387 com pincel `146f`, lata `1427`, ovo `143b`, aspirador `1443`
+  (centros x 182, 230, 282, 330), lupa `1403` (x 367–407; apertada
+  `1407`, com as setas `151f`/`14f3`/`151b`/`1523` em volta, que rolam o
+  cavalete ampliado 2× em passos de 40 px), NÃO `0271` e OK `026d`.
+  A faixa de cima vira a do pincel (páginas 1–6), as cores e os padrões
+  continuam ativos e a barra de ferramentas principal fica cinza. Balão
+  `1005[6]` ao abrir, em (229, 149); `1005[14]` na lupa, em (216, 224).
+  NÃO fecha e reabre o balão Seleciona-adesivos. OK corta o desenho ao que
+  foi pintado (o branco ligado à borda fica transparente, o de dentro não),
+  grava `adesivo-AAAAMMDD-HHMMSS.png` na pasta de desenhos e abre a tira do
+  rolo do usuário (último rolo da faixa, miniaturas de até 30 px; ícone =
+  último adesivo feito) na casa nova. Ao modificar um adesivo colocado, OK
+  troca a imagem do objeto (mesmo centro; a origem passa a `png`).
+- **Cachorrinho** (ícone `025d` em (409, 63); `scenes/paint/find_pictures.rs`):
+  diálogo modal verde (120, 111)–(526, 368) com o resto da tela em cinza.
+  "Esta Pasta" (setas trocam entre Imaginópolis e fora dela), "Conteúdo"
+  (lista de 8 linhas de 17 px em (143, 178), setas `03b3`/`03b7`), botões
+  cachorro `025d` (lê a pasta de novo), X `03bb` (cancela, reabre o balão
+  Seleciona-adesivos) e JÁ `03bf` (usa a figura); à direita a prévia (1/4) e
+  os campos Título e Artista com setas. Em Imaginópolis a lista são os
+  desenhos da pasta de desenhos (`gallery::list_drawings`; Artista = o
+  apelido do usuário); "Fora de Imaginópolis" pergunta "Isso pode levar
+  algum tempo…" e, com "Sim", lista os desenhos de exemplo
+  (`SHARED/USERS/*/*.MAG`, com título e autor do `.MAG`). JÁ transforma o
+  desenho em adesivo do usuário (`adesivo-<título>.png`, cortado ao que foi
+  pintado) e o põe na mão. Balão `1005[12]` ao abrir.
 - **Gravar animações do original**: `tools/wine/rec.sh ROLO CASA PASTA` coloca o
   adesivo e grava 10 s com o ffmpeg; `tools/wine/analyze.py` acha as imagens em
   cada quadro. Rolar a tira de filme no Wine derruba o programa.
@@ -163,8 +203,9 @@ seção 4. Resumo:
   `14cd`/`14d0`, em cima/embaixo `14d1`/`14d4`, Coloca-adesivos
   `14d9`/`14da` (cor/mono). Aumentar e Diminuir agem enquanto o botão fica
   apertado; Empurrar/Trazer repetem ao segurar; Grudar liga dois objetos
-  com uma corrente (clique na corrente desgruda). Coloca-adesivos (cavalete
-  de adesivos) e Ctrl/Shift ao arrastar ainda não existem.
+  com uma corrente (clique na corrente desgruda). Coloca-adesivos (o
+  Cavalete de adesivos pelos Transformadores) e Ctrl/Shift ao arrastar
+  ainda não existem.
 - **Super-ferramentas de desenho** (`1007`; ajuda `WHAT 100a`): faixa única
   em dois grupos. Grupo 1 (k = 0..2): Sem quadriculado `1485`/`1488`,
   Quadriculado pequeno `148d`/`1490`, Quadriculado grande `1489`/`148c`;
