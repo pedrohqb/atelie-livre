@@ -21,6 +21,7 @@ pub const OPT_VP_PUSH: usize = 7;
 pub const LINE_BRUSH_PAGE: u8 = 5;
 pub const OPT_LINE_BRUSH: usize = 0;
 /// "Grudar ou desgrudar" na página 2 dos Transformadores.
+pub const LINK_PAGE: u8 = 2;
 pub const OPT_LINK: usize = 3;
 
 // cenas do café da manhã (312×272)
@@ -146,7 +147,7 @@ pub fn steps() -> Vec<Step> {
         step(
             47,
             Some(SCENE_DEPTH),
-            Advance::Choice(vec![(0, Goto::Step(13)), (1, Goto::Step(49))]),
+            Advance::Choice(vec![(0, Goto::Step(13)), (1, Goto::Step(54))]),
         ),
         // 13: primeiro, a linha do horizonte
         step(48, Some(TABLE_HORIZON), Advance::Next),
@@ -226,37 +227,60 @@ pub fn steps() -> Vec<Step> {
         step(146, None, supertool(OPT_VP_PUSH)),
         // 41: a parte de trás da embalagem de leite
         step(148, Some(TABLE_BACK), Advance::Maggie),
-        // 42: os lados da embalagem (sem o Cavalete de adesivos: desenhe com o pincel)
+        // 42: vamos juntar os dois adesivos
+        step(155, Some(TABLE_BACK), Advance::Next),
+        // 43: clique em Transformadores
+        step(156, None, Advance::Click(Target::Tool(TOOL_TRANSFORMERS))),
+        // 44: clique na seta até ver o Grudar (página 2)
+        step(
+            157,
+            None,
+            Advance::Click(Target::Page(TOOL_TRANSFORMERS, LINK_PAGE)),
+        ),
+        // 45: ferramenta Grudar ou Desgrudar
+        step(
+            159,
+            None,
+            Advance::Click(Target::Option {
+                tool: TOOL_TRANSFORMERS,
+                page: Some(LINK_PAGE),
+                k: OPT_LINK,
+            }),
+        ),
+        // 46: junte os dois adesivos da embalagem (a corrente mágica)
+        step(161, Some(TABLE_BACK), Advance::Maggie),
+        // 47: os lados da embalagem (sem o Cavalete de adesivos `[164]`–`[167]`,
+        // que o port não tem: desenhe com o pincel)
         step(168, Some(TABLE_SIDES), Advance::Maggie),
-        // 43: Uau! terminar sozinho / com os passos do leite como guia / próximo passo
+        // 48: Uau! terminar sozinho / com os passos do leite como guia / próximo passo
         step(
             188,
             Some(TABLE_DONE),
             Advance::Choice(vec![
                 (0, Goto::FreePaint),
                 (1, Goto::Step(27)),
-                (2, Goto::Step(44)),
+                (2, Goto::Step(49)),
             ]),
         ),
-        // 44: pronto para ver sem as linhas guia?
+        // 49: pronto para ver sem as linhas guia?
         step(
             187,
             Some(TABLE_DONE),
-            Advance::Choice(vec![(0, Goto::Step(45)), (1, Goto::Step(47))]),
+            Advance::Choice(vec![(0, Goto::Step(50)), (1, Goto::Step(52))]),
         ),
-        // 45: clique nas Super-ferramentas
+        // 50: clique nas Super-ferramentas
         step(189, None, Advance::Click(Target::Tool(TOOL_SUPERTOOLS))),
-        // 46: Interruptor mágico na posição desligado
+        // 51: Interruptor mágico na posição desligado
         step(190, None, Advance::Click(Target::Switch)),
-        // 47: cores e padrões da mesa e da parede
+        // 52: cores e padrões da mesa e da parede
         step(191, Some(SCENE_DEPTH), Advance::Maggie),
-        // 48: salvar?
+        // 53: salvar?
         step(
             194,
             None,
-            Advance::Choice(vec![(0, Goto::Step(50)), (1, Goto::DiscardThen(52))]),
+            Advance::Choice(vec![(0, Goto::Step(55)), (1, Goto::DiscardThen(57))]),
         ),
-        // 49: "Não, obrigado" às ferramentas: Tudo pronto!
+        // 54: "Não, obrigado" às ferramentas: Tudo pronto!
         step(
             230,
             None,
@@ -265,21 +289,21 @@ pub fn steps() -> Vec<Step> {
                 (1, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
-        // 50: digite um nome
+        // 55: digite um nome
         step(196, None, Advance::TypeName),
-        // 51: imprimir?
+        // 56: imprimir?
         step(
             198,
             None,
-            Advance::Choice(vec![(0, Goto::PrintThen(53)), (1, Goto::Step(53))]),
+            Advance::Choice(vec![(0, Goto::PrintThen(58)), (1, Goto::Step(58))]),
         ),
-        // 52: imprimir antes de ir para o lixo?
+        // 57: imprimir antes de ir para o lixo?
         step(
             199,
             None,
-            Advance::Choice(vec![(0, Goto::PrintThen(53)), (1, Goto::Step(53))]),
+            Advance::Choice(vec![(0, Goto::PrintThen(58)), (1, Goto::Step(58))]),
         ),
-        // 53: Oba! o que fazer em seguida: nova figura / tornar 3-D um desenho
+        // 58: Oba! o que fazer em seguida: nova figura / tornar 3-D um desenho
         // existente (abre a pasta) / voltar ao andar
         step(
             202,
@@ -308,7 +332,7 @@ mod tests {
             assert_eq!(s.record.0, 0x4000);
             assert!(s.record.1 < 250, "{}", s.record.1);
         }
-        assert_eq!(steps().len(), 54);
+        assert_eq!(steps().len(), 59);
     }
 
     #[test]
@@ -394,6 +418,38 @@ mod tests {
     }
 
     #[test]
+    fn the_two_milk_stickers_are_linked_with_the_transformers() {
+        let mut w = wizard();
+        drive(&mut w, 41);
+        assert_eq!(w.step().record.1, 148);
+        assert_eq!(w.on_event(E::McZee), O::Entered(42));
+        assert_eq!(w.step().record.1, 155);
+        assert_eq!(w.on_event(E::Next), O::Entered(43));
+        assert_eq!(w.on_event(E::Tool(TOOL_TRANSFORMERS)), O::Entered(44));
+        // [157] "clique na seta até ver": a página 1 não basta
+        assert_eq!(w.on_event(E::PageShown(TOOL_TRANSFORMERS, 1)), O::Stay);
+        assert_eq!(
+            w.on_event(E::PageShown(TOOL_TRANSFORMERS, LINK_PAGE)),
+            O::Entered(45)
+        );
+        assert_eq!(w.step().record.1, 159);
+        let link = |tool, page| E::OptionButton {
+            tool,
+            page,
+            k: OPT_LINK,
+        };
+        assert_eq!(w.on_event(link(TOOL_SUPERTOOLS, LINK_PAGE)), O::Stay);
+        assert_eq!(w.on_event(link(TOOL_TRANSFORMERS, 1)), O::Stay);
+        assert_eq!(
+            w.on_event(link(TOOL_TRANSFORMERS, LINK_PAGE)),
+            O::Entered(46)
+        );
+        assert_eq!(w.step().record.1, 161);
+        assert_eq!(w.on_event(E::McZee), O::Entered(47));
+        assert_eq!(w.step().record.1, 168);
+    }
+
+    #[test]
     fn the_end_is_guided_and_every_step_has_a_way_out() {
         for s in steps() {
             if let Advance::Choice(opts) = &s.advance {
@@ -401,21 +457,23 @@ mod tests {
             }
         }
         let mut w = wizard();
-        drive(&mut w, 42);
+        drive(&mut w, 47);
+        assert_eq!(w.step().record.1, 168);
         // 168: Maggie → 188 → próximo passo → 187 → sim → Super-ferramentas → interruptor
-        assert_eq!(w.on_event(E::McZee), O::Entered(43));
-        assert_eq!(w.on_event(E::Option(2)), O::Entered(44));
-        assert_eq!(w.on_event(E::Option(0)), O::Entered(45));
-        assert_eq!(w.on_event(E::Tool(TOOL_SUPERTOOLS)), O::Entered(46));
-        assert_eq!(w.on_event(E::Switch), O::Entered(47));
         assert_eq!(w.on_event(E::McZee), O::Entered(48));
-        // salvar: nome, imprimir, o que fazer em seguida
+        assert_eq!(w.on_event(E::Option(2)), O::Entered(49));
         assert_eq!(w.on_event(E::Option(0)), O::Entered(50));
+        assert_eq!(w.on_event(E::Tool(TOOL_SUPERTOOLS)), O::Entered(51));
+        assert_eq!(w.on_event(E::Switch), O::Entered(52));
+        assert_eq!(w.on_event(E::McZee), O::Entered(53));
+        // salvar: nome, imprimir, o que fazer em seguida
+        assert_eq!(w.on_event(E::Option(0)), O::Entered(55));
         w.on_event(E::Typed('m'));
         assert_eq!(w.on_event(E::Enter), O::Save("m".into()));
-        assert_eq!(w.current(), 51);
+        assert_eq!(w.current(), 56);
         assert_eq!(w.on_event(E::Option(0)), O::Print);
-        assert_eq!(w.current(), 53);
+        assert_eq!(w.current(), 58);
+        assert_eq!(w.step().record.1, 202);
         assert_eq!(w.on_event(E::Option(1)), O::OpenFolder);
         assert_eq!(w.on_event(E::Option(2)), O::Leave(SceneId::TricksFloor));
     }
