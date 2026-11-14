@@ -46,6 +46,7 @@ sua reserva: textos em português embutidos, fonte 8×8, figura vazia.
 | `frame` | `Frame` RGBA 640×480: `put`, `rect`, `frame_rect`, `blit`, `blit_masked`, `text_font`, `text` (8×8). |
 | `anim` | Tocador dos roteiros `ATAG` (animações dos personagens e dos adesivos). |
 | `rng` | xorshift32 determinístico (gags, fantasias do McZee). |
+| `guide` | Núcleo dos assistentes passo a passo (Maggie nos Truques, Max nos projetos do Writer): passo atual, histórico do Volta, balões de saída `3803` e "trabalhar por conta própria". |
 | `paths` | Busca sem maiúsculas (`find_ci`), varredura, nomes de arquivo seguros. |
 | `users` | Cadastro da Entrada (nome, apelido, bicho). |
 | `clipart` | Rolos de clip-art (`*.ART`). |
@@ -111,7 +112,7 @@ Tela de pintura e ferramentas:
 | `stickers`, `sticker_scripts` | Seleciona-adesivos: rolos, adesivos do usuário (`adesivo-*.png`), adesivos animados. |
 | `sounds` (+ `finder`, `recorder`) | Seleciona-sons: categorias, Cachorrinho dos sons, Gravador. |
 | `supertools`, `transformers` | Super-ferramentas e transformadores. |
-| `wizard`, `tricks_basic`, `tricks_3d` | Assistente da Maggie e os roteiros dos Truques. |
+| `wizard`, `tricks_basic`, `tricks_3d` | Assistente da Maggie e os roteiros dos Truques (sobre `crate::guide`). |
 | `projects` (`button`, `comics`, `flipbook`, `dialogs`) | Oficina de Projetos. |
 | `paint_sfx` | Sons da pintura. |
 | `writer` | Escritório do Creative Writer (início). Núcleo em `crate::writer`: modelo rico `doc`, `object`, `layout`, `selection`, `undo` (`docs/telas/creative-writer-modelo.md`; ainda não ligado à cena) e o provisório `legacy` + `store`, que a cena usa hoje. |
@@ -166,6 +167,12 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   apertado) e `scenes::writer_easel` (Cavalete de lápis de cera, que os
   adesivos do Escritório podem reaproveitar); ver
   `docs/telas/creative-writer-ideias.md`.
+- **Projetos (Jornal, Cartão, Faixa)**: `crate::writer::assistant` é o
+  motor dos assistentes do Max (sem tela, sobre `crate::guide`, como a
+  lição da Maggie), com os roteiros como dados em `assistant_news`,
+  `assistant_card` e `assistant_banner` e a figura da dobra em
+  `writer::fold_figure`. Falta a cena em modo projeto que os hospeda
+  (contrato em `docs/telas/creative-writer-projetos.md`).
 
 ## Creative Writer: specs por programa
 
