@@ -118,6 +118,7 @@ impl Mic {
         self.rec = None;
     }
 
+    #[cfg(test)]
     pub fn recording(&self) -> bool {
         self.rec.is_some()
     }
