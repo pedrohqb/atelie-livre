@@ -731,7 +731,7 @@ pub fn read(data: &[u8]) -> Result<Document> {
     })
 }
 
-fn read_frames(b: &[u8], base: usize) -> Result<Vec<Frame>> {
+pub(crate) fn read_frames(b: &[u8], base: usize) -> Result<Vec<Frame>> {
     let bad = |at: usize| {
         err(
             base + at,
