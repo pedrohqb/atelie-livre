@@ -85,7 +85,7 @@ const OPT_QUIT: u16 = 1;
 const ALERT_POS: (i32, i32) = (178, 145);
 const QUIT_POS: (i32, i32) = (214, 179);
 /// Balão de boas-vindas (medido na chegada do original).
-const WELCOME_POS: (i32, i32) = (130, 240);
+const WELCOME_POS: (i32, i32) = (129, 233);
 
 /// Sons da Galeria (ids do `ARTIST.SND`, identificados pelo tamanho no
 /// original; ver `report/gallery.md` da varredura).
@@ -581,6 +581,7 @@ impl GalleryRoom {
             Ask::WorkOn(_) => (0, 0),
             Ask::Tip => (150, 170),
         };
+        b.tail = super::room_talk::mczee_tail(Some(super::room_talk::Helper::McZee), false, &b);
         self.balloon = Some((kind, b));
     }
 

@@ -322,26 +322,36 @@ pub fn draw_tail_box(f: &mut Frame, b: (i32, i32, i32, i32), tip: (i32, i32)) {
     // a base fica um pouco atrás da ponta, do lado do centro da caixa
     let center = (v_lo + v_hi) / 2;
     let lean = if vt >= center { 1 } else { -1 };
-    let base = (vt - lean * 6).clamp(v_lo, v_hi);
+    let base = (vt - lean * 7).clamp(v_lo, v_hi);
     let (b0, b1) = (base - 6, base + 6);
     let (t0, t1) = (vt - 4, vt + 4);
-    for u in -1..=ut {
+    let edges = |u: i32| {
         let t = (u.max(0) as f32 / ut as f32).clamp(0.0, 1.0);
         // a borda do lado para onde ele se curva fica reta perto da caixa
         let (e0, e1) = if lean > 0 { (t, t * t) } else { (t * t, t) };
         let l = (b0 as f32 + (t0 - b0) as f32 * e0).round() as i32;
         let r = (b1 as f32 + (t1 - b1) as f32 * e1).round() as i32;
+        (l, r)
+    };
+    // dentro do rabicho (a caixa, u ≤ 0, conta como dentro)
+    let inside = |u: i32, v: i32| {
+        if u > ut {
+            return false;
+        }
+        let (l, r) = edges(u);
+        v >= l && v <= r
+    };
+    for u in -1..=ut {
+        let (l, r) = edges(u);
         for v in l..=r {
             let (px, py) = to_xy(u, v);
-            let edge = v <= l + 1 || v >= r - 1 || u >= ut - 1;
-            let c = if u <= 0 {
-                // a borda da caixa se abre entre os dois lados
-                if edge { BLACK } else { dot(px, py) }
-            } else if edge {
-                BLACK
-            } else {
-                dot(px, py)
-            };
+            // contorno de 2 px: perto do lado de fora em qualquer direção
+            let edge = (-2..=2i32).any(|du| {
+                (-2..=2i32)
+                    .any(|dv| du.abs() + dv.abs() <= 2 && u + du > -2 && !inside(u + du, v + dv))
+            });
+            // na borda da caixa (u ≤ 0) o meio se abre para o rabicho
+            let c = if edge { BLACK } else { dot(px, py) };
             f.put(px, py, c);
         }
     }
@@ -429,7 +439,7 @@ pub fn plain_items(
     for (target, s) in links {
         items.push(Item::Format {
             indent: 1,
-            right: false,
+            center: false,
         });
         items.push(Item::Picture {
             id: PIC_TIP,
@@ -441,7 +451,7 @@ pub fn plain_items(
     for (k, o) in options.iter().enumerate() {
         items.push(Item::Format {
             indent: 2,
-            right: false,
+            center: false,
         });
         items.push(Item::Picture {
             id: PIC_OPTION,
@@ -451,6 +461,46 @@ pub fn plain_items(
         items.push(Item::Newline);
     }
     items
+}
+
+/// `small` aparece em `big`, na mesma ordem.
+fn is_subsequence(small: &[String], big: &[String]) -> bool {
+    let mut it = big.iter();
+    small.iter().all(|s| it.any(|b| b == s))
+}
+
+/// Os itens sem os parágrafos das opções que não estão em `keep`.
+fn drop_options(items: &[Item], keep: &[String]) -> Vec<Item> {
+    let mut out = Vec::new();
+    let mut para: Vec<Item> = Vec::new();
+    let flush = |para: &mut Vec<Item>, out: &mut Vec<Item>| {
+        let is_option = para
+            .iter()
+            .any(|i| matches!(i, Item::Picture { id, .. } if *id == PIC_OPTION));
+        let text: String = para
+            .iter()
+            .filter_map(|i| match i {
+                Item::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        if !is_option || keep.iter().any(|k| k == text.trim()) {
+            out.append(para);
+        } else {
+            // guarda a formatação (negrito, recuo) que o parágrafo mudava
+            out.extend(para.drain(..).filter(|i| matches!(i, Item::Format { .. })));
+        }
+        para.clear();
+    };
+    for i in items {
+        let end = matches!(i, Item::Newline);
+        para.push(i.clone());
+        if end {
+            flush(&mut para, &mut out);
+        }
+    }
+    flush(&mut para, &mut out);
+    out
 }
 
 impl Balloon {
@@ -468,6 +518,17 @@ impl Balloon {
                     && src.links == self.links =>
             {
                 (std::borrow::Cow::Borrowed(&src.items[..]), Some(src))
+            }
+            // a cena tirou algumas opções: tira os parágrafos delas
+            Some(src)
+                if src.text == self.text
+                    && src.links == self.links
+                    && is_subsequence(&self.options, &src.options) =>
+            {
+                (
+                    std::borrow::Cow::Owned(drop_options(&src.items, &self.options)),
+                    Some(src),
+                )
             }
             _ => (
                 std::borrow::Cow::Owned(plain_items(

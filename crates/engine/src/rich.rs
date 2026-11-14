@@ -2,7 +2,7 @@
 //! negrito (sobreimpressão deslocada 1 px, +1 px por caractere), cores da
 //! paleta de 16 cores do programa, recuo (`06 1` recua o parágrafo inteiro,
 //! `06 2` deixa o primeiro "token" — marcador, número, bolinha — na margem e
-//! pula para o recuo), alinhamento à direita (`04`), figuras no meio do texto
+//! pula para o recuo), centralização (`04`), figuras no meio do texto
 //! (ícones, gemas, chaves, bolinhas das opções), palavras do glossário com
 //! caixa tracejada e caixas de texto.
 //!
@@ -30,8 +30,11 @@ pub const TAB: i32 = 18;
 /// Vaga da bolinha de uma opção.
 pub const OPTION_W: i32 = 16;
 pub const OPTION_H: i32 = 15;
+/// Bolinha verde das opções com figura.
+pub const BALL_W: i32 = 15;
+pub const BALL_H: i32 = 14;
 /// Altura de uma caixa de texto (`05 0000xxxx`).
-pub const FIELD_H: i32 = 15;
+pub const FIELD_H: i32 = 16;
 /// Tecla de atalho (chave) e dica da Maggie.
 pub const PIC_KEY: u16 = 0x21c;
 pub const PIC_MAGGIE: u16 = 0x21e;
@@ -105,8 +108,14 @@ pub enum Run {
         /// Palavra do glossário: caixa tracejada em volta.
         glossary: bool,
     },
-    /// Figura do `WHAT` (desenhada por [`crate::help_icons`]).
-    Picture { x: i32, y: i32, id: u16 },
+    /// Figura do `WHAT` (desenhada por [`crate::help_icons`]); `owner` é a
+    /// opção com figura (`22e`) a que ela pertence.
+    Picture {
+        x: i32,
+        y: i32,
+        id: u16,
+        owner: Option<usize>,
+    },
     /// Bolinha de uma opção (`option` = ordem da opção no balão).
     Option {
         x: i32,
@@ -206,6 +215,8 @@ enum Atom {
         id: u16,
         w: i32,
         h: i32,
+        /// Opção com figura (`22e`) a que a figura pertence.
+        owner: Option<usize>,
     },
     Option {
         id: u16,
@@ -223,7 +234,7 @@ enum Atom {
 struct Para {
     atoms: Vec<(Atom, Option<Hot>, Option<usize>)>,
     indent: Option<u8>,
-    right: bool,
+    center: bool,
     /// Uma figura que o port não tem foi deixada de fora: vazio, o
     /// parágrafo some.
     dropped: bool,
@@ -249,6 +260,7 @@ fn atom_size(ctx: &Ctx, a: &Atom) -> (i32, i32) {
         }
         Atom::Space { w } => (*w, 0),
         Atom::Pic { w, h, .. } => (*w, *h),
+        Atom::Option { id, .. } if *id == PIC_OPTION_PICTURE => (BALL_W, BALL_H),
         Atom::Option { .. } => (OPTION_W, OPTION_H),
         Atom::Field { w, .. } => (*w, FIELD_H),
     }
@@ -262,7 +274,7 @@ fn picture_size(a: &Assets, id: u16) -> Option<(i32, i32)> {
 fn push(p: &mut Para, a: Atom, hot: Option<Hot>, opt: Option<usize>, fmt: (u8, bool)) {
     if !matches!(a, Atom::Space { .. }) && p.indent.is_none() {
         p.indent = Some(fmt.0);
-        p.right = fmt.1;
+        p.center = fmt.1;
     }
     p.atoms.push((a, hot, opt));
 }
@@ -297,12 +309,15 @@ fn paragraphs(items: &[Item], ctx: &Ctx) -> Vec<Para> {
     let mut link: Option<Hot> = None;
     let mut opts = Options::default();
     let mut fields = 0usize;
+    // opção com figura em vigor (as figuras que seguem são dela)
+    let mut owner: Option<usize> = None;
     let space = |bold: bool| text_width(ctx.font, " ", bold);
     for it in items {
         match it {
-            Item::Format { indent, right } => fmt = (*indent, *right),
+            Item::Format { indent, center } => fmt = (*indent, *center),
             Item::Newline => {
                 link = None;
+                owner = None;
                 opts.close();
                 paras.push(Para::default());
             }
@@ -326,13 +341,20 @@ fn paragraphs(items: &[Item], ctx: &Ctx) -> Vec<Para> {
                 };
                 let mut w = String::new();
                 for ch in text.chars() {
-                    if ch == ' ' {
+                    // o original quebra também no espaço não separável
+                    // ("depressa —\u{a0}ninguém")
+                    if ch == ' ' || ch == '\u{a0}' {
                         if !w.is_empty() {
                             push(p, word(&mut w), link, opt, fmt);
                         }
                         push(p, Atom::Space { w: space(*bold) }, link, opt, fmt);
                     } else {
                         w.push(ch);
+                        // o original também quebra depois do hífen
+                        // ("Seleciona-" / "sons")
+                        if ch == '-' && w.chars().count() > 1 {
+                            push(p, word(&mut w), link, opt, fmt);
+                        }
                     }
                 }
                 if !w.is_empty() {
@@ -387,6 +409,7 @@ fn paragraphs(items: &[Item], ctx: &Ctx) -> Vec<Para> {
                             id: PIC_OPTION_PICTURE,
                             option: opts.pictures,
                         };
+                        owner = Some(opts.pictures);
                         opts.pictures += 1;
                         push(p, a, None, None, fmt);
                     }
@@ -414,7 +437,7 @@ fn paragraphs(items: &[Item], ctx: &Ctx) -> Vec<Para> {
                             p.dropped = true;
                             continue;
                         };
-                        push(p, Atom::Pic { id, w, h }, link, opts.open, fmt);
+                        push(p, Atom::Pic { id, w, h, owner }, link, opts.open, fmt);
                     }
                 }
             }
@@ -451,17 +474,17 @@ fn break_lines(para: &Para, width: i32, ctx: &Ctx) -> Vec<Vec<(usize, i32)>> {
     for (k, (atom, ..)) in para.atoms.iter().enumerate() {
         let (w, _) = atom_size(ctx, atom);
         if is_space(atom) {
-            if !seen {
+            if !seen && !hanging {
                 // espaços no começo do parágrafo contam
                 x += w;
                 continue;
             }
             if hanging {
+                // o espaço anda e, se não chegou ao recuo, pula até ele
+                // ("• Clique" vai a 18; a bolinha de 16 + espaço passa)
                 hanging = false;
-                if x < TAB {
-                    // o espaço vira o salto até o recuo; o pixel a mais do
-                    // espaço em negrito fica (como no original)
-                    x = TAB + (w - text_width(ctx.font, " ", false)).max(0);
+                if x + w < TAB {
+                    x = TAB;
                     continue;
                 }
             }
@@ -523,8 +546,8 @@ pub fn layout(items: &[Item], width: i32, ctx: &Ctx) -> Laid {
                 .unwrap_or(LINE)
                 .max(LINE);
             let right_edge = line.iter().map(|(j, x)| x + size(*j).0).max().unwrap_or(0);
-            let shift = if para.right {
-                (width - right_edge).max(0)
+            let shift = if para.center {
+                (width - right_edge).max(0) / 2
             } else {
                 0
             };
@@ -556,10 +579,11 @@ pub fn layout(items: &[Item], width: i32, ctx: &Ctx) -> Laid {
                         }
                     }
                     Atom::Space { .. } => {}
-                    Atom::Pic { id, .. } => out.runs.push(Run::Picture {
+                    Atom::Pic { id, owner, .. } => out.runs.push(Run::Picture {
                         x: ax,
                         y: ay,
                         id: *id,
+                        owner: *owner,
                     }),
                     Atom::Option { id, option } => out.runs.push(Run::Option {
                         x: ax,
@@ -687,7 +711,10 @@ pub fn draw(
                     draw_dashed(f, ox + x - 2, oy + y, w + GLOSSARY_EXTRA, LINE - 1);
                 }
             }
-            Run::Picture { x, y, id } => crate::help_icons::draw(f, a, *id, ox + x, oy + y),
+            Run::Picture { x, y, id, owner } => {
+                let dim = crate::help_icons::dimmed(*id) && (owner.is_none() || *owner != checked);
+                crate::help_icons::draw_with(f, a, *id, ox + x, oy + y, dim)
+            }
             Run::Option { x, y, id, option } => {
                 let id = if *id == PIC_OPTION_PICTURE && checked == Some(*option) {
                     // bolinha verde marcada

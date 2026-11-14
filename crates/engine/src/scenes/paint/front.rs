@@ -144,6 +144,11 @@ impl Paint {
             ..Default::default()
         };
         let mut b = Balloon::from_block(&records, k, pos.0, pos.1, name).unwrap_or(fallback);
+        // como a ajuda: encostado à direita, com o rabicho até o McZee
+        (b.x, b.tail) = (
+            super::HELP_RIGHT + 1 - b.box_width(),
+            Some(super::HELP_TAIL),
+        );
         if b.text.is_empty() && b.options.is_empty() {
             let (text, options) = match kind {
                 Talk::Dismiss => (

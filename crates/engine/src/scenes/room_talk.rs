@@ -466,6 +466,14 @@ pub fn quit_balloon(assets: &Assets, pos: (i32, i32)) -> TextBalloon {
     b
 }
 
+/// Ponta do rabicho dos balões do McZee nas salas: ele fica à esquerda,
+/// embaixo do balão, e o rabicho sai do topo, 20 px depois do canto, até 12
+/// px acima (medido no saguão, no Ateliê e na Galeria). A Maggie (Projetos,
+/// Truques) e o elevador não têm rabicho no original.
+pub fn mczee_tail(helper: Option<Helper>, elevator: bool, b: &Balloon) -> Option<(i32, i32)> {
+    (helper == Some(Helper::McZee) && !elevator).then_some((b.x + 20, b.y - 12))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

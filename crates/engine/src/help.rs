@@ -14,8 +14,8 @@ use formats::fnt::Font;
 use formats::what::Record;
 use std::rc::Rc;
 
-/// Distância entre um balão e o sub-balão de uma ligação ao lado.
-const GAP_BESIDE: i32 = 6;
+/// Centro da tela, onde se abrem as dicas.
+const SCREEN_CENTER: (i32, i32) = (320, 240);
 
 #[derive(Clone)]
 pub struct HelpBalloon {
@@ -28,6 +28,11 @@ pub struct HelpBalloon {
     records: Rc<Vec<Record>>,
     /// Ponta do rabicho (quem fala), acima do balão; `None` = sem rabicho.
     pub tail: Option<(i32, i32)>,
+    /// Coluna da borda direita, se o balão se alinha por ela (os da
+    /// pintura, no original, encostam em x = 617 qualquer que seja a largura).
+    pub right: Option<i32>,
+    /// Centralizado na tela (as dicas das gemas, da chave e do glossário).
+    pub centered: bool,
 }
 
 impl HelpBalloon {
@@ -47,30 +52,39 @@ impl HelpBalloon {
             index,
             records,
             tail: None,
+            right: None,
+            centered: false,
         })
+    }
+
+    /// O mesmo balão com a borda direita (inclusive) na coluna `right`.
+    pub fn anchored_right(mut self, right: i32) -> HelpBalloon {
+        self.right = Some(right);
+        self.x = right + 1 - self.w - BOX_EXTRA;
+        self
     }
 
     /// Mesmo balão com outro registro do bloco (ligação), se existir.
     pub fn follow(&self, index: usize) -> Option<HelpBalloon> {
         HelpBalloon::new(self.records.clone(), self.block, index, self.x, self.y).map(|mut h| {
             h.tail = self.tail;
-            h
+            match self.right {
+                Some(r) => h.anchored_right(r),
+                None => h,
+            }
         })
     }
 
-    /// Balão de uma ligação (gema, tecla, glossário) ao lado deste, que
-    /// continua aberto: à esquerda, como no original, ou à direita se não
-    /// couber.
+    /// Balão de uma ligação (gema, tecla, glossário), que se abre por cima
+    /// enquanto este continua aberto: centralizado na tela, como no
+    /// original (medido em quatro dicas da pintura).
     pub fn follow_beside(&self, index: usize) -> Option<HelpBalloon> {
         let mut b = self.follow(index)?;
         // o rabicho é do balão principal (quem fala)
         b.tail = None;
-        let left = self.x - b.w - BOX_EXTRA - GAP_BESIDE;
-        b.x = if left >= 5 {
-            left
-        } else {
-            (self.x + self.w + BOX_EXTRA + GAP_BESIDE).min(637 - b.w - BOX_EXTRA)
-        };
+        b.right = None;
+        b.centered = true;
+        b.x = SCREEN_CENTER.0 - (b.w + BOX_EXTRA) / 2;
         Some(b)
     }
 
@@ -112,6 +126,9 @@ impl HelpBalloon {
     /// Posição de tela do balão, puxado para cima se não couber.
     fn origin(&self, a: &Assets) -> (i32, i32, i32) {
         let h = self.height(a);
+        if self.centered {
+            return (self.x, (SCREEN_CENTER.1 - h / 2).max(5), h);
+        }
         (self.x, self.y.min(455 - h).max(5), h)
     }
 

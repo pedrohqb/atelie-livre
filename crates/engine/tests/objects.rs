@@ -394,7 +394,8 @@ fn mczee_click_with_bucket_opens_paint_bucket_balloon() {
     let h = p.help().expect("balão aberto");
     assert_eq!(h.title(), "Paint bucket");
     assert!(h.record().plain().contains("Lata de tinta"));
-    assert!(h.x >= 445 && h.x + h.w <= 635);
+    // encostado à direita em x = 617, como no original
+    assert_eq!(h.x + h.w + 1, 617);
     // opção "Troca-cores" (2.º botão da lata) abre o balão dela, com a tecla de atalho ligada
     p.update(&[click(113 + 37 + 10, 70)], 0.0, &a);
     let h = p.help().unwrap();

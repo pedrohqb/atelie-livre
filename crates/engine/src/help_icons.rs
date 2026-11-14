@@ -222,18 +222,31 @@ pub fn size(a: &Assets, what_id: u16) -> Option<(i32, i32)> {
 /// Cinza que apaga os ícones de ferramenta (cor `F` da paleta de 16).
 const DIM: [u8; 3] = [100, 100, 100];
 
-/// Os ícones de ferramenta (`0x1000`…) aparecem "apagados" nos balões do
-/// original: um pixel sim, outro não (os de x + y par na tela) vira cinza
-/// dentro da figura — é o desenho de um botão, não o botão.
+/// Figuras que o original desenha "apagadas" (um pixel sim, outro não — os
+/// de x + y par, contados do canto da figura — vira cinza dentro dela): as que não têm som de
+/// clique na tabela (terceira palavra `ffff`), como os ícones das
+/// ferramentas e os bichos não escolhidos; gemas, chaves, bolinhas e o
+/// "EPA!" ficam inteiros (a bolinha verde já é pontilhada na figura).
 pub fn dimmed(what_id: u16) -> bool {
-    what_id >= 0x1000
+    match what_id {
+        0x1047 | 0x1048 => false,
+        0x1000..=0x10ff => true,
+        0x201 | 0x223 | 0x228 | 0x229 | 0x22d | 0x237..=0x242 | 0x247 => true,
+        _ => false,
+    }
 }
 
 /// Desenha o ícone da figura `what_id` em `(x, y)`; sem entrada no mapa, a
-/// figura de mesmo id do `ARTIST.PIC`.
+/// figura de mesmo id do `ARTIST.PIC`. Apagado se [`dimmed`].
 pub fn draw(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32) {
+    draw_with(f, a, what_id, x, y, dimmed(what_id));
+}
+
+/// Como [`draw`], escolhendo se a figura sai apagada (a escolhida de uma
+/// grade não sai).
+pub fn draw_with(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32, dim: bool) {
     draw_plain(f, a, what_id, x, y);
-    if !dimmed(what_id) {
+    if !dim {
         return;
     }
     // a parte opaca da figura: a máscara, o que não é branco ou tudo
@@ -248,7 +261,7 @@ pub fn draw(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32) {
     };
     for dy in 0..img.height as i32 {
         for dx in 0..img.width as i32 {
-            if (x + dx + y + dy).rem_euclid(2) != 0 {
+            if (dx + dy) % 2 != 0 {
                 continue;
             }
             let i = ((dy as u32 * img.width + dx as u32) * 4) as usize;

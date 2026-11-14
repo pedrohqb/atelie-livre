@@ -266,10 +266,11 @@ impl Floor {
     /// usados quando o `ARTIST.EXE` não está instalado).
     fn fallback_balloon(self) -> Balloon {
         let (x, y, w) = match self {
-            Floor::Lobby => (300, 20, 300),
-            Floor::Studio => (130, 230, 200),
-            Floor::Projects => (70, 150, 300),
-            Floor::Tricks | Floor::Attic => (70, 120, 260),
+            // cantos medidos no original
+            Floor::Lobby => (119, 233, 311),
+            Floor::Studio => (129, 233, 200),
+            Floor::Projects => (109, 153, 285),
+            Floor::Tricks | Floor::Attic => (76, 118, 244),
         };
         let (text, options): (&str, &[&str]) = match self {
             Floor::Lobby => (
@@ -369,8 +370,8 @@ impl Floor {
     /// Onde fica o menu do personagem (medido no original).
     fn helper_pos(self) -> (i32, i32) {
         match self {
-            Floor::Lobby => (119, 221),
-            Floor::Studio => (130, 232),
+            Floor::Lobby => (119, 233),
+            Floor::Studio => (129, 233),
             Floor::Projects | Floor::Tricks | Floor::Attic => (109, 132),
         }
     }
@@ -564,7 +565,10 @@ impl Room {
             last_name,
             pal,
             drawings,
-            balloon: floor.balloon(assets, DEFAULT_USER),
+            balloon: floor.balloon(assets, DEFAULT_USER).map(|mut b| {
+                b.tail = talk::mczee_tail(floor.helper(), false, &b);
+                b
+            }),
             talk: Talk::Arrival,
             sub: None,
             quit: None,
@@ -589,7 +593,10 @@ impl Room {
     /// Com o apelido do usuário no lugar do `@` dos balões.
     pub fn with_user(mut self, user: &str, assets: &Assets) -> Room {
         self.user = user.to_string();
-        self.balloon = self.floor.balloon(assets, &self.user);
+        self.balloon = self.floor.balloon(assets, &self.user).map(|mut b| {
+            b.tail = talk::mczee_tail(self.floor.helper(), false, &b);
+            b
+        });
         self.talk = Talk::Arrival;
         self
     }
@@ -630,7 +637,8 @@ impl Room {
         self.help_off
     }
 
-    fn show(&mut self, b: Balloon, t: Talk) {
+    fn show(&mut self, mut b: Balloon, t: Talk) {
+        b.tail = talk::mczee_tail(self.floor.helper(), self.elevator.is_some(), &b);
         self.balloon = Some(b);
         self.talk = t;
         self.sub = None;
@@ -1377,8 +1385,9 @@ mod tests {
         let (_d, a) = empty_assets();
         let mut r = Room::new(Floor::Lobby, None, None, &a);
         assert!(r.balloon_open());
-        // clique fora do balão fecha; depois os pontos quentes funcionam
-        r.update(&[click(140, 300)], 0.0, &a);
+        // clique fora do balão (que fica sobre o chão, como no original) fecha;
+        // depois os pontos quentes funcionam
+        r.update(&[click(520, 150)], 0.0, &a);
         assert!(!r.balloon_open());
         let fx = r.update(&[click(140, 86)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Studio);
@@ -1785,7 +1794,7 @@ mod tests {
         let c = r.character().unwrap().clone();
         assert!(gags::MCZEE_COSTUMES.contains(&c.image));
         assert_eq!((c.x, c.y), gags::MCZEE_LOBBY);
-        r.update(&[click(140, 300), click(140, 66)], 0.0, &a);
+        r.update(&[click(520, 150), click(140, 66)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Projects);
         let c = r.character().unwrap();
         assert!(gags::MAGGIE_POSES.contains(&c.image));

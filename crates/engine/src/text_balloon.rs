@@ -8,7 +8,7 @@
 //! `0x237`…`0x242`, figuras `0x45b`, `0x45d`… de `ARTIST.PIC`, e de espaços,
 //! o que forma a grade de três colunas do original), `0x22c` marca uma opção
 //! de resposta (bolinha preta) e `0x230` é o cabeçalho "EPA!" dos avisos
-//! (casinha do Rex e cachorro, figura `0x2a9`), alinhado à direita. Os
+//! (casinha do Rex e cachorro, figura `0x2a9`), centralizado. Os
 //! avisos têm cantos retos e o mesmo fundo pontilhado; os botões ficam em
 //! três vagas fixas (Volta, Para, Segue) centralizadas, e um botão que falta
 //! deixa a vaga vazia, como no original.
@@ -148,13 +148,13 @@ impl Part {
                 vec![
                     Item::Format {
                         indent: 0,
-                        right: true,
+                        center: true,
                     },
                     Item::Picture { id, param: 0 },
                     Item::Newline,
                     Item::Format {
                         indent: 0,
-                        right: false,
+                        center: false,
                     },
                 ]
             }
@@ -477,6 +477,11 @@ impl TextBalloon {
         a.font(8)
     }
 
+    /// Largura da caixa: a do registro mais 2 (mais 1 nos avisos).
+    pub fn box_width(&self) -> i32 {
+        self.w + if self.alert { 1 } else { BOX_EXTRA }
+    }
+
     fn items(&self) -> Vec<Item> {
         self.parts.iter().flat_map(Part::items).collect()
     }
@@ -525,7 +530,7 @@ impl TextBalloon {
         if !self.buttons.is_empty() {
             y += BTN_ABOVE;
             let total = 3 * BTN_W + 2 * BTN_GAP;
-            let x0 = self.x + (self.w + BOX_EXTRA - total) / 2;
+            let x0 = self.x + (self.box_width() - total) / 2;
             for b in &self.buttons {
                 let bx = x0 + b.slot() * (BTN_W + BTN_GAP);
                 buttons.push((*b, (bx, y, BTN_W, BTN_H)));
@@ -549,7 +554,7 @@ impl TextBalloon {
     }
 
     pub fn contains(&self, a: &Assets, x: i32, y: i32) -> bool {
-        inside((self.x, self.y, self.w + BOX_EXTRA, self.height(a)), x, y)
+        inside((self.x, self.y, self.box_width(), self.height(a)), x, y)
     }
 
     /// Retângulo do botão `b`, se o balão o tiver.
@@ -692,7 +697,7 @@ impl TextBalloon {
         let font = Self::font(a);
         let font = font.as_deref();
         let lay = self.layout(a, font);
-        draw_frame(f, self.x, self.y, self.w + BOX_EXTRA, lay.h, !self.alert);
+        draw_frame(f, self.x, self.y, self.box_width(), lay.h, !self.alert);
         let fields = &self.fields;
         let (focus, select_all) = (self.focus, self.select_all);
         rich::draw(

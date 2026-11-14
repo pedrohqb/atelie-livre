@@ -71,10 +71,12 @@ const PAGE_COUNT: u8 = 6;
 const EXIT: (i32, i32, i32, i32) = (580, 18, 56, 88);
 /// Nicho do McZee à direita da faixa: clique abre o balão de ajuda.
 const NICHE: (i32, i32, i32, i32) = (533, 56, 47, 48);
-/// Canto do balão de ajuda, à direita do quadro.
-const HELP_POS: (i32, i32) = (445, 115);
+/// Canto do balão de ajuda, à direita do quadro (encosta pela direita em
+/// `HELP_RIGHT`, como no original).
+const HELP_POS: (i32, i32) = (447, 117);
+const HELP_RIGHT: i32 = 617;
 /// Ponta do rabicho dos balões do McZee: embaixo do nicho.
-const HELP_TAIL: (i32, i32) = (528, 104);
+const HELP_TAIL: (i32, i32) = (536, 105);
 /// Blocos `WHAT` da ajuda de cada ferramenta.
 const WHAT_BRUSH: u16 = 0x1002;
 const WHAT_BUCKET: u16 = 0x1003;
@@ -693,7 +695,13 @@ impl Paint {
             .entry(block)
             .or_insert_with(|| Rc::new(assets.dialogs(Program::Artist, block)))
             .clone();
-        self.help = HelpBalloon::new(records, block, index, pos.0, pos.1);
+        self.help = HelpBalloon::new(records, block, index, pos.0, pos.1).map(|h| {
+            if pos == HELP_POS {
+                h.anchored_right(HELP_RIGHT)
+            } else {
+                h
+            }
+        });
     }
 
     /// Mapa do prédio aberto?

@@ -12,7 +12,7 @@
 //! | `01`   | hex até espaço             | altura do balão                      |
 //! | `02`   | hex até espaço             | estilo (2 nos balões dos personagens)|
 //! | `03`   | hex até espaço             | cor do texto (`F` preto, `9` roxo)   |
-//! | `04`   | `1`/`0` até espaço         | alinhamento à direita liga/desliga (assinatura) |
+//! | `04`   | `1`/`0` até espaço         | centraliza o parágrafo liga/desliga (assinatura, "EPA!") |
 //! | `05`   | 8 hex até espaço           | figura: id << 16 \| parâmetro         |
 //! | `06`   | número até espaço          | recuo (0, 1 ou 2)                    |
 //! | `07`   | `1`/`0` até espaço         | abre/fecha alternativas Mac/Windows  |
@@ -62,16 +62,16 @@ pub enum Item {
         /// Trecho do Windows de uma alternativa de plataforma (em geral um
         /// nome de tecla: `Ctrl`, `Alt e aperte F4`); o do Mac é descartado.
         key: bool,
-        /// Alinhado à direita (assinatura "Maggie", "Rex"; cabeçalho "EPA!").
+        /// Parágrafo centralizado (assinatura "Maggie", "Rex"; cabeçalho "EPA!").
         signature: bool,
     },
     Newline,
-    /// Mudança de recuo (`06`) ou de alinhamento à direita (`04`), com os
+    /// Mudança de recuo (`06`) ou de centralização (`04`), com os
     /// valores que passam a valer: as figuras seguintes (que não guardam
     /// formatação) ficam com eles.
     Format {
         indent: u8,
-        right: bool,
+        center: bool,
     },
     /// Figura embutida: id do `.PIC` e parâmetro (índice da opção, registro).
     Picture {
@@ -296,7 +296,7 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
                             signature = v != 0;
                             r.items.push(Item::Format {
                                 indent,
-                                right: signature,
+                                center: signature,
                             });
                         }
                     }
@@ -310,7 +310,7 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
                             indent = (v & 0xff) as u8;
                             r.items.push(Item::Format {
                                 indent,
-                                right: signature,
+                                center: signature,
                             });
                         }
                     }
