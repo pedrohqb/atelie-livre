@@ -151,6 +151,11 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   ferramenta Seleciona-sons inteira (categorias, Cachorrinho, Gravador).
 - **Texto de interface**: `ui::Pen` e `ui::clip_text`; para o texto do
   documento, `crate::writer::layout`.
+- **Oficina de Idéias**: `crate::writer::ideas` (sem SDL) tem a Máquina de
+  Idéias (`Grammar` do `WORKSHOP.CHK`, `Machine` com o sorteio do
+  original), as figuras-rebus (`Assets::rebus`, `ideas::rebus::draw`) e a
+  gravação das entradas, figuras próprias e Caderno (`ideas::store`). As
+  cenas (sala, Máquina, Quadro, Caderno) ainda não existem.
 
 ## Convenções
 
