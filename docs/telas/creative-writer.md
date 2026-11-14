@@ -31,9 +31,10 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `viewer.rs` | Visor de páginas |
 | `print.rs` | Imprimir |
 
-O modelo de documento rico (`crates/engine/src/writer/{doc,object,layout,
-selection,undo}.rs`) é outro trabalho; quando entrar, muda o `editor.rs`, e as
-ferramentas continuam recebendo `&mut Editor`.
+O `Editor` ainda usa o modelo provisório (`crate::writer::legacy`). O modelo
+rico (`crates/engine/src/writer/{doc,object,layout,selection,undo}.rs`,
+[`creative-writer-modelo.md`](creative-writer-modelo.md)) entra trocando o
+miolo do `editor.rs`; as ferramentas continuam recebendo `&mut Editor`.
 
 ## Contrato de uma ferramenta (`ToolStrip`)
 

@@ -2,9 +2,9 @@
 //! dentro do texto, ponto de inserção, digitação, desfazer e gravação.
 //!
 //! É a parte que as ferramentas leem e mudam (recebem `&mut Editor`). Usa o
-//! modelo atual de `crate::writer` (parágrafos de caracteres); quando o
-//! modelo rico (`writer::{doc,object,layout,selection,undo}`) entrar, é este
-//! arquivo que muda — as ferramentas continuam falando com o `Editor`.
+//! modelo provisório (`crate::writer::legacy`, parágrafos de caracteres);
+//! a integração do modelo rico (`writer::{doc,object,layout,selection,undo}`)
+//! muda este arquivo — as ferramentas continuam falando com o `Editor`.
 
 use super::tools::inside;
 use crate::Frame;
