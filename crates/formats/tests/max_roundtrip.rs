@@ -62,6 +62,10 @@ const TESTE1: [(&str, usize, &str); 16] = [
     ("INK ", 0, "04000400"),
 ];
 
+/// Cabeçalho do `PKBM` da miniatura de `TESTE1.MAX`.
+const TESTE1_THMB_HEADER: &str =
+    "01000000504b424d0000010001002a00ea1e000000006c009000040010002a000000000000008a000000";
+
 #[test]
 fn new_document_has_the_structure_of_teste1() {
     let mut d = Document::from_text("abc");
@@ -113,11 +117,14 @@ fn new_document_has_the_structure_of_teste1() {
             assert_eq!(p.data.len(), want.len(), "{tag}");
         }
     }
-    // miniatura 144 × 108 de 4 bits logo depois do SELN
+    // miniatura 108 × 144 de 4 bits logo depois do SELN, com o cabeçalho e
+    // a paleta do original
     let thmb = f.chunks.iter().find(|c| c.tag.0 == *b"THMB").unwrap();
     assert_eq!(thmb.parts[0].offset, 2223);
     let t = formats::pkbm::decode(thmb.parts[0].data).unwrap();
-    assert_eq!((t.width, t.height, t.depth), (144, 108, 4));
+    assert_eq!((t.width, t.height, t.depth), (108, 144, 4));
+    assert_eq!(&thmb.parts[0].data[..42], &hex(TESTE1_THMB_HEADER)[..]);
+    assert_eq!(t.palette.as_deref(), Some(&max::THUMB_PALETTE[..]));
     // e o arquivo relido é o documento
     let back = max::read(&w).unwrap();
     assert_eq!(back, d);

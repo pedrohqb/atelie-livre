@@ -59,9 +59,9 @@ pub const DEFAULT_FONT: &str = "Lucida Sans";
 /// Andar do Escritório e da Oficina de Projetos (`FLOR`, `ADD[10]`).
 pub const FLOOR_OFFICE: u16 = 2;
 pub const FLOOR_PROJECTS: u16 = 3;
-/// Tamanho da miniatura (`THMB`): a página reduzida para caber em 144 × 108.
-pub const THUMB_W: u16 = 144;
-pub const THUMB_H: u16 = 108;
+/// Lado maior da miniatura (`THMB`): a página reduzida para caber em
+/// 144 × 144 (ver [`thumb_size`]).
+pub const THUMB_MAX: u16 = 144;
 /// As 16 cores do Seleciona-cores e do Iluminador (recurso `CSCH`), na ordem
 /// do original: branco, amarelo, laranja, marrom, rosa, vermelho, lavanda,
 /// roxo, magenta, violeta, verde, verde-escuro, cinza-claro, cinza,
@@ -376,13 +376,28 @@ pub const DEFAULT_PRINTER: [u8; 22] = [
     0, 0,
 ];
 
-/// Miniatura em branco, 144 × 108, 4 bits, paleta [`THUMB_PALETTE`].
-pub fn blank_thumbnail() -> pkbm::Bitmap {
+/// Tamanho da miniatura de uma página de `w` × `h` pontos, como o original:
+/// o lado maior vale 144 e o outro é proporcional, arredondado para baixo
+/// (595 × 792 → 108 × 144; 792 × 595 → 144 × 108; faixa 542 × 767 → 101 × 144).
+pub fn thumb_size(w: u16, h: u16) -> (u16, u16) {
+    let (w, h) = (w.max(1) as u32, h.max(1) as u32);
+    let m = THUMB_MAX as u32;
+    if w >= h {
+        (m as u16, (h * m / w).max(1) as u16)
+    } else {
+        ((w * m / h).max(1) as u16, m as u16)
+    }
+}
+
+/// Miniatura em branco para uma página de `w` × `h` pontos, 4 bits, paleta
+/// [`THUMB_PALETTE`].
+pub fn blank_thumbnail(w: u16, h: u16) -> pkbm::Bitmap {
+    let (tw, th) = thumb_size(w, h);
     pkbm::Bitmap {
-        width: THUMB_W,
-        height: THUMB_H,
+        width: tw,
+        height: th,
         depth: 4,
-        pixels: vec![0; THUMB_W as usize * THUMB_H as usize],
+        pixels: vec![0; tw as usize * th as usize],
         palette: Some(THUMB_PALETTE.to_vec()),
     }
 }
@@ -441,7 +456,7 @@ impl Document {
                 props: ParaProps::default(),
             })
             .collect();
-        doc.set_thumbnail(&blank_thumbnail());
+        doc.set_thumbnail(&blank_thumbnail(doc.dop.page_width, doc.dop.page_height));
         doc
     }
 
@@ -551,10 +566,11 @@ impl Document {
         self.thumbnail.as_deref().and_then(|t| pkbm::decode(t).ok())
     }
 
-    /// Troca a miniatura (o original grava 144 × 108; 4 ou 8 bits, com
-    /// paleta embutida).
+    /// Troca a miniatura: a página inteira reduzida a [`thumb_size`], com 4
+    /// ou 8 bits e paleta embutida. É gravada com o PackBits por linha, como
+    /// o original (a prévia da pasta do Writer exige).
     pub fn set_thumbnail(&mut self, b: &pkbm::Bitmap) {
-        self.thumbnail = Some(pkbm::encode_with(b, (0, 0)));
+        self.thumbnail = Some(pkbm::encode_rows(b, (0, 0)));
     }
 }
 
@@ -833,7 +849,19 @@ mod tests {
         assert_eq!(d.text, "\r\r");
         assert_eq!(d.plain_text(), "");
         let b = d.thumbnail_bitmap().unwrap();
-        assert_eq!((b.width, b.height, b.depth), (144, 108, 4));
+        assert_eq!((b.width, b.height, b.depth), (108, 144, 4));
+        // o mesmo tamanho e a mesma compressão de TESTE1.MAX (430 bytes,
+        // menos o pixel cinza do cursor)
+        assert_eq!(d.thumbnail.as_ref().unwrap().len(), 42 + 96 + 2 * 144);
+    }
+
+    #[test]
+    fn thumb_sizes_follow_the_page() {
+        assert_eq!(thumb_size(595, 792), (108, 144));
+        assert_eq!(thumb_size(792, 595), (144, 108));
+        assert_eq!(thumb_size(542, 767), (101, 144));
+        assert_eq!(thumb_size(0, 0), (144, 144));
+        assert_eq!(thumb_size(1, 9000), (1, 144));
     }
 
     #[test]
