@@ -46,6 +46,7 @@ sua reserva: textos em português embutidos, fonte 8×8, figura vazia.
 | `frame` | `Frame` RGBA 640×480: `put`, `rect`, `frame_rect`, `blit`, `blit_masked`, `text_font`, `text` (8×8). |
 | `anim` | Tocador dos roteiros `ATAG` (animações dos personagens e dos adesivos). |
 | `rng` | xorshift32 determinístico (gags, fantasias do McZee). |
+| `guide` | Núcleo dos assistentes passo a passo (Maggie nos Truques, Max nos projetos do Writer): passo atual, histórico do Volta, balões de saída `3803` e "trabalhar por conta própria". |
 | `paths` | Busca sem maiúsculas (`find_ci`), varredura, nomes de arquivo seguros. |
 | `users` | Cadastro da Entrada (nome, apelido, bicho). |
 | `clipart` | Rolos de clip-art (`*.ART`). |
@@ -111,10 +112,10 @@ Tela de pintura e ferramentas:
 | `stickers`, `sticker_scripts` | Seleciona-adesivos: rolos, adesivos do usuário (`adesivo-*.png`), adesivos animados. |
 | `sounds` (+ `finder`, `recorder`) | Seleciona-sons: categorias, Cachorrinho dos sons, Gravador. |
 | `supertools`, `transformers` | Super-ferramentas e transformadores. |
-| `wizard`, `tricks_basic`, `tricks_3d` | Assistente da Maggie e os roteiros dos Truques. |
+| `wizard`, `tricks_basic`, `tricks_3d` | Assistente da Maggie e os roteiros dos Truques (sobre `crate::guide`). |
 | `projects` (`button`, `comics`, `flipbook`, `dialogs`) | Oficina de Projetos. |
 | `paint_sfx` | Sons da pintura. |
-| `writer` | Escritório do Creative Writer (início). Núcleo em `crate::writer`: modelo rico `doc`, `object`, `layout`, `selection`, `undo` (`docs/telas/creative-writer-modelo.md`; ainda não ligado à cena) e o provisório `legacy` + `store`, que a cena usa hoje. |
+| `writer` | Escritório do Creative Writer: `Editor` (documento, vista, arquivos) e uma ferramenta por arquivo (`docs/telas/creative-writer.md`, com a API do `Editor`). Núcleo em `crate::writer`: `doc`, `object`, `layout`, `selection`, `undo`, `fonts`, `convert` (↔ `.MAX`) e `store` (`.MAX` na pasta do usuário) (`docs/telas/creative-writer-modelo.md`). |
 
 ### Componentes compartilhados entre cenas
 
@@ -144,9 +145,11 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   os balões souberem o programa, use `EntrySpec::alert_art`.
 - **Adesivos**: `stickers` + `paint::stamp`/`paint::objects` são a camada de
   objetos; a página do Writer pode usar os mesmos `Objects` sobre o texto.
-- **Pasta**: `portfolio::Binder` monta a árvore a partir de
-  `gallery_room::Item`; para documentos do Writer, generalize o item (nome,
-  miniatura opcional) e a linha "Ateliê de Pintura".
+- **Pasta**: `portfolio::Binder` monta a árvore de qualquer
+  `BinderItem` (nome, exemplo, autor, grupo, prévia) com um `BinderSpec`
+  (balões, rótulos, sons, caixa da prévia): os quadros do Fine Artist
+  (`gallery_room::Item`, `ARTIST_BINDER`) e os documentos do Writer
+  (`writer_portfolio::DocItem`, `WRITER_BINDER`).
 - **Achar arquivos**: `finder_dialog` já é independente da ferramenta; para
   achar documentos basta outra lista de `Entry` e outro ícone de linha.
 - **Impressão**: `printing::PrintJob` e os balões do McZee independem do que
@@ -166,6 +169,18 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   apertado) e `scenes::writer_easel` (Cavalete de lápis de cera, que os
   adesivos do Escritório podem reaproveitar); ver
   `docs/telas/creative-writer-ideias.md`.
+- **Bordas e fundos de página**: `formats::bor` lê os `.BOR` (e as cópias
+  no `.MAX`), `formats::wmf_draw` rasteriza as peças WMF vetoriais e
+  `crate::writer::borders` desenha borda e fundo numa folha
+  (`border_layout`, `render_page`, `PageArt::from_document`, obstáculos do
+  fundo para a diagramação); ver `docs/formats/bor.md`. Os rolos BORDA e
+  FUNDO da Preparação da página ainda não existem.
+- **Projetos (Jornal, Cartão, Faixa)**: `crate::writer::assistant` é o
+  motor dos assistentes do Max (sem tela, sobre `crate::guide`, como a
+  lição da Maggie), com os roteiros como dados em `assistant_news`,
+  `assistant_card` e `assistant_banner` e a figura da dobra em
+  `writer::fold_figure`. Falta a cena em modo projeto que os hospeda
+  (contrato em `docs/telas/creative-writer-projetos.md`).
 
 ## Creative Writer: specs por programa
 
@@ -232,7 +247,7 @@ guardado para a navegação. Por isso a próxima onda **não precisa mexer em
 | T9 Biblioteca | `writer_library` | `gallery_room` (`GallerySpec`) | `GalleryRoom::for_program` |
 | T10 Sótão | `writer_attic` (`ATTIC`) | `attic` | `attic::draw_in`, `attic::dark_sound_in` |
 | T11/T12 Gags, surpresas, fantasias | `writer_gags` (listas já transcritas do relatório, a conferir) | — | usadas pelos `RoomSpec` |
-| T13 Bolsa e pasta | `writer_portfolio` | `portfolio`/`gallery_room` | `GalleryRoom::portfolio_for_program` |
+| T13 Bolsa e pasta | `writer_portfolio` (`WriterPortfolio`, feita) | `portfolio` (`BinderSpec`, `BinderItem`) | `run.rs` abre a `WriterPortfolio` para `CwScene::Portfolio` |
 
 O `writer_rooms` (o `WRITER_KIT` e o despacho por andar) é comum: só mude
 um campo do kit que for da sua tarefa (por ex. T13: `wand`, `wand_cursor`).
@@ -414,16 +429,27 @@ impl Street {
 
 ### Pendências conhecidas
 
-- As salas, a rua, a Imaginópolis, a história, o elevador, o sótão e a
-  pasta do Writer ainda mostram os dados do FA (com a navegação do
-  Writer) até as tarefas acima.
-- Abrir um documento: `Effect::OpenDocument(caminho)` (o `SceneId` é
-  `Copy` e não leva o caminho); `run.rs` e o diretor dos testes trocam
-  para `Writer::open_document`, que hoje lê só o texto (`.txt` do
-  Escritório ou `.MAX`, `writer::store::load_any`). Quando o Escritório
-  usar o modelo rico, troque o corpo de `open_document`, não o efeito.
-- `CwScene::NewDocument` abre o editor com o último documento até o
-  Escritório ganhar um construtor de documento em branco (`run.rs`).
+- O saguão, o Escritório, os Projetos, as Idéias e a pasta do Writer já
+  têm os dados dele (`docs/telas/creative-writer-salas.md`); a rua, a
+  Imaginópolis, a história, o elevador e o sótão ainda mostram os dados
+  do FA (com a navegação do Writer) até as tarefas acima.
+- Ganchos das salas para o Writer (todos neutros no Fine Artist):
+  `RoomSpec::lamp` (luminária com fumaça), `object_balloon` (balões dos
+  objetos na boca do McZee), `wand_props` (varinha nos bichos da parede),
+  `CharacterSpec::poses` (poses com posição própria), `Studio::doc`
+  (`DocWall`: o quadro mostra o último documento, `LastWork`; a plaqueta
+  troca o título ou avisa que o documento é de outro), `name_balloon`,
+  `new_label`, `RoomKit::persist` (bolsa e ajuda guardadas por usuário) e
+  `ctrl_o`; `Room::with_users_dir` dá a pasta dos usuários.
+- Abrir um documento da Biblioteca: `Effect::OpenDocument(caminho)` (o
+  `SceneId` é `Copy` e não leva o caminho; `Writer::new` abre o mais
+  recente da pasta, não o `FILR 0`, por isso um exemplo do Max precisa do
+  caminho); `run.rs` e o diretor dos testes trocam para `Writer::open`. A
+  pasta (`WriterPortfolio::open`) ainda usa `remember_last` +
+  `ChangeScene(Writer)` e poderia passar a usar o mesmo efeito.
+- Preferências do Writer por usuário: `writer::prefs` (`~MAXUSER.INF`:
+  último documento e as quatro molduras da Biblioteca; para um usuário novo,
+  os exemplos do Max).
 - O cursor padrão (`DEFAULT_CURSOR`) é a mão do `ARTIST.EXE`.
 
 ## Convenções

@@ -24,7 +24,7 @@ use super::elevator::{Elevator, Outcome};
 use super::gags::{Character, GagPlayer};
 use super::projects::ProjectKind;
 use super::room_objects::{BagPart, MagicBag, Target};
-use super::room_spec::{self, Action, RoomKit, RoomSpec, Rooms};
+use super::room_spec::{self, Action, LastWork, RoomKit, RoomSpec, RoomState, Rooms, WorkPlace};
 use super::room_talk::{self as talk, Helper, Pick, Start};
 use super::rooms_data;
 use super::studio_wall::{self, End, NameField};
@@ -34,7 +34,7 @@ use crate::balloon::Balloon;
 use crate::paint::Canvas;
 use crate::paint::store::{LAST_NAME, load_name, load_png};
 use crate::rng::XorShift;
-use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{DEFAULT_CURSOR, Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::TextBalloon;
 use crate::ui::DoubleClick;
 use crate::ui::inside;
@@ -178,6 +178,14 @@ pub struct Room {
     elevator: Option<Elevator>,
     /// O cursor atual é o da varinha.
     wand_cursor: bool,
+    /// Pasta dos usuários do port (preferências e documentos do Writer).
+    users: Option<PathBuf>,
+    /// Último trabalho de um programa com documentos (`Studio::doc`), com a
+    /// miniatura já reduzida para a moldura.
+    last_work: Option<LastWork>,
+    /// Aviso "EPA!" sem opções (título de um documento de outra pessoa):
+    /// qualquer clique o fecha.
+    alert: Option<TextBalloon>,
 }
 
 impl Room {
@@ -240,6 +248,55 @@ impl Room {
             surprise: None,
             elevator: None,
             wand_cursor: false,
+            users: None,
+            last_work: None,
+            alert: None,
+        }
+    }
+
+    /// Com a pasta dos usuários do port: o estado guardado (bolsa, ajuda,
+    /// se o programa o guarda) e o último trabalho da parede (`Studio::doc`).
+    pub fn with_users_dir(mut self, dir: Option<PathBuf>, assets: &Assets) -> Room {
+        self.users = dir;
+        if let (Some(p), Some(d)) = (self.kit().persist, self.users.as_deref()) {
+            let st = (p.load)(d, &self.user);
+            self.bag.open = st.bag_open;
+            if st.help_off && !self.help_off {
+                self.help_off = true;
+                self.close();
+            }
+        }
+        self.load_last_work(assets);
+        self
+    }
+
+    fn place<'a>(&'a self, assets: &'a Assets) -> WorkPlace<'a> {
+        WorkPlace {
+            users: self.users.as_deref(),
+            user: &self.user,
+            data: assets.data_dir(),
+        }
+    }
+
+    /// Relê o último trabalho (só nas salas com `Studio::doc`).
+    fn load_last_work(&mut self, assets: &Assets) {
+        self.last_work =
+            self.spec.studio.and_then(|st| st.doc).and_then(|d| {
+                (d.load)(&self.place(assets), assets).map(|w| fit_work(w, d.thumb_box))
+            });
+    }
+
+    /// Grava o estado guardado (bolsa, ajuda), se o programa o guarda.
+    fn save_state(&self) {
+        if let (Some(p), Some(d)) = (self.kit().persist, self.users.as_deref()) {
+            (p.save)(
+                d,
+                &self.user,
+                RoomState {
+                    bag_open: self.bag.open,
+                    help_off: self.help_off,
+                },
+            );
         }
     }
 
@@ -248,6 +305,7 @@ impl Room {
         self.user = user.to_string();
         self.balloon = arrival_balloon(self.spec, assets, &self.user);
         self.talk = Talk::Arrival;
+        self.load_last_work(assets);
         self
     }
 
@@ -335,6 +393,7 @@ impl Room {
                 self.bag.open = open;
                 let s = &self.kit().snd;
                 fx.push(self.snd(if open { s.bag_open } else { s.bag_close }));
+                self.save_state();
             }
             BagPart::Suitcase => {
                 fx.push(self.snd(self.kit().snd.suitcase));
@@ -492,6 +551,7 @@ impl Room {
                 0 => {
                     self.help_off = true;
                     self.close();
+                    self.save_state();
                 }
                 1 => self.repeat_arrival(assets),
                 _ => self.close(),
@@ -499,6 +559,7 @@ impl Room {
             Talk::Helper { off: true } => {
                 if k == 0 {
                     self.help_off = false;
+                    self.save_state();
                     self.repeat_arrival(assets);
                 } else {
                     self.close();
@@ -574,12 +635,15 @@ impl Room {
             Action::Easel | Action::Wall => {
                 fx.push(self.snd(self.kit().snd.object));
                 if let Some(st) = self.spec.studio {
-                    let k = if action == Action::Easel {
-                        st.easel_tip
-                    } else {
-                        st.wall_tip
+                    let k = match (action, st.doc, &self.last_work) {
+                        (Action::Easel, ..) => st.easel_tip,
+                        (_, Some(d), Some(w)) if !w.own => d.other_tip,
+                        _ => st.wall_tip,
                     };
-                    let b = self.tip(k, assets);
+                    let mut b = self.tip(k, assets);
+                    if let Some((x, y)) = self.spec.object_balloon {
+                        (b.x, b.y) = (x, y);
+                    }
                     self.show(b, Talk::Tip);
                 }
             }
@@ -598,6 +662,7 @@ impl Room {
                 fx.push(self.snd(self.kit().snd.painting));
                 self.painting = pick_painting(self.spec, &mut self.rng);
             }
+            Action::WallLabel if self.doc_wall().is_some() => self.doc_label(fx, assets),
             Action::WallLabel => {
                 if self.last_drawing.is_some() {
                     fx.push(self.snd(self.kit().snd.object));
@@ -608,6 +673,13 @@ impl Room {
                 }
             }
             Action::Tip(k) => {
+                // a dica do quadro da parede, com o documento de outra pessoa
+                let k = match (self.spec.studio, &self.last_work) {
+                    (Some(st), Some(w)) if k == st.wall_tip && !w.own => {
+                        st.doc.map_or(k, |d| d.other_tip)
+                    }
+                    _ => k,
+                };
                 let b = self.tip(k, assets);
                 self.show(b, Talk::Tip);
             }
@@ -661,9 +733,14 @@ impl Room {
         }
         self.character = pick_character(spec, &mut self.rng);
         self.painting = pick_painting(spec, &mut self.rng);
+        let open = self.bag.open;
         self.bag = new_bag(spec);
+        if spec.kit.persist.is_some() {
+            self.bag.open = open;
+        }
         self.surprise = None;
         self.clicks.reset();
+        self.alert = None;
         self.naming = None;
         self.gags = GagPlayer::with_rng(
             spec.gags,
@@ -672,6 +749,7 @@ impl Room {
             XorShift::new(self.rng.next_u32()),
         )
         .in_program(spec.kit.program);
+        self.load_last_work(assets);
         if let Some(id) = spec.arrival_sound {
             fx.push(self.snd(id));
         }
@@ -685,6 +763,9 @@ impl Room {
     /// Um clique de botão esquerdo em (x, y) fora do elevador; `true` se ele
     /// foi usado (os seguintes do mesmo quadro esperam).
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) -> bool {
+        if self.alert.take().is_some() {
+            return true;
+        }
         if self.quit.is_some() {
             self.quit_click(x, y, fx, assets);
             return true;
@@ -752,6 +833,11 @@ impl Room {
                 self.start_surprise(Target::Pole, fx, assets)
             }
             (true, Action::MouseHole) => self.start_surprise(Target::Hole, fx, assets),
+            (true, Action::Pick(_))
+                if let Some(prop) = self.spec.wand_props.iter().find(|w| inside(w.rect, x, y)) =>
+            {
+                self.start_prop(prop, assets, fx)
+            }
             (_, action) => {
                 if matches!(action, Action::Easel | Action::Wall) {
                     self.clicks.arm(action, self.clock, (x, y));
@@ -777,6 +863,9 @@ impl Room {
     /// Nome na plaqueta da parede: o do último quadro, ou "Quadro Novo" se
     /// ele não tem nome; nada sem último quadro.
     fn wall_name(&self) -> Option<String> {
+        if self.doc_wall().is_some() {
+            return self.last_work.as_ref().map(|w| w.title.clone());
+        }
         self.last_drawing.as_ref().map(|_| {
             self.last_name
                 .clone()
@@ -793,6 +882,10 @@ impl Room {
             self.close();
         }
         let name = field.name();
+        if let Some(d) = self.doc_wall() {
+            self.rename_doc(d, end, &name, fx);
+            return;
+        }
         if end == End::Cancel || name.is_empty() || Some(&name) == self.last_name.as_ref() {
             return;
         }
@@ -808,8 +901,89 @@ impl Room {
         }
     }
 
+    /// Quadro da parede com um documento (Writer).
+    fn doc_wall(&self) -> Option<&'static room_spec::DocWall> {
+        self.spec.studio.and_then(|st| st.doc)
+    }
+
+    /// Plaqueta do quadro com um documento: o próprio troca de título; o de
+    /// outra pessoa abre o "EPA! Você não pode mudar esse título".
+    fn doc_label(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
+        let (Some(d), Some(w)) = (self.doc_wall(), &self.last_work) else {
+            return;
+        };
+        fx.push(self.snd(self.kit().snd.object));
+        if w.own {
+            self.naming = Some(NameField::new(&w.title));
+            let pos = self
+                .spec
+                .studio
+                .map_or(studio_wall::BALLOON_POS, |st| st.name_balloon);
+            let b = studio_wall::balloon_in(self.kit(), assets, &self.user, pos);
+            self.show(b, Talk::Tip);
+        } else {
+            fx.push(self.snd(self.kit().snd.quit[1]));
+            self.close();
+            let (block, k, pos, text) = d.not_yours;
+            self.alert = Some(talk::alert_balloon_in(
+                self.kit().program,
+                assets,
+                (block, k),
+                pos,
+                text,
+            ));
+        }
+    }
+
+    /// Troca o título do documento da parede (Return ou clique fora).
+    fn rename_doc(&mut self, d: &room_spec::DocWall, end: End, name: &str, fx: &mut Vec<Effect>) {
+        let Some(w) = self.last_work.clone() else {
+            return;
+        };
+        if end == End::Cancel || name.is_empty() || name == w.title || !w.own {
+            return;
+        }
+        let place = WorkPlace {
+            users: self.users.as_deref(),
+            user: &self.user,
+            data: std::path::Path::new(""),
+        };
+        match (d.rename)(&place, &w, name) {
+            Ok(()) => {
+                fx.push(Effect::Log(format!(
+                    "último documento agora se chama \"{name}\""
+                )));
+                if let Some(w) = self.last_work.as_mut() {
+                    w.title = name.to_string();
+                }
+            }
+            Err(e) => fx.push(Effect::Log(e)),
+        }
+    }
+
+    /// A varinha tocou um objeto que ela enfeita (bicho da parede).
+    fn start_prop(&mut self, prop: &room_spec::WandProp, assets: &Assets, fx: &mut Vec<Effect>) {
+        self.bag.holding_wand = false;
+        let id = prop.scripts[self.rng.below(prop.scripts.len().max(1))];
+        match crate::anim::load_exe(assets, self.kit().program, id) {
+            Some(a) => {
+                let mut a = a.with_offset(prop.anchor);
+                fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
+                self.surprise = Some(a);
+            }
+            None => self.bag.open = true,
+        }
+    }
+
     /// Último quadro reduzido no miolo do quadro da parede.
     fn draw_wall_picture(&self, st: &room_spec::Studio, frame: &mut Frame) {
+        if let Some(d) = st.doc {
+            if let Some(img) = self.last_work.as_ref().and_then(|w| w.image.as_ref()) {
+                let (bx, by, bw, _) = d.thumb_box;
+                frame.blit(img, bx + (bw - img.width as i32) / 2, by);
+            }
+            return;
+        }
         let Some(c) = &self.last_drawing else { return };
         let k = st.wall_scale;
         for y in 0..c.h / k {
@@ -834,10 +1008,7 @@ impl Room {
         };
         let labels = [
             (wall, st.wall_label),
-            (
-                Some(super::paint::rename::DEFAULT_NAME.to_string()),
-                st.easel_label,
-            ),
+            (Some(st.new_label.to_string()), st.easel_label),
         ];
         let font = assets.font(8);
         for (text, (cx, y)) in labels {
@@ -851,7 +1022,7 @@ impl Room {
             }
         }
         if let Some(n) = &self.naming {
-            n.draw(frame, font.as_deref());
+            n.draw_in(frame, font.as_deref(), st.label_rect);
         }
     }
 }
@@ -859,7 +1030,46 @@ impl Room {
 /// Personagem da sala, com a fantasia ou pose sorteada.
 fn pick_character(spec: &RoomSpec, rng: &mut XorShift) -> Option<Character> {
     let c = spec.character?;
+    if !c.poses.is_empty() {
+        let (image, (x, y)) = c.poses[rng.below(c.poses.len())];
+        return Some(Character {
+            program: spec.kit.program,
+            image,
+            x,
+            y,
+        });
+    }
     Character::pick_in(spec.kit.program, c.choices, c.pos, rng)
+}
+
+/// Reduz a miniatura do último trabalho à altura da caixa da moldura (sem
+/// passar da largura), pelo vizinho mais próximo.
+fn fit_work(mut w: LastWork, (_, _, bw, bh): crate::ui::Rect) -> LastWork {
+    if let Some(img) = &w.image {
+        let (iw, ih) = (img.width as i32, img.height as i32);
+        if iw > 0 && ih > 0 {
+            let k = (bh as f32 / ih as f32).min(bw as f32 / iw as f32);
+            // arredondado para baixo, como o original (108×144 → 73×98)
+            let (tw, th) = (
+                ((iw as f32 * k) as i32).max(1),
+                ((ih as f32 * k) as i32).max(1),
+            );
+            let mut rgba = Vec::with_capacity((tw * th * 4) as usize);
+            for y in 0..th {
+                for x in 0..tw {
+                    let (sx, sy) = ((x * iw / tw) as u32, (y * ih / th) as u32);
+                    let i = ((sy * img.width + sx) * 4) as usize;
+                    rgba.extend_from_slice(&img.rgba[i..i + 4]);
+                }
+            }
+            w.image = Some(crate::Image {
+                width: tw as u32,
+                height: th as u32,
+                rgba,
+            });
+        }
+    }
+    w
 }
 
 /// Obra-prima sorteada para a moldura da sala, se houver moldura.
@@ -970,6 +1180,23 @@ impl Scene for Room {
             self.sync_cursor(&mut fx);
             return fx;
         }
+        if self.kit().ctrl_o
+            && self.naming.is_none()
+            && input.iter().any(|i| {
+                matches!(
+                    i,
+                    Input::Key {
+                        key: Key::O,
+                        ctrl: true,
+                        ..
+                    }
+                )
+            })
+        {
+            self.close();
+            fx.push(self.snd(self.kit().snd.suitcase));
+            fx.push(Effect::Push(self.go(SceneId::Portfolio)));
+        }
         let mut used = false;
         for i in input {
             if let Some(n) = self.naming.as_mut() {
@@ -1052,6 +1279,14 @@ impl Scene for Room {
                 blit_white_transparent(frame, &img, e.x, e.y);
             }
         }
+        if let Some(l) = spec.lamp {
+            let (id, (x, y)) = if self.quit.is_some() {
+                l.smoke
+            } else {
+                l.normal
+            };
+            crate::text_balloon::blit_pic_in(frame, assets, p, id, x, y, true);
+        }
         if let Some(st) = &spec.studio {
             self.draw_wall_picture(st, frame);
             self.draw_labels(st, frame, assets);
@@ -1082,8 +1317,14 @@ impl Scene for Room {
         if let Some(q) = &self.quit {
             q.draw(frame, assets);
         }
+        if let Some(b) = &self.alert {
+            b.draw(frame, assets);
+        }
     }
 }
+
+#[cfg(test)]
+mod writer_tests;
 
 #[cfg(test)]
 mod tests {

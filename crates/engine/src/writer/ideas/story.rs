@@ -14,15 +14,9 @@
 //! história que você já começou" (I12); a barra de status do editor mostra
 //! "Oficina de Idéias" e o McZee o balão `0faa[13]`/`[16]`.
 //!
-//! **O que falta ligar** (Escritório integrado, ramo `cw-office-core`): a
-//! cena do editor, montada para `SceneId::Cw(CwScene::IdeaStory(_))`, deve
-//! pegar o conteúdo com [`super::session::take_story`] e abrir o
-//! documento com o cursor em [`IdeaStory::cursor`], as figuras de
-//! [`IdeaStory::pictures`] como os `PICT` do documento, a barra de status
-//! com [`FLOOR_LABEL`], o balão [`IdeaSource::help`] e, ao salvar, gravar
-//! [`FLOOR`] e [`IdeaSource::wiza`]; a porta SAÍDA volta à Oficina
-//! ([`IdeaSource::back`]). Até lá `run.rs` abre o editor atual sem o
-//! conteúdo.
+//! O Escritório monta a cena com `scenes::Writer::idea_story`, que pega o
+//! conteúdo com [`super::session::take_story`] (ver
+//! `docs/telas/creative-writer-ideias.md`, "Ponte para o editor").
 
 use super::machine::Piece;
 use crate::Image;

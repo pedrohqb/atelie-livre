@@ -25,7 +25,17 @@ pub enum Key {
     Backspace,
     Delete,
     F12,
+    /// Ctrl+O abre a pasta nas salas do Creative Writer.
+    O,
     Q,
+    /// Letras dos atalhos do Escritório (Ctrl+A/C/S/V/X/Z). Sem Ctrl elas
+    /// também chegam como `Input::Text`.
+    A,
+    C,
+    S,
+    V,
+    X,
+    Z,
     Other,
 }
 
@@ -239,10 +249,11 @@ pub enum Effect {
     RecordCancel,
     /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
     SetUser(String),
-    /// Troca para a área de escrita do Creative Writer com este documento
-    /// (`.MAX` ou o `.txt` do Escritório): clique duplo numa moldura da
-    /// Biblioteca. Como `ChangeScene(SceneId::Writer)`, mas o `SceneId` é
-    /// `Copy` e não leva o caminho.
+    /// Troca para a área de escrita do Creative Writer com este `.MAX`
+    /// (`Writer::open`): clique duplo numa moldura da Biblioteca, que pode ser
+    /// um exemplo do Max fora da pasta do usuário. Como
+    /// `ChangeScene(SceneId::Writer)`, mas o `SceneId` é `Copy` e não leva o
+    /// caminho (e `Writer::new` abre o mais recente da pasta, não o `FILR 0`).
     OpenDocument(std::path::PathBuf),
     Log(String),
     Quit,

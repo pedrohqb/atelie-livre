@@ -80,6 +80,9 @@ pub struct Args {
     /// flipbook, tricks-basic, tricks-3d.
     #[arg(long, hide = true)]
     pub scene: Option<String>,
+    /// Abre um documento `.MAX` no Escritório do Creative Writer (testes).
+    #[arg(long, hide = true)]
+    pub open: Option<PathBuf>,
 }
 
 pub fn config_path_from(xdg: Option<PathBuf>, home: Option<PathBuf>) -> PathBuf {
@@ -101,22 +104,6 @@ pub fn drawings_dir() -> Option<PathBuf> {
             .map(PathBuf::from)
     };
     drawings_dir_from(env("XDG_DATA_HOME"), env("HOME"))
-}
-
-/// Pasta dos textos do Creative Writer: `$XDG_DATA_HOME/atelie-livre/textos`,
-/// senão `~/.local/share/atelie-livre/textos`; `None` sem nenhum dos dois.
-pub fn texts_dir_from(xdg_data: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
-    let base = xdg_data.or_else(|| home.map(|h| h.join(".local").join("share")))?;
-    Some(base.join("atelie-livre").join("textos"))
-}
-
-pub fn texts_dir() -> Option<PathBuf> {
-    let env = |k: &str| {
-        std::env::var_os(k)
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-    };
-    texts_dir_from(env("XDG_DATA_HOME"), env("HOME"))
 }
 
 /// Pasta dos usuários do Fine Artist: `$XDG_DATA_HOME/atelie-livre/usuarios`,
@@ -413,19 +400,6 @@ mod tests {
             Some(PathBuf::from("/h/.local/share/atelie-livre/usuarios"))
         );
         assert_eq!(users_dir_from(None, None), None);
-    }
-
-    #[test]
-    fn texts_dir_like_drawings_dir() {
-        assert_eq!(
-            texts_dir_from(Some("/x".into()), Some("/h".into())),
-            Some(PathBuf::from("/x/atelie-livre/textos"))
-        );
-        assert_eq!(
-            texts_dir_from(None, Some("/h".into())),
-            Some(PathBuf::from("/h/.local/share/atelie-livre/textos"))
-        );
-        assert_eq!(texts_dir_from(None, None), None);
     }
 
     #[test]

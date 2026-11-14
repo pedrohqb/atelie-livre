@@ -70,7 +70,7 @@ bordas dos lados com o escuro por fora), moldura cinza (66,62) 210×270, a
 folha em pé (76,70) 190×254, McZee `4c03` em (545,0), balões com o canto
 direito em 581 e o topo em 63, avisos em (209,149).
 
-A folha impressa (`impressao-*.png`, 595×792 ou o tamanho do `DOP`) é,
+A folha impressa (`impressao-*.png` na pasta do usuário, 595×792 ou o tamanho do `DOP`) é,
 por enquanto, o texto da 1ª página com a fonte de 16 pontos, nas margens
 e com o alinhamento de cada parágrafo (`writer_library::render_first_page`);
 a diagramação completa (fontes, figuras, bordas, cartão em quadrantes,
@@ -79,31 +79,33 @@ função.
 
 ## Parede e documentos
 
-- Documentos da criança: `*.max` e `texto-*.txt` da pasta de textos, os
-  mais recentes primeiro; exemplos: `SHARED/USERS/MAX/*.MAX`.
+- Pasta da sala: a do usuário, `<usuários>/<apelido>` (o `USERS\<APELIDO>`
+  do original). Documentos da criança: os `.MAX` dela (`writer::store::list`,
+  os mais recentes primeiro); exemplos: `SHARED/USERS/MAX/*.MAX`.
 - Miniatura: o `THMB` do `.MAX` (108×144) reduzido para caber em 100×100
   (75×100) como o `StretchBlt` do original no modo `BLACKONWHITE` (cada
   pixel junta os de origem que caem nele e fica com o mais escuro); um
-  `.txt` ganha uma página desenhada com um risquinho por letra.
-- Parede: `FILR` 1–4 do `~MAXUSER.INF` da pasta de textos
-  (`formats::maxprefs`; a ordem é em cima à esquerda, em cima à direita,
-  embaixo à direita, embaixo à esquerda, conferida com o `~MAXUSER.INF` do
-  Wine). Sem nenhum `FILR` 1–4 (usuário novo): `SAMP9`, `SAMP16`, `SAMP5`,
-  `SAMP6` (a parede da captura `building_81_lib_base`; o original sorteia).
-  Escolha do `~MAXUSER.INF` (e não de um `biblioteca.txt`): é o arquivo do
-  original, a T14 (preferências do Writer) grava o lugar 0 e o resto no
-  mesmo arquivo com as mesmas funções (`writer_library::read_prefs` /
-  `write_prefs`, que mantêm os outros chunks), e um `USERS/<nome>` do
-  original pode ser aproveitado.
-- Clique duplo (ou "Estou pronto para ir!"): `Effect::OpenDocument`, a
-  área de escrita com o documento (`Writer::open_document`).
+  documento sem `THMB` ganha uma página desenhada com um risquinho por
+  letra.
+- Parede: `FILR` 1–4 do `~MAXUSER.INF` do usuário, pelas funções de
+  `writer::prefs` (T14: `library`, `wall_doc`, `set_slot`, `save`; o resto
+  do arquivo — lugar 0, fontes, Máquina de Idéias — fica). A ordem é em
+  cima à esquerda, em cima à direita, embaixo à direita, embaixo à
+  esquerda, conferida com o `~MAXUSER.INF` do Wine. Usuário novo:
+  `prefs::DEFAULT_WALL` (`SAMP9`, `SAMP16`, `SAMP5`, `SAMP6`, a parede da
+  captura `building_81_lib_base`; o original sorteia). Escolha do
+  `~MAXUSER.INF` (e não de um `biblioteca.txt`): é o arquivo do original e
+  a T14 já guarda nele o último documento.
+- Clique duplo (ou "Estou pronto para ir!"): o documento vira o último
+  (`prefs::remember_last`, `FILR 0`) e `Effect::OpenDocument` leva ao
+  Escritório com ele (`Writer::open`; um exemplo do Max abre como cópia).
 
 ## Gaveta de unidades
 
 O original mostra as unidades do computador (C, Z) em fileiras de 14 px a
 cada 21 px a partir de (296,180), com pontas vermelhas e o nome no meio
 cinza; as fileiras vazias são pretas. O port mostra duas: **Ateliê
-Livre** (a pasta de textos) e **Exemplos do Max** (só de leitura). Clicar
+Livre** (a pasta do usuário) e **Exemplos do Max** (só de leitura). Clicar
 numa unidade abre a pasta; soltar um documento nela o copia (um exemplo
 copiado para o Ateliê Livre vira documento da criança). As setas de
 rolagem do original (só úteis com mais de cinco unidades) não foram

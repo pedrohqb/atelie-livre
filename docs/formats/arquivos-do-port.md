@@ -126,17 +126,43 @@ Nas listas de figuras só valem nomes `NNN.png` (dígitos), sem caminho. Ao
 gravar, figuras novas ou modificadas recebem o próximo número livre e os
 PNGs que saíram da lista são apagados.
 
-## Textos do Creative Writer (`~/.local/share/atelie-livre/textos/`)
+## Documentos do Creative Writer (`<usuarios>/<apelido>/*.MAX`)
+
+O Escritório grava os documentos no formato do original (`.MAX`, ver
+`max.md`), na pasta do usuário — a mesma do cadastro (`perfil.toml`), como
+o `C:\MSKIDS\USERS\<APELIDO>\` do original. Um `.MAX` do port abre no
+Creative Writer original (conferido no Wine, com a miniatura na pasta) e
+vice-versa. Código: `crates/engine/src/writer/{convert,store}.rs`.
+
+| Arquivo | Quando |
+|---|---|
+| `<NOME8>.MAX` | salvar (Saída → "Salvar este trabalho", SALVAR do McZee, Ctrl+S, clique no título). O nome sai do título: maiúsculas, sem acentos, `_` no lugar de espaços e pontuação, até 8 caracteres ("Gato Teste" → `GATO_TES.MAX`; "!" do começo, que esconde o documento, fica de fora). Se o nome já existe e é de outro arquivo, os últimos caracteres viram um número a partir de 11 (`GATO_T11.MAX`). "Salvar a versão antiga e a nova" grava num nome novo e deixa o antigo; "Salvar só a nova" substitui o arquivo do documento |
+| `KIDSnnnn.MAX` | o documento mudou e a cena foi fechada sem passar pelo "Epa!" (janela fechada): gravado no arquivo do documento, ou num `KIDSnnnn.MAX` novo, como o original depois de uma queda |
+| `<NOME8>.TXT` | "Salvar como texto" (`Editor::save_text`): texto puro UTF-8, um parágrafo por linha, sem as figuras do Maçã |
+
+Ao gravar, o port regera a miniatura (`THMB`: a folha 1 reduzida com o lado
+maior de 144 pixels, 4 bits, paleta `THUMB_PALETTE`), a tabela de folhas
+(`PGD `, da diagramação) e a seleção (`SELN`); o resto do que veio no
+arquivo aberto (cópias dos objetos, sons em palavras, impressora, `ADD `,
+molduras que o port ainda não representa) é regravado como veio
+(`convert::MaxExtra`). Um `.MAX` de fora da pasta do usuário (os exemplos do
+Max em `SHARED/USERS/MAX`) abre como cópia: salvar grava na pasta do usuário.
+Os arquivos internos do original (`~NOTESID.MAX` etc.) não aparecem na
+lista de documentos.
+
+## Creative Writer: preferências e documentos (`<usuarios>/<apelido>/`)
+
+Gravados por `crates/engine/src/writer/prefs.rs`.
 
 | Arquivo | Conteúdo |
 |---|---|
-| `ultimo.txt`, `texto-AAAAMMDD-HHMMSS.txt` | o documento de trabalho e as cópias datadas do Escritório (`writer/store.rs`) |
-| `*.max` | documentos no formato do original (`max.md`); a Biblioteca os mostra com a miniatura `THMB` |
-| `~MAXUSER.INF` | preferências do usuário, como no original (`maxprefs.md`); a Biblioteca grava a parede nos `FILR` 1–4 e mantém o resto (lugar 0 = Escritório, fontes, Máquina de Idéias) |
-| `impressao-AAAAMMDD-HHMMSS.png` | folha mandada ao `lp` pela prévia de impressão da Biblioteca |
+| `~MAXUSER.INF` | o mesmo formato do original (`maxprefs.md`): `FILR 0` = último documento (quadro do Escritório), `FILR 1..4` = molduras da Biblioteca; `STTB`/`SUDG`/`FNTL` guardados como vieram. Sem o arquivo valem os exemplos do Max (`SAMP18`, `SAMP9`, `SAMP16`, `SAMP5`, `SAMP6`). |
+| `*.MAX` | documentos do usuário; no `FILR` ficam como `USERS\<APELIDO>\ARQUIVO.MAX` (os outros caminhos são relativos à pasta `MSKIDS` dos dados) |
+| `predio-writer.txt` | estado das salas: `bolsa_aberta=0/1` e `ajuda_desligada=0/1` (o original também guarda, em bytes não localizados) |
 
-Nos `FILR` gravados pelo port, os exemplos do Max vão como no original
-(pastas `SHARED`, `USERS`, `MAX` a partir de `MSKIDS`); um documento da
-criança vai **sem pastas**, só com o nome do arquivo, e é procurado na
-pasta de textos. A Biblioteca lista como documentos da criança os `*.max`
-e os `texto-*.txt` (não o `ultimo.*`).
+Biblioteca (`scenes/writer_library.rs`): lista os `*.MAX` da pasta do
+usuário (`store::list`) e os exemplos do Max; a parede vai nos `FILR` 1–4
+pelas mesmas funções (`prefs::library`, `wall_doc`, `set_slot`, `save`) e
+abrir um documento grava o `FILR 0` (`prefs::remember_last`). A prévia de
+impressão grava a folha mandada ao `lp` como
+`impressao-AAAAMMDD-HHMMSS.png` na pasta do usuário.

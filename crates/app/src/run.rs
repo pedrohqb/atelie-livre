@@ -1,7 +1,7 @@
 //! Laço principal com a SDL3: janela, ampliação, eventos e execução dos efeitos.
 
 use crate::audio::Mixer;
-use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, texts_dir, users_dir};
+use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, users_dir};
 use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef, Program};
 use engine::scene::{CwScene, Effect, Input, Key, MouseButton, Scene, SceneId};
@@ -10,7 +10,7 @@ use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::writer_ideas::{IdeaMachine, PictureBoard};
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
-    Writer,
+    Writer, WriterPortfolio,
 };
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
@@ -21,6 +21,7 @@ use sdl3::pixels::{Color, PixelFormat};
 use sdl3::render::ScaleMode;
 use sdl3::surface::Surface;
 use sdl3::sys::render::SDL_RendererLogicalPresentation;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const FRAME_TIME: Duration = Duration::from_micros(16_667);
@@ -44,6 +45,19 @@ impl UserContext {
         self.user.as_deref().unwrap_or(DEFAULT_USER)
     }
 
+    /// Pasta do usuário (os documentos do Writer).
+    fn folder(&self) -> Option<PathBuf> {
+        Some(users_dir()?.join(self.name()))
+    }
+
+    /// Nome completo do cadastro (o autor dos documentos do Writer).
+    fn author(&self) -> String {
+        users_dir()
+            .and_then(|d| engine::users::load(&d, self.name()))
+            .map(|p| format!("{} {}", p.nome, p.sobrenome).trim().to_string())
+            .unwrap_or_else(|| self.name().to_string())
+    }
+
     /// Bicho preferido do cadastro, para a pasta de trabalhos.
     fn animal(&self) -> Option<usize> {
         let u = self.user.as_deref()?;
@@ -64,7 +78,8 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     let room = |floor| {
         Box::new(
             Room::for_program(p, floor, cfg.click_sound.clone(), pictures(), assets)
-                .with_user(user.name(), assets),
+                .with_user(user.name(), assets)
+                .with_users_dir(users_dir(), assets),
         )
     };
     let entry = || {
@@ -80,10 +95,10 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
             Box::new(Paint::new_blank(drawings_dir(), assets).with_user(user.name()))
         }
         SceneId::Gallery | SceneId::Cw(CwScene::Library) => {
-            // a Biblioteca do Writer mostra os documentos da pasta de textos
+            // a Biblioteca do Writer mostra os documentos da pasta do usuário
             let dir = match p {
                 Program::Artist => drawings_dir(),
-                Program::Writer => texts_dir(),
+                Program::Writer => user.folder(),
             };
             Box::new(
                 GalleryRoom::for_program(p, cfg.click_sound.clone(), dir, assets)
@@ -110,7 +125,14 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::BookStory | SceneId::Cw(CwScene::BookStory) => {
             Box::new(Story::for_program(p, cfg.click_sound.clone(), assets).over_room())
         }
-        SceneId::Portfolio | SceneId::Cw(CwScene::Portfolio) => Box::new(
+        SceneId::Cw(CwScene::Portfolio) => Box::new(WriterPortfolio::new(
+            cfg.click_sound.clone(),
+            users_dir(),
+            user.name(),
+            user.animal(),
+            assets,
+        )),
+        SceneId::Portfolio => Box::new(
             GalleryRoom::portfolio_for_program(p, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), user.animal()),
         ),
@@ -122,10 +144,18 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         }
         SceneId::Browser => Box::new(Browser::new()),
         SceneId::WriterSplash => Box::new(Splash::writer(cfg.click_sound.clone())),
-        SceneId::Writer => Box::new(Writer::new(texts_dir(), assets)),
-        // TODO(office): abrir com um documento em branco quando o Escritório
-        // tiver o construtor; por enquanto o editor abre o último documento
-        SceneId::Cw(CwScene::NewDocument) => Box::new(Writer::new(texts_dir(), assets)),
+        // os documentos ficam na pasta do usuário, como no original
+        // (`USERS\<APELIDO>\*.MAX`)
+        SceneId::Writer => Box::new(
+            Writer::new(user.folder(), assets)
+                .with_author(&user.author())
+                .with_user(user.name()),
+        ),
+        SceneId::Cw(CwScene::NewDocument) => Box::new(
+            Writer::new_blank(user.folder(), assets)
+                .with_author(&user.author())
+                .with_user(user.name()),
+        ),
         SceneId::Cw(CwScene::IdeaMachine) => Box::new(IdeaMachine::new(
             users_dir().as_deref(),
             user.name(),
@@ -136,11 +166,10 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
             user.name(),
             assets,
         )),
-        // TODO(office): o Escritório integrado pega o conteúdo com
-        // `writer::ideas::session::take_story(user)` (sentença ou figura,
-        // barra de status "Oficina de Idéias", balão 0faa[13]/[16], volta à
-        // Oficina); por enquanto o editor atual abre sem ele
-        SceneId::Cw(CwScene::IdeaStory(_)) => Box::new(Writer::new(texts_dir(), assets)),
+        // a história começada na Oficina de Idéias (deixada na sessão)
+        SceneId::Cw(CwScene::IdeaStory(_)) => Box::new(
+            Writer::idea_story(user.folder(), user.name(), assets).with_author(&user.author()),
+        ),
     }
 }
 
@@ -222,7 +251,14 @@ fn map_key(k: Keycode) -> Key {
         Keycode::Backspace => Key::Backspace,
         Keycode::Delete => Key::Delete,
         Keycode::F12 => Key::F12,
+        Keycode::O => Key::O,
         Keycode::Q => Key::Q,
+        Keycode::A => Key::A,
+        Keycode::C => Key::C,
+        Keycode::S => Key::S,
+        Keycode::V => Key::V,
+        Keycode::X => Key::X,
+        Keycode::Z => Key::Z,
         _ => Key::Other,
     }
 }
@@ -340,7 +376,14 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         Some(None) => return fail("cena desconhecida em --scene"),
         None => first_scene(args.browser, cfg.program),
     };
-    let mut stack: Vec<Box<dyn Scene>> = vec![make_scene(first, &cfg, &user, &assets)];
+    let first_scene: Box<dyn Scene> = match &args.open {
+        Some(path) => match Writer::open(user.folder(), path, &assets) {
+            Ok(w) => Box::new(w.with_author(&user.author()).with_user(user.name())),
+            Err(e) => return fail(&e),
+        },
+        None => make_scene(first, &cfg, &user, &assets),
+    };
+    let mut stack: Vec<Box<dyn Scene>> = vec![first_scene];
     let mut frame = Frame::new(SCREEN_W, SCREEN_H);
     let mut cursor_ref: Option<CursorRef> = None;
     let mut cursor: Option<Cursor> = None;
@@ -499,7 +542,13 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     }
                     let top = stack.last_mut().expect("cena");
                     print_logs(top.leave());
-                    *top = Box::new(Writer::open_document(texts_dir(), &path, &assets));
+                    *top = match Writer::open(user.folder(), &path, &assets) {
+                        Ok(w) => Box::new(w.with_author(&user.author()).with_user(user.name())),
+                        Err(e) => {
+                            eprintln!("atelie-livre: {e}");
+                            make_scene(SceneId::Writer, &cfg, &user, &assets)
+                        }
+                    };
                 }
                 Effect::Back => {
                     if let Some(m) = mixer.as_mut() {

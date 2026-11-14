@@ -15,11 +15,11 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 |---|---|
 | `mod.rs` | `Writer` (a cena): escolhe a ferramenta, repassa os eventos, desenha na ordem certa; `Tools` (uma instância de cada ferramenta) |
 | `tools.rs` | `ToolId` (as 10 ferramentas), tabela `TOOLS` (figuras inativa/ativa, som, balão), trait `ToolStrip`, `Cx`, `Pic`, `StripButton` e ajudantes |
-| `editor.rs` | `Editor`: documento, página, digitação, desfazer, adesivos dentro do texto, gravação |
+| `editor.rs` | `Editor`: documento (modelo rico), seleção, digitação, Ovo de 20 ações, área de transferência, objetos soltos, diagramação com as fontes do Writer, vista e rolagem, arquivos `.MAX` (API no fim deste documento) |
 | `chrome.rs` | moldura, barra de ferramentas (aba da ativa), barra de baixo |
 | `mczee.rs` | balões automáticos, menu de 8 botões, ligar/desligar a ajuda, Varinha |
 | `cursors.rs` | nomes dos `CURSOR` 0001–0023 e o `Pointer` (emite `SetCursor` só quando muda) |
-| `exit.rs` | porta Saída |
+| `exit.rs` | porta Saída (fechada `023d`, aberta `0241`); o fluxo "Epa!" → versões → nome → sala fica no `mod.rs` |
 | `word_strip.rs` | Palavra |
 | `stickers.rs` | Seleciona-adesivos |
 | `sounds.rs` | Seleciona-sons |
@@ -31,10 +31,11 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `viewer.rs` | Visor de páginas |
 | `print.rs` | Imprimir |
 
-O `Editor` ainda usa o modelo provisório (`crate::writer::legacy`). O modelo
-rico (`crates/engine/src/writer/{doc,object,layout,selection,undo}.rs`,
-[`creative-writer-modelo.md`](creative-writer-modelo.md)) entra trocando o
-miolo do `editor.rs`; as ferramentas continuam recebendo `&mut Editor`.
+O `Editor` usa o modelo rico (`crates/engine/src/writer/{doc,object,layout,
+selection,undo,fonts,convert,store}.rs`,
+[`creative-writer-modelo.md`](creative-writer-modelo.md)); as ferramentas
+recebem `&mut Editor` e programam contra a API descrita no fim deste
+documento.
 
 ## Contrato de uma ferramenta (`ToolStrip`)
 
@@ -56,10 +57,13 @@ Cada arquivo de ferramenta define uma `struct` com `Default` e implementa
 | `draw_front(ed, f, a)` | por cima da página (tiras de filme, listas, painéis) |
 | `cursor(ed, x, y)` | cursor do mouse; `None` = padrão (texto na página, mão no resto) |
 
-Ordem de um clique no `Writer`: balões e menu do McZee → ferramenta modal →
-barra de ferramentas → nicho do McZee → porta → setas da barra de baixo →
-`press` da ferramenta ativa → clique na página põe o ponto de inserção.
-Teclas: `key` da ferramenta, senão o editor (sem Ctrl). Desenho: moldura,
+Ordem de um clique no `Writer`: "Epa!" aberto (modal: só as bolinhas) →
+campo de nome aberto (clicar fora conclui) → balões e menu do McZee →
+ferramenta modal → barra de ferramentas → nicho do McZee → porta → título
+da barra de baixo (campo de nome) → setas da barra de baixo → `press` da
+ferramenta ativa → clique na página põe o ponto de inserção (com Shift
+estende a seleção; arrastar seleciona). Teclas: campo de nome, senão `key`
+da ferramenta, senão os atalhos com Ctrl, senão o editor. Desenho: moldura,
 barra, McZee, porta, `draw_strip`, página, barra de baixo, `draw_front`,
 balões e menu do McZee.
 
@@ -116,10 +120,11 @@ McZee no nicho `0235`/`0237` (536,47); porta `023d`/`023f` (581,16).
 
 ## Faixas (figuras e balões)
 
-Estado atual: a Palavra (listas de tamanho, cor, estilo e alinhamento),
-os Adesivos (rolos e tira de filme, adesivo dentro do texto), o Ovo (um
-nível, ícone e DESFAZER/REFAZER alternam) e a explosão dos Re-movedores
-funcionam; as outras faixas são só desenhadas, com o interruptor trocando de
+Estado atual: a Palavra (listas de letra, tamanho, cor, estilo e
+alinhamento, aplicadas à seleção ou ao estilo de digitação), os Adesivos
+(rolos e tira de filme; o adesivo vira objeto solto no ponto de inserção),
+o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos) e a explosão dos
+Re-movedores funcionam; as outras faixas são só desenhadas, com o interruptor trocando de
 página na Preparação da página e no Visor. Botão sem função: som `0233`,
 balão da opção e "ainda não disponível" no registro.
 
@@ -142,10 +147,57 @@ balão da opção e "ainda não disponível" no registro.
 
 Três caixas brancas em y 461..474: x 29..168 (cabeça vermelha `03c3`/`03c9`
 em (33,464) e "Escritório"), 194..445 (nome do documento, "Documento Novo"
-sem nome) e 471..610 (ícone de páginas `0c37`/`0c39` em (475,463), "Pág. N",
-setas ▲ `02db` (543,463), ▼ `02df` (560,463), ◀ `0819` (577,463), ▶ `0871`
-(594,463)). Hoje ▲▼ trocam de página (sons `02bc`/`02bd`; a primeira seta usada
-abre `0faa[11]`); no original rolam a vista (tarefa do Visor).
+sem nome; clicar vira campo de nome, som `0232`, balão `0faa[14]`) e
+471..610 (ícone de páginas `0c37`/`0c39` em (475,463), "Pág. N" = folha no
+meio da vista, setas ▲ `02db` (543,463), ▼ `02df` (560,463), ◀ `0819`
+(577,463), ▶ `0871` (594,463)). As setas rolam a vista meia altura
+(`ARROW_STEP`, provisório) com os sons `02bc`..`02bf`; a primeira seta usada
+abre `0faa[11]`. "Todas as páginas" é tarefa do Visor.
+
+## Página (Visão normal)
+
+A folha tem o tamanho do documento em pontos (595 × 792 no documento novo)
+e, na Visão normal, 1 ponto = 1 pixel: a folha começa em (21,107) na tela
+(`editor::ORIGIN`), e o texto, com as margens de 72 pontos, em (93,179),
+como no original (`office.md` §2, medido em `w26_01_typed`). A vista
+(`PAGE`, x 23..615, y 108..456) mostra a pilha de folhas com `PAGE_GAP` (8,
+não medido) entre elas, fundo cinza 140; o ponto de inserção é uma linha
+preta de 1 px da altura da linha (`office_95_desfazer`). Ao editar ou mover
+o cursor, a vista rola o mínimo para ele aparecer.
+
+O texto é desenhado com `WriterFonts` (substitutas livres das TrueType do
+produto, ver `writer-fontes.md`), sem suavizar; os objetos com o desenho do
+metarquivo (`PICT`; encolhidos como o `BLACKONWHITE` do GDI, o branco
+transparente); as figuras do Maçã de pé na base com 4 pontos de cada lado;
+o marca-texto na altura da linha; a seleção em vídeo inverso. Ainda não
+desenhados: Splots (`SPLE`, retângulo cinza no lugar), bordas e fundos de
+página (W14/C7/C8) e os efeitos animados (C4).
+
+## Saída, salvar, NOVO, sair (W21)
+
+- **Porta Saída**: abre (`0241`), sons `02d6`+`02fe`, "Epa!" `0203[0]` (o
+  `ExitDialog` da pintura com a figura `02cf` do `WRITER.PIC`, caixa da
+  largura do registro centrada em (320,240), como em `office_134_saida`).
+  "Salvar este trabalho": sem arquivo, o título vira campo de nome e Return
+  (ou clicar fora) grava; com arquivo, `0202[3]` ("Vou salvar “@” agora":
+  as duas versões / só a nova / ainda não). "Jogar fora": nada é gravado.
+  Depois vai à sala Escritório (`SceneId::Studio.in_program(Writer)`). "Ops!"
+  fecha o diálogo e a porta.
+- **SALVAR** (menu do McZee), **Ctrl+S** e clique no título: campo de nome;
+  se o documento já tem arquivo, Return pergunta `0202[3]`.
+- **NOVO** (menu) e **Ctrl+Q**: com mudanças, o "Epa!" (sem abrir a porta);
+  depois, documento em branco ou sair do programa.
+- Fechar a janela sem escolher grava num `KIDSnnnn.MAX` (ou no arquivo do
+  documento). Arquivos e nomes: `docs/formats/arquivos-do-port.md`.
+
+## Teclado
+
+Letras, Enter, Backspace, Delete; ←→↑↓, Home/End (da linha), Ctrl+←→
+(palavras), Ctrl+Home/End (documento), PageUp/PageDown (rolam a vista); com
+Shift, estendem a seleção. Ctrl+X/C/V (área de transferência interna; sons
+`022f`/`0288`/`028d`, balões `0fa3[8]`/`[12]`/`[14]`), Ctrl+Z (alterna
+desfazer/refazer, sons `020e`/`0217`), Ctrl+A (tudo), Ctrl+S (salvar),
+Ctrl+Q (sair, com o "Epa!" se houver mudanças).
 
 ## McZee
 
@@ -163,7 +215,8 @@ abre `0faa[11]`); no original rolam a vista (tarefa do Visor).
   McZee `041b` (desligar: `0faa[1]`), NOVO `084d`, maleta `044f`, SALVAR
   `08af`, Caderno de Idéias `0c01`, Varinha `0457`, cara de sol `03f3` (piada do
   `WHAT 0201` do Writer), livro verde `0453` (história). Escolher toca `022d`.
-  NOVO, maleta, SALVAR e Caderno ainda só registram "ainda não disponível".
+  NOVO e SALVAR funcionam (ver "Saída, salvar…"); maleta e Caderno ainda
+  só registram "ainda não disponível".
 - **Ligar/desligar**: "É, por favor dê o fora" desliga os balões automáticos;
   com a ajuda desligada o nicho pergunta `0faa[0]` ("Sim, por favor!" religa).
 - **Varinha**: cursor de varinha (`000f`) até escolher uma ferramenta; clique
@@ -179,3 +232,80 @@ despertador `0011`, mãos `0015`–`0018`, documento com figura `0019`, rolo
 `001d`, dedo `0023`. Hoje: texto sobre a página (sem lista aberta), varinha
 com a Varinha na mão, mão padrão no resto; cada ferramenta pode pedir o seu
 em `ToolStrip::cursor`.
+
+## API do `Editor` (para as ferramentas)
+
+As ferramentas recebem `&mut Editor` (`scenes/writer/editor.rs`) nos
+ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
+[`creative-writer-modelo.md`](creative-writer-modelo.md) (`crate::writer::
+{doc, object, layout, selection, undo}`); unidades em pontos da folha.
+
+### Ler
+
+| chamada | o quê |
+|---|---|
+| `ed.doc()` | o `doc::Document` (parágrafos, objetos, `dop`, fontes) |
+| `ed.layout()` | `Rc<layout::Layout>` diagramado com as fontes do Writer (guardado até a próxima mudança): linhas, folhas, `caret`, `pos_at`, `selection_rects`… |
+| `ed.sel` | `selection::Selection` (âncora e cursor; `range()`, `is_empty()`) |
+| `ed.typing_props()` | `CharProps` do que for digitado agora (inclui o estilo escolhido nas listas sem seleção) |
+| `ed.undo` | `UndoStack<Snapshot>`: `eggs()`, `undo_len()`, `redo_len()`, `can_undo()` |
+| `ed.clipboard` | área de transferência interna (`Clip::Text` / `Clip::Object`) |
+| `ed.extra` | `convert::MaxExtra`: cópias dos objetos (`object(ObjRef)` → `OwnedChunk`), sons em palavras, `add` (título, autor, projeto, senha) |
+| `ed.fonts()` | `WriterFonts` (medir e desenhar trechos) |
+| `ed.rolls` | rolos de adesivos das bibliotecas do Writer |
+| `ed.title()`, `ed.file()`, `ed.dir()`, `ed.changed()` | título, arquivo `.MAX`, pasta do usuário, mudado desde a gravação |
+| `ed.picture(&obj)` | desenho do objeto no tamanho atual (`Rc<Image>`, branco = transparente) |
+
+### Coordenadas e vista
+
+| chamada | o quê |
+|---|---|
+| `ed.to_page(x, y)` | ponto da tela → `PagePoint { page, x, y }` da folha (`None` fora das folhas) |
+| `ed.to_screen(page, x, y)` / `ed.page_origin(page)` | folha → tela |
+| `ed.object_at(x, y)` | objeto sob o ponto da tela (o de cima) |
+| `ed.scroll`, `ed.scroll_by(dx, dy)` | rolagem da vista (setas, Visor) |
+| `ed.page()`, `ed.show_page(n)` | folha no meio da vista; rolar até o alto da folha `n` |
+| `ed.follow_caret()` | rolar o mínimo para o cursor aparecer |
+| `ed.draw_sheet(f, a, page, x, y, seleção)` | desenha a folha inteira em tamanho real em qualquer quadro (Visor: reduza o quadro; Imprimir: monte a folha) |
+| `ed.render_page(a, page)` | a folha num `Frame` próprio |
+| `ed.thumbnail()` | miniatura da folha 1 (`pkbm::Bitmap` 4 bits, a do `THMB`) |
+
+### Mudar (cada uma é uma ação do Ovo)
+
+| chamada | o quê |
+|---|---|
+| `ed.apply_char(CharChange)` | Palavra: na seleção; sem seleção, no estilo de digitação |
+| `ed.apply_para(ParaChange)` | parágrafos tocados pela seleção (ou o do cursor) |
+| `ed.apply_dop(\|dop\| …)` | Preparação da página (margens, colunas, alto/largo, número, borda) |
+| `ed.add_object(obj, Some(chunk))` | põe um objeto solto, guardando a cópia do conteúdo com um número livre (`obj.object` é reescrito) |
+| `ed.add_sticker(rolo, item, folha, x, y)` | adesivo de clip-art em tamanho natural, com o contorno (`TWPB`) calculado |
+| `ed.insert_sticker(rolo, item)` | o mesmo, no ponto de inserção |
+| `ed.add_picture(&img, título, folha, x, y)` | imagem própria (Cavalete, Cachorrinho, Caderno) como objeto: `PICT` com `META` (DIB de 24 bits) e `TWPB` |
+| `ed.remove_object(k)` | tira o objeto `k` |
+| `ed.clear_all()` | Jogar tudo fora (texto e objetos) |
+| `ed.cut()`, `ed.copy()`, `ed.paste()` | texto da seleção ↔ área de transferência |
+| `ed.edit(\|doc, sel\| …)` | qualquer outra ação: guarda o estado, roda, rediagrama e rola até o cursor |
+| `ed.record()` + `ed.doc_mut()` + `ed.after_edit()` | o mesmo em três passos (para ações espalhadas por vários eventos, como um arrasto: `record` no `press`, `doc_mut` no `motion`, `after_edit` no `release`) |
+| `ed.type_text(s)`, `ed.key(k, ctrl, shift)` | digitação e teclas de edição/movimento |
+| `ed.undo_step()`, `ed.redo_step()`, `ed.toggle_undo()` | DESFAZER, REFAZER, Ctrl+Z |
+| `ed.press_page`, `ed.drag_page`, `ed.release_page` | clique, arrasto e soltar na página (seleção) |
+
+Regras: nunca guarde índices de linha ou caixas da `layout()` entre ações
+(a diagramação é refeita); mude o documento só por `doc_mut()` ou pelos
+métodos acima (`doc()` é só leitura); objetos novos que citam um chunk
+precisam da cópia em `ed.extra` (use `add_object` com o chunk) para irem ao
+`.MAX`; ao apagar objetos use `remove_object` (mantém as listas do
+`MaxExtra` alinhadas).
+
+### Arquivos
+
+`ed.open(caminho)`, `ed.new_document()`, `ed.save_as(título, autor,
+manter_antigo)`, `ed.save_auto()`, `ed.save_text()`, `ed.discard()`. A
+cena: `Writer::new(pasta, a)` (último documento), `Writer::new_blank(pasta,
+a)` (`CwScene::NewDocument`), `Writer::open(pasta, caminho, a)` (e o
+`--open ARQ.MAX` do app, para testes), `Writer::idea_story(pasta, apelido,
+a)` (`CwScene::IdeaStory`: a história da Oficina de Idéias, ver
+`creative-writer-ideias.md`), `.with_author(nome)`, `.with_user(apelido)`
+(a área de transferência da sessão, que o Caderno de Idéias também usa:
+o Ctrl+V cola de lá o que veio do Caderno). `ed.open_story(história)` abre
+o documento de uma `IdeaStory`.

@@ -1,6 +1,6 @@
 //! Núcleo do Escritório do Creative Writer.
 //!
-//! Modelo rico (biblioteca, ainda não ligada à cena; ver
+//! Modelo do documento, usado pela cena `scenes/writer` (ver
 //! `docs/telas/creative-writer-modelo.md`):
 //!
 //! - [`doc`]: o documento — parágrafos ([`doc::ParaProps`]), caracteres
@@ -17,22 +17,27 @@
 //!   de texto abstrata ([`layout::Measure`]);
 //! - [`selection`]: seleção, movimentos com Shift e área de transferência
 //!   interna;
-//! - [`undo`]: a pilha de 20 ações do Ovo.
-//!
-//! O modelo provisório que a cena `scenes/writer` usa hoje fica em
-//! [`legacy`] e é reexportado aqui com os nomes antigos até a integração.
+//! - [`undo`]: a pilha de 20 ações do Ovo;
+//! - [`convert`]: documento ↔ `.MAX` (`formats::max`), com o que o modelo
+//!   não guarda em [`convert::MaxExtra`];
+//! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
+//!   "Salvar como texto".
+//! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
 
+pub mod assistant;
+pub mod assistant_banner;
+pub mod assistant_card;
+pub mod assistant_news;
+pub mod borders;
+pub mod convert;
 pub mod dict;
 pub mod doc;
+pub mod fold_figure;
 pub mod fonts;
 pub mod ideas;
 pub mod layout;
-pub mod legacy;
 pub mod object;
+pub mod prefs;
 pub mod selection;
 pub mod store;
 pub mod undo;
-
-// Nomes antigos, usados pela cena atual (`crate::writer::Document` etc.).
-pub use legacy::doc::{Align, Cursor, Document, History, Item, Paragraph, Size, Sticker, Style};
-pub use legacy::layout::{FontSet, Layout, Line};

@@ -23,10 +23,6 @@
 use super::object::{FloatObject, ObjRef};
 use formats::Rgb;
 
-/// Trecho do modelo provisório, ainda usado pelos testes da cena atual.
-#[doc(hidden)]
-pub use super::legacy::doc::Run;
-
 const fn rgb(c: u32) -> Rgb {
     Rgb {
         r: (c >> 16) as u8,
@@ -408,9 +404,9 @@ pub enum Spacing {
     Normal,
     /// "Começa uma nova página" (`0x1f`).
     NewPage,
-    /// Espaço extra entre as linhas (`0x1b`).
+    /// Espaço extra entre as linhas: entrelinha dupla (`0x1c`).
     ExtraLines,
-    /// Espaço extra depois do parágrafo (`0x1c`).
+    /// Espaço extra depois do parágrafo: meia linha (`0x1b`).
     ExtraAfter,
 }
 
@@ -425,9 +421,9 @@ pub struct ParaProps {
     pub align: Align,
     /// `0x1a`.
     pub indent: Indent,
-    /// `0x1b`: espaço extra entre as linhas.
+    /// `0x1c`: espaço extra entre as linhas (entrelinha dupla).
     pub line_spacing: bool,
-    /// `0x1c`: espaço extra depois do parágrafo.
+    /// `0x1b`: espaço extra depois do parágrafo (meia linha).
     pub space_after: bool,
     /// `0x1d`: capitular, com o número de linhas.
     pub drop_cap: Option<u8>,

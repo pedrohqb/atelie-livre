@@ -688,7 +688,8 @@ pub fn read(data: &[u8]) -> Result<Document> {
     let objects = f
         .chunks
         .iter()
-        .filter(|c| !KNOWN.contains(&&c.tag.0))
+        // `FRAM n` com n ≠ 0 é a cópia das molduras de um fundo (`IBGF`)
+        .filter(|c| !KNOWN.contains(&&c.tag.0) || (c.tag.0 == *b"FRAM" && c.id != 0))
         .map(OwnedChunk::from)
         .collect();
     let selection = match part(b"SELN") {
@@ -731,7 +732,7 @@ pub fn read(data: &[u8]) -> Result<Document> {
     })
 }
 
-fn read_frames(b: &[u8], base: usize) -> Result<Vec<Frame>> {
+pub(crate) fn read_frames(b: &[u8], base: usize) -> Result<Vec<Frame>> {
     let bad = |at: usize| {
         err(
             base + at,

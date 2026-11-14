@@ -293,6 +293,9 @@ pub type LoadWallFn = fn(Option<&Path>, &Assets, &[Item], usize) -> Vec<Option<u
 /// Grava a parede (o trabalho de cada moldura).
 pub type SaveWallFn = fn(Option<&Path>, &Assets, &[Option<&Item>]) -> Result<(), String>;
 
+/// Abre um trabalho: item, pasta, recursos, paleta e programa da sala.
+pub type OpenFn = fn(&Item, Option<&Path>, &Assets, &[Rgb], Program) -> Vec<Effect>;
+
 /// Os trabalhos mostrados na sala e o que se faz com eles.
 pub struct Works {
     /// Trabalhos da criança (mais recentes primeiro) e os exemplos, com as
@@ -303,7 +306,7 @@ pub struct Works {
     /// Grava as molduras.
     pub save_wall: SaveWallFn,
     /// Abre o trabalho (efeitos da troca de tela).
-    pub open: fn(&Item, Option<&Path>, &[Rgb], Program) -> Vec<Effect>,
+    pub open: OpenFn,
     /// Monta a prévia de impressão.
     pub print: PrintFn,
     /// Apaga o arquivo e os que andam com ele.
@@ -596,7 +599,7 @@ fn save_wall_file(dir: Option<&Path>, _: &Assets, wall: &[Option<&Item>]) -> Res
 
 /// Abre o quadro na pintura: ele vira o último desenho, com o seu título
 /// no rótulo (ou "Quadro Novo", se não tiver um).
-fn open_drawing(it: &Item, dir: Option<&Path>, pal: &[Rgb], p: Program) -> Vec<Effect> {
+fn open_drawing(it: &Item, dir: Option<&Path>, _: &Assets, pal: &[Rgb], p: Program) -> Vec<Effect> {
     let Some(dir) = dir else {
         return Vec::new();
     };
@@ -1141,11 +1144,11 @@ impl GalleryRoom {
     }
 
     /// Abre o trabalho no programa (pintura ou área de escrita).
-    fn open(&self, i: usize) -> Vec<Effect> {
+    fn open(&self, i: usize, assets: &Assets) -> Vec<Effect> {
         let Some(it) = self.items.get(i) else {
             return Vec::new();
         };
-        (self.spec.works.open)(it, self.dir.as_deref(), &self.pal, self.program)
+        (self.spec.works.open)(it, self.dir.as_deref(), assets, &self.pal, self.program)
     }
 
     /// Trabalho solto na impressora: a prévia com o McZee.
@@ -1441,7 +1444,7 @@ impl GalleryRoom {
             fx.extend(sounds);
             match action {
                 Some(Action::Close) => self.close_folder(fx),
-                Some(Action::Open(i)) => fx.extend(self.open(i)),
+                Some(Action::Open(i)) => fx.extend(self.open(i, assets)),
                 None => {}
             }
             return;
@@ -1541,7 +1544,7 @@ impl GalleryRoom {
             // clique: duplo abre o trabalho; simples, na parede, pergunta
             if self.clicks.click(d.from, self.clock, (x, y)) {
                 self.balloon = None;
-                fx.extend(self.open(i));
+                fx.extend(self.open(i, assets));
                 return;
             }
             if let Source::Wall(k) = d.from {
@@ -1585,7 +1588,7 @@ impl GalleryRoom {
                     None => self.ask(Ask::Welcome, rec.welcome, assets),
                 }
             }
-            (Ask::WorkOn(i), 0) => fx.extend(self.open(i)),
+            (Ask::WorkOn(i), 0) => fx.extend(self.open(i, assets)),
             (Ask::HelpOff, 0) => self.help_off = true,
             (Ask::HelpOff, 1) => self.ask(Ask::Welcome, rec.welcome, assets),
             (Ask::HelpOn, 0) => {
@@ -2432,15 +2435,18 @@ mod tests {
         Effect::PlaySound(SoundRef::Snd(Program::Writer, id))
     }
 
-    /// `n` textos do Escritório, do mais novo (0) ao mais velho.
+    /// Pasta dos usuários com `n` documentos da "ana" (`TEXTO0.MAX`…, do
+    /// mais novo ao mais velho, títulos "Texto 0"…).
     fn lib_setup(n: u64) -> (tempfile::TempDir, tempfile::TempDir, Assets) {
         let (d, a) = empty_assets();
-        let dir = tempfile::tempdir().unwrap();
+        let users = tempfile::tempdir().unwrap();
+        let dir = users.path().join("ana");
+        std::fs::create_dir_all(&dir).unwrap();
         for k in 0..n {
-            let p = dir
-                .path()
-                .join(format!("texto-2026110{}-100000.txt", k + 1));
-            std::fs::write(&p, format!("Texto {k}\n")).unwrap();
+            let p = dir.join(format!("TEXTO{k}.MAX"));
+            let mut doc = formats::max::Document::from_text(&format!("Texto número {k}"));
+            doc.add.title = format!("Texto {k}");
+            std::fs::write(&p, formats::max::write(&doc)).unwrap();
             let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_800_000_000 - 60 * k);
             std::fs::File::options()
                 .write(true)
@@ -2449,11 +2455,12 @@ mod tests {
                 .set_modified(t)
                 .unwrap();
         }
-        (d, dir, a)
+        (d, users, a)
     }
 
-    fn library(dir: &Path, a: &Assets) -> GalleryRoom {
-        let mut g = GalleryRoom::with_spec(&WRITER_LIBRARY, None, Some(dir.to_path_buf()), a);
+    /// A Biblioteca da "ana" (pasta `users/ana`).
+    fn library(users: &Path, a: &Assets) -> GalleryRoom {
+        let mut g = GalleryRoom::with_spec(&WRITER_LIBRARY, None, Some(users.join("ana")), a);
         g.balloon = None;
         g
     }
@@ -2469,11 +2476,11 @@ mod tests {
 
     #[test]
     fn writer_library_four_frames_and_page_thumbs() {
-        let (_d, dir, a) = lib_setup(5);
-        let g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(5);
+        let g = library(users.path(), &a);
         assert_eq!(g.items().len(), 5);
         assert_eq!(g.wall(), [Some(0), Some(1), Some(2), Some(3)]);
-        assert_eq!(g.items()[0].name, "Texto 01/11 10:00");
+        assert_eq!(g.items()[0].name, "Texto 0");
         // a página (108×144) reduzida para o quadrado de 100×100
         let t = g.items()[0].thumb();
         assert_eq!((t.w, t.h), (75, 100));
@@ -2487,39 +2494,44 @@ mod tests {
         );
     }
 
-    /// A parede vai para os `FILR` 1–4 do `~MAXUSER.INF`, mantendo o lugar
-    /// 0 (Escritório) e as fontes gravadas antes.
+    /// A parede vai para os `FILR` 1–4 do `~MAXUSER.INF` do usuário
+    /// (`writer::prefs`), mantendo o lugar 0 (Escritório) e as fontes.
     #[test]
     fn writer_library_wall_persists_in_maxuser_inf() {
-        let (_d, dir, a) = lib_setup(5);
+        use crate::writer::prefs;
+        let (_d, users, a) = lib_setup(5);
         let mut p = formats::maxprefs::UserPrefs::new();
         p.wall.push(formats::maxprefs::WallDoc {
             slot: 0,
             kind: "kwMAX".into(),
             title: "Último".into(),
-            dirs: Vec::new(),
-            file: "texto-20261104-100000.txt".into(),
+            dirs: vec!["USERS".into(), "ANA".into()],
+            file: "TEXTO4.MAX".into(),
         });
         p.fonts.push("Arial".into());
-        lib::write_prefs(dir.path(), &p).unwrap();
-        // sem FILR 1–4 gravados: preenchida na ordem
-        let mut g = library(dir.path(), &a);
+        prefs::save(users.path(), "ana", &p).unwrap();
+        // sem FILR 1–4 que existam: preenchida na ordem
+        let mut g = library(users.path(), &a);
         assert_eq!(g.wall(), [Some(0), Some(1), Some(2), Some(3)]);
         lib_drag(&mut g, 0, lib_center(2), &a);
         assert_eq!(g.wall(), [Some(2), Some(1), Some(0), Some(3)]);
-        let back = lib::read_prefs(dir.path()).unwrap();
+        let back = prefs::load(Some(users.path()), "ana", a.data_dir());
         assert_eq!(back.wall_slot(0).unwrap().title, "Último");
         assert_eq!(back.fonts, ["Arial"]);
-        assert_eq!(back.wall_slot(1).unwrap().file, "texto-20261103-100000.txt");
-        assert!(back.wall_slot(3).unwrap().dirs.is_empty());
-        let g2 = library(dir.path(), &a);
+        let s1 = back.wall_slot(1).unwrap();
+        assert_eq!(
+            (s1.file.as_str(), s1.title.as_str()),
+            ("TEXTO2.MAX", "Texto 2")
+        );
+        assert_eq!(back.wall_slot(3).unwrap().dirs, ["USERS", "ANA"]);
+        let g2 = library(users.path(), &a);
         assert_eq!(g2.wall(), [Some(2), Some(1), Some(0), Some(3)]);
     }
 
     #[test]
     fn writer_library_double_click_opens_in_the_office() {
-        let (_d, dir, a) = lib_setup(2);
-        let mut g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(2);
+        let mut g = library(users.path(), &a);
         let (x, y) = lib_center(1);
         let first = g.update(&[down(x, y), up(x, y)], 0.05, &a);
         assert!(first.contains(&wsnd(lib::sfx::PICK)));
@@ -2530,13 +2542,17 @@ mod tests {
         assert_eq!((b.x, b.y), (48, 29));
         let fx = g.update(&[down(x, y), up(x, y)], 0.1, &a);
         let path = g.items()[1].path.clone();
-        assert!(fx.contains(&Effect::OpenDocument(path)), "{fx:?}");
+        assert!(fx.contains(&Effect::OpenDocument(path.clone())), "{fx:?}");
+        // e ele vira o último documento (o quadro do Escritório)
+        let (d, f) =
+            crate::writer::prefs::last_document(Some(users.path()), "ana", a.data_dir()).unwrap();
+        assert_eq!((f, d.title.as_str()), (path, "Texto 1"));
     }
 
     #[test]
     fn writer_library_printer_opens_the_writer_preview() {
-        let (_d, dir, a) = lib_setup(1);
-        let mut g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(1);
+        let mut g = library(users.path(), &a);
         let fx = lib_drag(&mut g, 0, (590, 140), &a);
         let p = g.print.as_ref().expect("prévia");
         assert_eq!(p.stage(), super::super::gallery_print::Stage::Ready);
@@ -2550,28 +2566,28 @@ mod tests {
 
     #[test]
     fn writer_library_switch_drawer_and_copy() {
-        let (_d, dir, a) = lib_setup(2);
-        let mut g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(2);
+        let mut g = library(users.path(), &a);
         assert!(!g.drawer_open());
         let fx = g.update(&[down(510, 170), up(510, 170)], 0.1, &a);
         assert!(g.drawer_open());
         assert!(fx.contains(&wsnd(lib::sfx::SWITCH)));
         let rows = lib::DRAWER.rows;
         let row0 = (rows.0 + 40, rows.1 + 5);
-        // o documento já está na pasta de textos: "Já está lá!"
+        // o documento já está na pasta do usuário: "Já está lá!"
         lib_drag(&mut g, 0, row0, &a);
         assert_eq!(g.alert.as_ref().unwrap().kind, Modal::Notice);
         g.update(&[down(5, 470), up(5, 470)], 0.1, &a);
         assert!(g.alert.is_none());
-        // um exemplo copiado para a pasta de textos vira documento da criança
+        // um exemplo copiado para a pasta do usuário vira documento da criança
         let other = tempfile::tempdir().unwrap();
-        let sample = other.path().join("texto-20250101-000000.txt");
-        std::fs::write(&sample, "Do Max").unwrap();
+        let sample = other.path().join("SAMP99.MAX");
+        std::fs::copy(&g.items[1].path, &sample).unwrap();
         g.items[1].path = sample;
         g.items[1].sample = true;
         let fx = lib_drag(&mut g, 1, row0, &a);
         assert!(g.alert.is_none(), "{fx:?}");
-        assert!(dir.path().join("texto-20250101-000000.txt").exists());
+        assert!(users.path().join("ana/SAMP99.MAX").exists());
         assert_eq!(g.items().len(), 3);
         // a segunda unidade (exemplos) é só de leitura
         let row1 = (rows.0 + 40, rows.1 + rows.4 + 5);
@@ -2585,8 +2601,8 @@ mod tests {
 
     #[test]
     fn writer_library_trash_asks_and_deletes() {
-        let (_d, dir, a) = lib_setup(5);
-        let mut g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(5);
+        let mut g = library(users.path(), &a);
         let path = g.wall_path(0).unwrap().to_path_buf();
         let fx = lib_drag(&mut g, 0, (540, 400), &a);
         // no original, só o "EPA!" do Rex (sem o som da lixeira)
@@ -2605,8 +2621,8 @@ mod tests {
     /// Plaqueta de um exemplo: "Você não pode mudar esse título" (`0805[30]`).
     #[test]
     fn writer_library_sample_plate_refuses() {
-        let (_d, dir, a) = lib_setup(1);
-        let mut g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(1);
+        let mut g = library(users.path(), &a);
         g.items[0].sample = true;
         let (x, y) = lib::FRAMES[0];
         let fx = g.update(&[down(x + 50, y + 113), up(x + 50, y + 113)], 0.1, &a);
@@ -2617,8 +2633,8 @@ mod tests {
 
     #[test]
     fn writer_library_lamp_and_welcome_choices() {
-        let (_d, dir, a) = lib_setup(0);
-        let mut g = library(dir.path(), &a);
+        let (_d, users, a) = lib_setup(0);
+        let mut g = library(users.path(), &a);
         let fx = g.update(&[down(520, 60), up(520, 60)], 0.1, &a);
         assert!(fx.contains(&wsnd(lib::sfx::LAMP)));
         assert_eq!(g.alert.as_ref().unwrap().kind, Modal::Quit);
@@ -2650,8 +2666,9 @@ mod tests {
         let Some(a) = crate::scenes::testutil::assets() else {
             return;
         };
-        let dir = tempfile::tempdir().unwrap();
-        let mut g = GalleryRoom::with_spec(&WRITER_LIBRARY, None, Some(dir.path().into()), &a);
+        let users = tempfile::tempdir().unwrap();
+        let mut g =
+            GalleryRoom::with_spec(&WRITER_LIBRARY, None, Some(users.path().join("ana")), &a);
         let names: Vec<String> = g
             .wall()
             .iter()
@@ -2660,7 +2677,7 @@ mod tests {
                 p.file_name().unwrap().to_string_lossy().to_uppercase()
             })
             .collect();
-        assert_eq!(names, lib::NEW_USER_WALL);
+        assert_eq!(names, crate::writer::prefs::DEFAULT_WALL[1..]);
         assert_eq!(
             g.items()[g.wall()[0].unwrap()].name,
             "Feliz Dia dos Professores!"

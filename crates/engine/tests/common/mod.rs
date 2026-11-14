@@ -14,7 +14,7 @@ use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
-    Writer,
+    Writer, WriterPortfolio,
 };
 use std::path::{Path, PathBuf};
 
@@ -82,8 +82,9 @@ impl<'a> Director<'a> {
     pub fn users(&self) -> PathBuf {
         self.base().join("usuarios")
     }
+    /// Pasta do usuário: os documentos do Writer (`USERS\<APELIDO>`).
     pub fn texts(&self) -> PathBuf {
-        self.base().join("textos")
+        self.users().join(self.user_name())
     }
     fn user_name(&self) -> String {
         self.user
@@ -137,7 +138,10 @@ impl<'a> Director<'a> {
             SceneId::Street => Box::new(Street::new(None)),
             SceneId::Browser => Box::new(Browser::new()),
             SceneId::WriterSplash => Box::new(Splash::writer(None)),
-            SceneId::Writer => Box::new(Writer::new(Some(self.texts()), assets)),
+            SceneId::Writer => {
+                Box::new(Writer::new(Some(self.texts()), assets).with_user(&self.user_name()))
+            }
+            // (o documento em branco do Escritório está no braço do Cw abaixo)
             SceneId::Cw(c) => {
                 // as mesmas cenas, com os dados do Writer (sem os desenhos do FA)
                 let p = Program::Writer;
@@ -150,17 +154,24 @@ impl<'a> Director<'a> {
                     CwScene::Imaginopolis => Box::new(Imaginopolis::for_program(p, None)),
                     CwScene::Street => Box::new(Street::for_program(p, None)),
                     CwScene::Building(floor) => Box::new(
-                        Room::for_program(p, floor, None, None, assets).with_user(&user, assets),
+                        Room::for_program(p, floor, None, None, assets)
+                            .with_user(&user, assets)
+                            .with_users_dir(Some(self.users()), assets),
                     ),
                     CwScene::Library => Box::new(
                         GalleryRoom::for_program(p, None, Some(self.texts()), assets)
                             .with_user(&user, self.animal()),
                     ),
-                    CwScene::Portfolio => Box::new(
-                        GalleryRoom::portfolio_for_program(p, None, None, assets)
-                            .with_user(&user, self.animal()),
-                    ),
-                    CwScene::NewDocument => Box::new(Writer::new(Some(self.texts()), assets)),
+                    CwScene::Portfolio => Box::new(WriterPortfolio::new(
+                        None,
+                        Some(self.users()),
+                        &user,
+                        self.animal(),
+                        assets,
+                    )),
+                    CwScene::NewDocument => {
+                        Box::new(Writer::new_blank(Some(self.texts()), assets).with_user(&user))
+                    }
                     CwScene::IdeaMachine => {
                         Box::new(engine::scenes::writer_ideas::IdeaMachine::new(
                             Some(&self.users()),
@@ -175,8 +186,9 @@ impl<'a> Director<'a> {
                             assets,
                         ))
                     }
-                    // o editor ainda não pega o conteúdo da Oficina (TODO(office))
-                    CwScene::IdeaStory(_) => Box::new(Writer::new(Some(self.texts()), assets)),
+                    CwScene::IdeaStory(_) => {
+                        Box::new(Writer::idea_story(Some(self.texts()), &user, assets))
+                    }
                 }
             }
         }
@@ -263,8 +275,13 @@ impl<'a> Director<'a> {
                 self.trace
                     .push(format!("TRACE abrir-documento {}", path.display()));
                 self.apply(Effect::ChangeScene(SceneId::Writer));
-                let s = Writer::open_document(Some(self.texts()), &path, self.assets);
-                *self.stack.last_mut().expect("cena") = Box::new(s);
+                match Writer::open(Some(self.texts()), &path, self.assets) {
+                    Ok(w) => {
+                        *self.stack.last_mut().expect("cena") =
+                            Box::new(w.with_user(&self.user_name()));
+                    }
+                    Err(e) => self.trace.push(format!("log {e}")),
+                }
             }
             Effect::SetUser(u) => self.user = Some(u),
             Effect::Log(s) => self.trace.push(format!("log {s}")),

@@ -22,13 +22,14 @@ pub fn arg_len(code: u8) -> Option<usize> {
         0x19..=0x20 => 1,
         // moldura
         0x27 => 2,
-        0x28..=0x2a => 1,
+        0x28..=0x2b => 1,
         0x2c..=0x31 => 2,
         0x35 | 0x37 => 6,
         // documento
         0x3e..=0x43 | 0x45 | 0x47..=0x4a | 0x51..=0x54 => 2,
         0x4c | 0x4d | 0x5b => 1,
-        0x58 | 0x5a => 6,
+        // 0x56: fundo da página (`IBGF n`)
+        0x56 | 0x58 | 0x5a => 6,
         _ => return None,
     })
 }
@@ -375,9 +376,9 @@ pub struct ParaProps {
     pub align: Align,
     /// `0x1a`.
     pub indent: Indent,
-    /// `0x1b`: espaço extra entre as linhas.
+    /// `0x1c`: espaço extra entre as linhas (entrelinha dupla).
     pub line_spacing: bool,
-    /// `0x1c`: espaço extra depois do parágrafo.
+    /// `0x1b`: espaço extra depois do parágrafo (meia linha).
     pub space_after: bool,
     /// `0x1d`: letra capitular (grande e caída); o valor (3 nos exemplos)
     /// deve ser o número de linhas.
@@ -410,8 +411,8 @@ impl ParaProps {
                         Indent::All,
                     ][a[0] as usize]
                 }
-                (0x1b, 1) => p.line_spacing = a[0] != 0,
-                (0x1c, 1) => p.space_after = a[0] != 0,
+                (0x1b, 1) => p.space_after = a[0] != 0,
+                (0x1c, 1) => p.line_spacing = a[0] != 0,
                 (0x1d, 1) if a[0] != 0 => p.drop_cap = Some(a[0]),
                 (0x1e, 1) => p.raised_cap = a[0] != 0,
                 (0x1f, 1) => p.new_page = a[0] != 0,
@@ -444,8 +445,8 @@ impl ParaProps {
             Indent::All => Some(3),
         };
         put_u8(&mut v, 0x1a, indent);
-        put_flag(&mut v, 0x1b, self.line_spacing);
-        put_flag(&mut v, 0x1c, self.space_after);
+        put_flag(&mut v, 0x1b, self.space_after);
+        put_flag(&mut v, 0x1c, self.line_spacing);
         put_u8(&mut v, 0x1d, self.drop_cap);
         put_flag(&mut v, 0x1e, self.raised_cap);
         put_flag(&mut v, 0x1f, self.new_page);
@@ -774,6 +775,23 @@ mod tests {
     }
 
     #[test]
+    fn spacing_sprms_1b_after_and_1c_between_lines() {
+        // MIX_TE53.MAX (office-complemento.md §3.1): "Era uma vez" grava
+        // `1d 03 1b ff` = capitular + espaço depois do parágrafo
+        let p = ParaProps::from_grpprl(&hex("1d03 1bff"));
+        assert!(p.space_after && !p.line_spacing);
+        assert_eq!(p.drop_cap, Some(3));
+        let p = ParaProps::from_grpprl(&hex("1cff"));
+        assert!(p.line_spacing && !p.space_after);
+        assert_eq!(p.to_grpprl(), hex("1cff"));
+        let p = ParaProps {
+            space_after: true,
+            ..ParaProps::default()
+        };
+        assert_eq!(p.to_grpprl(), hex("1bff"));
+    }
+
+    #[test]
     fn parse_grpprl_stops_at_unknown_code() {
         let s = parse_grpprl(&hex("04ff 0e0100 07 aabb"));
         assert_eq!(s.len(), 3);
@@ -932,9 +950,9 @@ mod tests {
     fn every_known_code_has_a_size() {
         let known = [
             0x03, 0x04, 0x05, 0x06, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x19, 0x1a, 0x1b,
-            0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x27, 0x28, 0x29, 0x2a, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
-            0x31, 0x35, 0x37, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x45, 0x47, 0x48, 0x49, 0x4a,
-            0x4c, 0x4d, 0x51, 0x52, 0x53, 0x54, 0x58, 0x5a, 0x5b,
+            0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+            0x30, 0x31, 0x35, 0x37, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x45, 0x47, 0x48, 0x49,
+            0x4a, 0x4c, 0x4d, 0x51, 0x52, 0x53, 0x54, 0x56, 0x58, 0x5a, 0x5b,
         ];
         for c in 0..=255u8 {
             assert_eq!(arg_len(c).is_some(), known.contains(&c), "0x{c:02x}");

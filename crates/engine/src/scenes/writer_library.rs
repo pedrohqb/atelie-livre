@@ -6,23 +6,23 @@
 //!
 //! É a mesma cena da Galeria do Fine Artist (`gallery_room`) com o
 //! [`WRITER_LIBRARY`]; o que é próprio dos documentos (listar, miniaturas,
-//! abrir no Escritório, imprimir a 1ª página, gravar a parede no
-//! `~MAXUSER.INF`) é o [`DOCUMENTS`].
+//! abrir no Escritório, imprimir a 1ª página, gravar a parede) é o
+//! [`DOCUMENTS`]. A pasta da sala é a do usuário (`<usuários>/<apelido>`,
+//! como o `USERS\<APELIDO>` do original).
 //!
-//! - **Documentos**: os da criança na pasta de textos (`*.max` e os
-//!   `texto-*.txt` gravados pelo Escritório; o `ultimo.*` é o de trabalho e
-//!   não aparece) e os exemplos do Max (`SHARED/USERS/MAX/*.MAX`).
-//! - **Parede**: `FILR` 1–4 do `~MAXUSER.INF` na pasta de textos, com
-//!   `formats::maxprefs` (o lugar 0 é o quadro do Escritório e os outros
-//!   chunks — fontes, Máquina de Idéias — são mantidos). Os exemplos são
-//!   gravados como no original (`SHARED\USERS\MAX\SAMP18.MAX`); os da
-//!   criança, sem pastas (o nome do arquivo na pasta de textos). Sem
-//!   arquivo (usuário novo), a parede mostra quatro exemplos do Max.
-//! - **Abrir**: `Effect::OpenDocument` (o Escritório com o documento).
+//! - **Documentos**: os `.MAX` da pasta do usuário (`writer::store::list`,
+//!   do mais recente ao mais antigo) e os exemplos do Max
+//!   (`SHARED/USERS/MAX/*.MAX`).
+//! - **Parede**: `FILR` 1–4 do `~MAXUSER.INF` do usuário, pelas funções de
+//!   `writer::prefs` (as da T14: o lugar 0 é o quadro do Escritório e os
+//!   outros chunks são mantidos); usuário novo: os exemplos de
+//!   `prefs::DEFAULT_WALL`.
+//! - **Abrir**: o documento vira o último (`prefs::remember_last`, `FILR 0`)
+//!   e `Effect::OpenDocument` leva ao Escritório com ele (`Writer::open`).
 //! - **Imprimir**: a prévia da Galeria com o [`WRITER_PREVIEW`] e a 1ª
 //!   página desenhada em texto simples ([`render_first_page`]; a
 //!   diagramação completa é de outra tarefa).
-//! - **Gaveta**: duas unidades, a pasta de textos e os exemplos; soltar um
+//! - **Gaveta**: duas unidades, a pasta do usuário e os exemplos; soltar um
 //!   documento numa unidade o copia para lá.
 
 use super::gallery_print::{PreviewSpec, PrintPreview, Sheet, Walker};
@@ -39,23 +39,10 @@ use crate::paint::print::Rgb8;
 use crate::paths::find_ci;
 use crate::scene::Effect;
 use crate::ui::Rect;
+use crate::writer::{prefs, store};
 use formats::max::Align;
-use formats::maxprefs::{self, KIND_MAX, UserPrefs, WallDoc};
 use formats::palette::Rgb;
 use std::path::{Path, PathBuf};
-
-/// Preferências do usuário na pasta de textos (o `~MAXUSER.INF` do
-/// original; a parede da Biblioteca são os `FILR` 1–4).
-pub const PREFS_FILE: &str = "~MAXUSER.INF";
-/// Lugares da parede da Biblioteca no `~MAXUSER.INF` (o 0 é o Escritório).
-pub const WALL_SLOTS: [u16; 4] = [1, 2, 3, 4];
-/// Pasta dos exemplos do Max, a partir de `MSKIDS`.
-pub const SAMPLES_DIR: [&str; 3] = ["SHARED", "USERS", "MAX"];
-/// Exemplos da parede de um usuário novo, na ordem dos `FILR` 1–4 (os da
-/// captura `building_81_lib_base`: "Feliz Dia dos Professores" e "Jornal
-/// Mágico" em cima, "Este forte abraço" embaixo à direita e "Feliz Dia das
-/// Mães" embaixo à esquerda). O original sorteia; o port fixa estes.
-pub const NEW_USER_WALL: [&str; 4] = ["SAMP9.MAX", "SAMP16.MAX", "SAMP5.MAX", "SAMP6.MAX"];
 
 /// Molduras na parede `692b` (102×124; a página no quadrado de 100×100 e a
 /// plaqueta embaixo), na ordem dos `FILR` 1–4: em cima à esquerda, em cima
@@ -353,103 +340,62 @@ fn is_ext(p: &Path, ext: &str) -> bool {
         .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case(ext))
 }
 
-/// Lê um documento: `.MAX` (título, autor, texto e miniatura) ou o `.txt`
-/// do Escritório (só o texto).
+/// Lê um `.MAX`: título, autor, texto, alinhamentos, folha e miniatura.
 pub fn read_doc(path: &Path) -> Option<DocInfo> {
-    if is_ext(path, "max") {
-        let data = std::fs::read(path).ok()?;
-        let d = formats::max::read(&data).ok()?;
-        let thumb = d.thumbnail_bitmap().map(|b| {
-            let pal = b.palette.clone().unwrap_or_else(|| {
-                formats::pkbm::default_palette_for(
-                    b.depth,
-                    &formats::max::THUMB_PALETTE,
-                    &formats::max::THUMB_PALETTE,
-                )
-            });
-            let px = b
-                .pixels
-                .iter()
-                .map(|&i| {
-                    pal.get(i as usize)
-                        .map_or([255, 255, 255], |c| [c.r, c.g, c.b])
-                })
-                .collect();
-            (b.width as u32, b.height as u32, px)
+    let data = std::fs::read(path).ok()?;
+    let d = formats::max::read(&data).ok()?;
+    let thumb = d.thumbnail_bitmap().map(|b| {
+        let pal = b.palette.clone().unwrap_or_else(|| {
+            formats::pkbm::default_palette_for(
+                b.depth,
+                &formats::max::THUMB_PALETTE,
+                &formats::max::THUMB_PALETTE,
+            )
         });
-        let title = Some(d.add.title.trim().to_string()).filter(|t| !t.is_empty());
-        let aligns = d
-            .paragraphs()
+        let px = b
+            .pixels
             .iter()
-            .map(|&(start, _)| d.para_props_at(start).align)
+            .map(|&i| {
+                pal.get(i as usize)
+                    .map_or([255, 255, 255], |c| [c.r, c.g, c.b])
+            })
             .collect();
-        let dop = &d.dop;
-        let page = (u32::from(dop.page_width), u32::from(dop.page_height));
-        let page = if page.0 >= 72 && page.1 >= 72 && page.0 <= 2000 && page.1 <= 2000 {
-            page
-        } else {
-            SHEET
-        };
-        let m = |v: u16| i32::from(v).clamp(0, 200);
-        return Some(DocInfo {
-            title,
-            author: d.add.author.trim().to_string(),
-            // `plain_text` já separa os parágrafos com `\n`, sem as âncoras
-            text: d.plain_text(),
-            aligns,
-            page,
-            margins: (
-                m(dop.margin_top),
-                m(dop.margin_left),
-                m(dop.margin_bottom),
-                m(dop.margin_right),
-            ),
-            thumb,
-        });
-    }
-    let text = std::fs::read_to_string(path).ok()?;
-    let text = text
-        .strip_suffix('\n')
-        .unwrap_or(&text)
-        .replace("\n\n", "\n");
-    Some(DocInfo::plain(&text))
-}
-
-/// Documentos da criança na pasta de textos, os mais recentes primeiro:
-/// `*.max` e os `texto-*.txt` (sem os de trabalho `ultimo.*` nem as folhas
-/// de impressão).
-pub fn list_documents(dir: &Path) -> Vec<PathBuf> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut files: Vec<(std::time::SystemTime, PathBuf)> = rd
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
-            !name.starts_with("ultimo.")
-                && (is_ext(p, "max") || (is_ext(p, "txt") && name.starts_with("texto-")))
-        })
-        .map(|p| {
-            let t = p
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::UNIX_EPOCH);
-            (t, p)
-        })
+        (b.width as u32, b.height as u32, px)
+    });
+    let title = Some(d.add.title.trim().to_string()).filter(|t| !t.is_empty());
+    let aligns = d
+        .paragraphs()
+        .iter()
+        .map(|&(start, _)| d.para_props_at(start).align)
         .collect();
-    // mais recentes primeiro; o nome (com o carimbo) desempata
-    files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
-    files.into_iter().map(|(_, p)| p).collect()
+    let dop = &d.dop;
+    let page = (u32::from(dop.page_width), u32::from(dop.page_height));
+    let page = if page.0 >= 72 && page.1 >= 72 && page.0 <= 2000 && page.1 <= 2000 {
+        page
+    } else {
+        SHEET
+    };
+    let m = |v: u16| i32::from(v).clamp(0, 200);
+    Some(DocInfo {
+        title,
+        author: d.add.author.trim().to_string(),
+        // `plain_text` já separa os parágrafos com `\n`, sem as âncoras
+        text: d.plain_text(),
+        aligns,
+        page,
+        margins: (
+            m(dop.margin_top),
+            m(dop.margin_left),
+            m(dop.margin_bottom),
+            m(dop.margin_right),
+        ),
+        thumb,
+    })
 }
 
 /// Exemplos do Max (`SHARED/USERS/MAX/*.MAX`), por nome.
 pub fn list_samples(data_dir: &Path) -> Vec<PathBuf> {
-    let Some(d) = find_ci(data_dir, &SAMPLES_DIR.join("/")) else {
+    let Some(d) = find_ci(data_dir, &prefs::SAMPLES_DIR.join("/")) else {
         return Vec::new();
     };
     let Ok(rd) = std::fs::read_dir(d) else {
@@ -541,7 +487,7 @@ pub fn fit_thumb(w: u32, h: u32, px: &[[u8; 3]], max: (u32, u32), pal: &[Rgb]) -
     c
 }
 
-/// Miniatura de um documento sem `THMB` (os `.txt` do Escritório): uma
+/// Miniatura de um documento sem `THMB`: uma
 /// página de 108×144 com a borda e cada letra como um risquinho cinza.
 pub fn text_thumb(text: &str) -> (u32, u32, Vec<[u8; 3]>) {
     let (w, h) = (108u32, 144u32);
@@ -602,130 +548,76 @@ fn load_documents(dir: Option<&Path>, assets: &Assets, pal: &[Rgb]) -> Vec<Item>
             ));
         }
     };
-    add(dir.map(list_documents).unwrap_or_default(), false);
+    add(dir.map(store::list).unwrap_or_default(), false);
     add(list_samples(assets.data_dir()), true);
     items
 }
 
-/// Caminho de um documento da parede: pastas a partir de `MSKIDS` (os
-/// exemplos e os documentos de um `USERS` do original) ou, sem pastas, um
-/// arquivo da pasta de textos.
-pub fn resolve(doc: &WallDoc, texts: Option<&Path>, data_dir: &Path) -> Option<PathBuf> {
-    if doc.dirs.is_empty() {
-        let p = texts?.join(&doc.file);
-        return p.exists().then_some(p);
-    }
-    find_ci(data_dir, &doc.rel_path())
-}
-
-/// Registro `FILR` de um documento: os exemplos como no original, os da
-/// criança só com o nome do arquivo.
-pub fn wall_doc(slot: u16, it: &Item, data_dir: &Path) -> WallDoc {
-    let file = it
-        .path
-        .file_name()
+/// Pasta dos usuários e apelido, a partir da pasta do usuário da sala.
+fn user_of(dir: Option<&Path>) -> (Option<&Path>, String) {
+    let users = dir.and_then(Path::parent);
+    let user = dir
+        .and_then(Path::file_name)
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let dirs = if it.sample {
-        find_ci(data_dir, &SAMPLES_DIR.join("/"))
-            .filter(|d| it.path.parent() == Some(d.as_path()))
-            .map(|_| SAMPLES_DIR.iter().map(|s| s.to_string()).collect())
-            .unwrap_or_else(|| {
-                // um exemplo fora do lugar de sempre: o caminho a partir de MSKIDS
-                let rel = it
-                    .path
-                    .parent()
-                    .and_then(|p| p.strip_prefix(data_dir).ok())
-                    .map(|p| p.to_string_lossy().replace('\\', "/"))
-                    .unwrap_or_default();
-                rel.split('/')
-                    .filter(|s| !s.is_empty())
-                    .map(String::from)
-                    .collect()
-            })
-    } else {
-        Vec::new()
-    };
-    WallDoc {
-        slot,
-        kind: KIND_MAX.to_string(),
-        title: it.title.clone().unwrap_or_default(),
-        dirs,
-        file,
-    }
+    (users, user)
 }
 
-/// Lê o `~MAXUSER.INF` da pasta (`None` se não existe ou não se lê).
-pub fn read_prefs(dir: &Path) -> Option<UserPrefs> {
-    let data = std::fs::read(dir.join(PREFS_FILE)).ok()?;
-    maxprefs::read(&data).ok()
-}
-
-/// Grava o `~MAXUSER.INF` (num `.tmp` renomeado).
-pub fn write_prefs(dir: &Path, p: &UserPrefs) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!("{PREFS_FILE}.tmp"));
-    std::fs::write(&tmp, maxprefs::write(p))?;
-    std::fs::rename(tmp, dir.join(PREFS_FILE))
-}
-
-/// As molduras: os `FILR` 1–4 gravados; sem nenhum (usuário novo), os
-/// exemplos do Max de [`NEW_USER_WALL`]. Molduras que não se acham ficam
-/// com os outros documentos, na ordem da lista.
+/// As molduras: os `FILR` 1–4 do usuário (`prefs::library`, com os exemplos
+/// de um usuário novo); as que não se acham ficam com os outros documentos,
+/// na ordem da lista.
 fn load_wall(dir: Option<&Path>, assets: &Assets, items: &[Item], n: usize) -> Vec<Option<usize>> {
+    let (users, user) = user_of(dir);
     let mut wall = vec![None; n];
-    let prefs = dir.and_then(read_prefs);
-    let saved = prefs
-        .as_ref()
-        .is_some_and(|p| WALL_SLOTS.iter().any(|&s| p.wall_slot(s).is_some()));
-    let find = |p: &Path| items.iter().position(|it| it.path == p);
-    if saved {
-        let p = prefs.as_ref().expect("lido acima");
-        for (k, &slot) in WALL_SLOTS.iter().enumerate().take(n) {
-            wall[k] = p
-                .wall_slot(slot)
-                .and_then(|d| resolve(d, dir, assets.data_dir()))
-                .and_then(|p| find(&p))
-                .filter(|i| !wall.contains(&Some(*i)));
-        }
-    } else {
-        let samples = find_ci(assets.data_dir(), &SAMPLES_DIR.join("/"));
-        for (k, name) in NEW_USER_WALL.iter().enumerate().take(n) {
-            wall[k] = samples
-                .as_ref()
-                .and_then(|d| find_ci(d, name))
-                .and_then(|p| find(&p));
-        }
-        // sem os dados do original: os primeiros exemplos que houver
-        let mut rest = items.iter().enumerate().filter(|(_, it)| it.sample);
-        for w in wall.iter_mut() {
-            if w.is_none() {
-                *w = rest.next().map(|(i, _)| i);
-            }
-        }
+    let slots = prefs::library(users, &user, assets.data_dir());
+    for (k, (_, file)) in slots.into_iter().enumerate().take(n) {
+        wall[k] = file
+            .and_then(|f| items.iter().position(|it| it.path == f))
+            .filter(|i| !wall.contains(&Some(*i)));
     }
     fill_wall(&mut wall, items);
     wall
 }
 
-/// Grava as molduras nos `FILR` 1–4 do `~MAXUSER.INF`, mantendo o resto
-/// do arquivo.
+/// Grava as molduras nos `FILR` 1–4 do `~MAXUSER.INF` do usuário, mantendo
+/// o resto do arquivo.
 fn save_wall(dir: Option<&Path>, assets: &Assets, wall: &[Option<&Item>]) -> Result<(), String> {
-    let Some(dir) = dir else { return Ok(()) };
-    let mut p = read_prefs(dir).unwrap_or_default();
-    p.wall.retain(|d| !WALL_SLOTS.contains(&d.slot));
-    for (k, it) in wall.iter().enumerate().take(WALL_SLOTS.len()) {
-        if let Some(it) = it {
-            p.wall.push(wall_doc(WALL_SLOTS[k], it, assets.data_dir()));
+    let (Some(users), user) = user_of(dir) else {
+        return Ok(());
+    };
+    let data = assets.data_dir();
+    let mut p = prefs::load(Some(users), &user, data);
+    for (k, &slot) in prefs::LIBRARY_SLOTS.iter().enumerate() {
+        let doc = wall.get(k).copied().flatten().and_then(|it| {
+            let title = it.title.clone().unwrap_or_default();
+            prefs::wall_doc(&it.path, &title, Some(users), data)
+        });
+        match doc {
+            Some(d) => prefs::set_slot(&mut p, slot, d),
+            None => p.wall.retain(|d| d.slot != slot),
         }
     }
-    p.wall.sort_by_key(|d| d.slot);
-    write_prefs(dir, &p).map_err(|e| e.to_string())
+    prefs::save(users, &user, &p).map_err(|e| e.to_string())
 }
 
-/// Clique duplo (ou "Estou pronto para ir!"): o Escritório com o documento.
-fn open_document(it: &Item, _: Option<&Path>, _: &[Rgb], _: Program) -> Vec<Effect> {
-    vec![Effect::OpenDocument(it.path.clone())]
+/// Clique duplo (ou "Estou pronto para ir!"): o documento vira o último
+/// (`FILR 0`, o quadro do Escritório) e o Escritório o abre.
+fn open_document(
+    it: &Item,
+    dir: Option<&Path>,
+    assets: &Assets,
+    _: &[Rgb],
+    _: Program,
+) -> Vec<Effect> {
+    let mut fx = Vec::new();
+    if let (Some(users), user) = user_of(dir) {
+        let title = it.title.clone().unwrap_or_default();
+        if let Err(e) = prefs::remember_last(users, &user, assets.data_dir(), &it.path, &title) {
+            fx.push(Effect::Log(format!("biblioteca: {e}")));
+        }
+    }
+    fx.push(Effect::OpenDocument(it.path.clone()));
+    fx
 }
 
 /// Folha de 595×792 pontos (o `PRNT` do original, 72 dpi).
@@ -813,7 +705,7 @@ fn print_document(
     ))
 }
 
-/// Unidades da gaveta: a pasta de textos (onde se copia) e os exemplos do
+/// Unidades da gaveta: a pasta do usuário (onde se copia) e os exemplos do
 /// Max (só de leitura).
 fn drives(dir: Option<&Path>, _: &Assets) -> Vec<Drive> {
     let mut v = Vec::new();
@@ -870,31 +762,6 @@ mod tests {
     }
 
     #[test]
-    fn lists_documents_without_work_files() {
-        let dir = tempfile::tempdir().unwrap();
-        for n in [
-            "ultimo.txt",
-            "texto-20261101-100000.txt",
-            "notas.txt",
-            "impressao-20261101-100000.png",
-            "carta.MAX",
-        ] {
-            std::fs::write(dir.path().join(n), "oi").unwrap();
-        }
-        let names: Vec<String> = list_documents(dir.path())
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        let mut sorted = names.clone();
-        sorted.sort();
-        assert_eq!(sorted, ["carta.MAX", "texto-20261101-100000.txt"]);
-        let d = read_doc(&dir.path().join("texto-20261101-100000.txt")).unwrap();
-        assert_eq!((d.title, d.text.as_str()), (None, "oi"));
-        // um .MAX que não se lê fica de fora
-        assert!(read_doc(&dir.path().join("carta.MAX")).is_none());
-    }
-
-    #[test]
     fn first_page_has_ink_inside_the_margins() {
         let (_d, a) = empty_assets();
         let mut doc = DocInfo::plain("Era uma vez um gato que gostava de escrever.\nFim.");
@@ -910,40 +777,6 @@ mod tests {
             ink.iter()
                 .all(|&(x, y)| x >= MARGIN as u32 && y >= MARGIN as u32)
         );
-    }
-
-    #[test]
-    fn wall_doc_paths_like_the_original() {
-        let (_d, a) = empty_assets();
-        let it = Item::new(
-            a.data_dir().join("SHARED/USERS/MAX/SAMP18.MAX"),
-            "O Ponto de Fuga".into(),
-            Some("O Ponto de Fuga".into()),
-            String::new(),
-            true,
-            Canvas::new(1, 1),
-        );
-        std::fs::create_dir_all(a.data_dir().join("SHARED/USERS/MAX")).unwrap();
-        let d = wall_doc(1, &it, a.data_dir());
-        assert_eq!(d.rel_path(), "SHARED/USERS/MAX/SAMP18.MAX");
-        assert_eq!(
-            (d.kind.as_str(), d.title.as_str()),
-            ("kwMAX", "O Ponto de Fuga")
-        );
-        let texts = tempfile::tempdir().unwrap();
-        let mine = texts.path().join("texto-20261101-100000.txt");
-        std::fs::write(&mine, "oi").unwrap();
-        let it = Item::new(
-            mine.clone(),
-            "x".into(),
-            None,
-            String::new(),
-            false,
-            Canvas::new(1, 1),
-        );
-        let d = wall_doc(2, &it, a.data_dir());
-        assert!(d.dirs.is_empty());
-        assert_eq!(resolve(&d, Some(texts.path()), a.data_dir()), Some(mine));
     }
 
     /// Com os dados reais: as figuras, os balões e os exemplos existem.
@@ -978,7 +811,7 @@ mod tests {
         // exemplos do Max, com título e miniatura
         let samples = list_samples(a.data_dir());
         assert_eq!(samples.len(), 21);
-        for name in NEW_USER_WALL {
+        for name in &prefs::DEFAULT_WALL[1..] {
             let s = samples
                 .iter()
                 .find(|p| {

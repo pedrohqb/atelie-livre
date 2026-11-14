@@ -2,9 +2,11 @@
 //! Dimensiona-palavras, Seleciona-cores, Seleciona-estilos, Posicionador,
 //! Aplicador, Ponto de inserção, FORMA e o interruptor "Mais escolhas".
 //!
-//! Hoje as listas mudam o estilo de digitação (e o alinhamento do
-//! parágrafo); o pincel arrastado sobre as palavras, a página 2 da faixa, o
-//! Aplicador, o Ponto de inserção e a FORMA são a tarefa W5/W7.
+//! Hoje as listas mudam a seleção (ou, sem seleção, o estilo de
+//! digitação) por [`Editor::apply_char`], e o alinhamento muda os
+//! parágrafos tocados ([`Editor::apply_para`]); o pincel arrastado sobre as
+//! palavras, as listas em bitmap com ✓, a página 2 da faixa, o Aplicador, o
+//! Ponto de inserção e a FORMA são a tarefa W5/W7.
 
 use super::editor::Editor;
 use super::tools::{
@@ -13,8 +15,7 @@ use super::tools::{
 };
 use crate::Frame;
 use crate::assets::Assets;
-use crate::paint::COLORS;
-use crate::writer::{Align, Size};
+use crate::writer::doc::{Align, CSCH, CharChange, FONTS, ParaChange, Size, TextStyle};
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -118,7 +119,6 @@ const ALIGN_ITEM_W: i32 = 97;
 const ITEM_H: i32 = 14;
 const COLOR_ITEM_H: i32 = 8;
 const LIST_Y: i32 = 105;
-const STYLE_NAMES: [&str; 4] = ["Simples", "Negrito", "Inclinado", "Sublinhado"];
 
 #[derive(Default)]
 pub struct WordStrip {
@@ -137,9 +137,9 @@ impl WordStrip {
             .find(|(_, l)| *l == Some(list))
             .map_or(24, |(b, _)| b.pic.x);
         let (w, h) = match list {
-            List::Fonts => (170, 2 + 3 * ITEM_H),
-            List::Sizes => (100, 2 + 6 * ITEM_H),
-            List::Colors => (60, 2 + COLORS.len() as i32 * COLOR_ITEM_H),
+            List::Fonts => (170, 2 + FONTS.len() as i32 * ITEM_H),
+            List::Sizes => (100, 2 + Size::ALL.len() as i32 * ITEM_H),
+            List::Colors => (60, 2 + CSCH.len() as i32 * COLOR_ITEM_H),
             List::Styles => (100, 2 + 4 * ITEM_H),
             List::Align => (ALIGN_ITEM_W + 2, 2 + 4 * ALIGN_ITEM_H),
         };
@@ -148,10 +148,10 @@ impl WordStrip {
 
     fn list_item_count(list: List) -> usize {
         match list {
-            List::Fonts => 1,
+            List::Fonts => FONTS.len(),
             List::Sizes => Size::ALL.len(),
-            List::Colors => COLORS.len(),
-            List::Styles => STYLE_NAMES.len(),
+            List::Colors => CSCH.len(),
+            List::Styles => TextStyle::ALL.len(),
             List::Align => Align::ALL.len(),
         }
     }
@@ -175,35 +175,19 @@ impl WordStrip {
             return;
         };
         cx.sound(SND_CHOOSE);
-        let mut style = ed.doc.style;
         match list {
-            List::Fonts => {}
-            List::Sizes => {
-                style.size = Size::ALL[k];
-                ed.set_style(style);
+            List::Fonts => {
+                let name = FONTS[k].0;
+                let ftc = match ed.doc().fonts.ftc_of(name) {
+                    Some(f) => f,
+                    None => ed.doc_mut().fonts.ensure(name),
+                };
+                ed.apply_char(CharChange::Font(ftc));
             }
-            List::Colors => {
-                style.color = COLORS[k];
-                ed.set_style(style);
-            }
-            List::Styles => {
-                match k {
-                    0 => {
-                        style.bold = false;
-                        style.italic = false;
-                        style.underline = false;
-                    }
-                    1 => style.bold = !style.bold,
-                    2 => style.italic = !style.italic,
-                    _ => style.underline = !style.underline,
-                }
-                ed.set_style(style);
-            }
-            List::Align => {
-                ed.history.record(&ed.doc);
-                ed.doc.set_align(Align::ALL[k]);
-                ed.after_edit();
-            }
+            List::Sizes => ed.apply_char(CharChange::Size(Size::ALL[k])),
+            List::Colors => ed.apply_char(CharChange::Color(Some(CSCH[k]))),
+            List::Styles => ed.apply_char(CharChange::Style(TextStyle::ALL[k])),
+            List::Align => ed.apply_para(ParaChange::Align(Align::ALL[k])),
         }
     }
 
@@ -219,14 +203,17 @@ impl WordStrip {
             }
             None => f.text(x, y + 3, s, BLACK),
         };
-        let style = ed.doc.style;
+        let style = ed.typing_props();
         match list {
             List::Fonts => {
-                let r = Self::list_item_rect(list, 0);
-                f.rect(r.0, r.1, r.2, r.3, LIGHT);
-                text(f, r.0 + 4, r.1 + 1, "Pablo Graphos");
-                text(f, r.0 + 4, r.1 + 1 + ITEM_H, "(os outros tipos de letra");
-                text(f, r.0 + 4, r.1 + 1 + 2 * ITEM_H, "ainda não existem)");
+                let cur = ed.doc().fonts.name(style.font).to_string();
+                for (k, (name, _)) in FONTS.iter().enumerate() {
+                    let r = Self::list_item_rect(list, k);
+                    if *name == cur {
+                        f.rect(r.0, r.1, r.2, r.3, LIGHT);
+                    }
+                    text(f, r.0 + 4, r.1 + 1, name);
+                }
             }
             List::Sizes => {
                 for (k, s) in Size::ALL.iter().enumerate() {
@@ -238,10 +225,10 @@ impl WordStrip {
                 }
             }
             List::Colors => {
-                for (k, c) in COLORS.iter().enumerate() {
+                for (k, c) in CSCH.iter().enumerate() {
                     let r = Self::list_item_rect(list, k);
-                    f.rect(r.0 + 2, r.1 + 1, r.2 - 4, r.3 - 2, ed.rgb(*c));
-                    if *c == style.color {
+                    f.rect(r.0 + 2, r.1 + 1, r.2 - 4, r.3 - 2, Editor::rgb(*c));
+                    if *c == style.text_color() {
                         f.frame_rect(r.0, r.1, r.2, r.3, 1, BLACK);
                     }
                 }
@@ -253,16 +240,18 @@ impl WordStrip {
                     style.italic,
                     style.underline,
                 ];
-                for (k, name) in STYLE_NAMES.iter().enumerate() {
+                for (k, st) in TextStyle::ALL.iter().enumerate() {
                     let r = Self::list_item_rect(list, k);
                     if on[k] {
                         f.rect(r.0, r.1, r.2, r.3, LIGHT);
                     }
-                    text(f, r.0 + 4, r.1 + 1, name);
+                    text(f, r.0 + 4, r.1 + 1, st.name());
                 }
             }
             List::Align => {
-                let cur = ed.doc.para().align;
+                let cur = ed.doc().paras[ed.sel.caret.para.min(ed.doc().paras.len() - 1)]
+                    .props
+                    .align;
                 for (k, id) in ALIGN_ITEMS.iter().enumerate() {
                     let r = Self::list_item_rect(list, k);
                     f.blit(&a.image(&pic(*id)), r.0, r.1);

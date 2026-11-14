@@ -11,6 +11,8 @@ use crate::text_balloon::{PIC_ALERT, Part, TextBalloon};
 pub const WHAT_BLOCK: u16 = 0x0203;
 /// Canto e largura do aviso, medidos no original (a caixa tem 1 px a mais).
 pub const BOX: (i32, i32, i32) = (208, 169, 223);
+/// Centro dos diálogos do Writer (`office_134_saida`, `office_135_epa_salvar`).
+const WRITER_CENTER: (i32, i32) = (320, 240);
 /// Vaga da bolinha das opções: só ela é botão.
 const BULLET_SLOT: i32 = crate::rich::OPTION_W;
 
@@ -67,6 +69,51 @@ impl ExitDialog {
         ExitDialog { reason, balloon }
     }
 
+    /// Diálogo do Creative Writer: o registro `(block, record)` do `WHAT`
+    /// do `WRITER.EXE` (três opções; `@` = `name`), centrado na tela como no
+    /// original (`office_134_saida`: caixa x 211..428 para o `0203[0]`).
+    /// Sem o registro, `fallback` (texto e opções). A figura "EPA!" é a
+    /// mesma nos dois `.PIC`.
+    pub fn writer(
+        reason: Reason,
+        (block, record): (u16, usize),
+        name: &str,
+        fallback: (&str, [&str; 3]),
+        assets: &Assets,
+    ) -> ExitDialog {
+        let records = assets.dialogs(Program::Writer, block);
+        let mut balloon = match records.get(record).filter(|r| r.options().len() == 3) {
+            Some(r) => TextBalloon::from_record(r, 0, 0, name, Vec::new()),
+            None => TextBalloon::new(
+                0,
+                0,
+                217,
+                vec![
+                    Part::Figure(PIC_ALERT),
+                    Part::Text(fallback.0.replace('@', name)),
+                    Part::Options(fallback.1.iter().map(|s| s.to_string()).collect()),
+                ],
+                Vec::new(),
+            ),
+        }
+        .as_alert();
+        let h = balloon.height(assets);
+        balloon.x = WRITER_CENTER.0 - balloon.box_width() / 2;
+        balloon.y = WRITER_CENTER.1 - h / 2;
+        ExitDialog { reason, balloon }
+    }
+
+    /// Caixa do diálogo `(x, y, largura, altura)`.
+    pub fn rect(&self, a: &Assets) -> (i32, i32, i32, i32) {
+        let b = &self.balloon;
+        (b.x, b.y, b.box_width(), b.height(a))
+    }
+
+    /// Texto e opções (para testes).
+    pub fn text(&self) -> String {
+        self.balloon.plain_text()
+    }
+
     /// Retângulo da opção `k` (linha inteira).
     fn option_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
         self.balloon.option_rect(a, k).unwrap_or((0, 0, 0, 0))
@@ -115,6 +162,25 @@ mod tests {
         // o texto da opção não é botão
         assert_eq!(d.hit(&a, r0.0 + 60, r0.1 + 4), None);
         assert_eq!(d.hit(&a, 100, 100), None);
+        let mut f = Frame::new(640, 480);
+        d.draw(&mut f, &a);
+    }
+
+    #[test]
+    fn writer_dialog_is_centered() {
+        let (_d, a) = empty_assets();
+        let d = ExitDialog::writer(
+            Reason::Exit,
+            (0x0202, 3),
+            "Gato",
+            ("Vou salvar “@” agora.", ["a", "b", "c"]),
+            &a,
+        );
+        assert!(d.text().contains("“Gato”"), "{}", d.text());
+        let (x, y, w, h) = d.rect(&a);
+        assert!((x + w / 2 - 320).abs() <= 1 && (y + h / 2 - 240).abs() <= 1);
+        let r2 = d.option_rect(&a, 2);
+        assert_eq!(d.hit(&a, r2.0 + 2, r2.1 + 4), Some(Choice::Stay));
         let mut f = Frame::new(640, 480);
         d.draw(&mut f, &a);
     }

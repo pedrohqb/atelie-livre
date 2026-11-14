@@ -2,8 +2,9 @@
 //! bibliotecas do Writer, tira de filme com os adesivos de um rolo, setas
 //! de página dos rolos, Cachorrinho e Cavalete de lápis de cera.
 //!
-//! Hoje o adesivo escolhido entra como caractere no ponto de inserção; o
-//! adesivo flutuante, o Cachorrinho e o Cavalete são a tarefa W10.
+//! Hoje o adesivo escolhido vira um objeto solto com o canto no ponto de
+//! inserção ([`Editor::insert_sticker`]); colar com um clique na página,
+//! o Cachorrinho e o Cavalete são a tarefa W10.
 
 use super::editor::Editor;
 use super::tools::{
