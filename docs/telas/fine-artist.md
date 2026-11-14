@@ -394,10 +394,25 @@ seção 4. Resumo:
   barra que enche até 10 s; "Nome do Som >" (205, 241) e o campo (321, 241);
   microfone `02d3` (216, 272) grava e para; TOCAR `02d7` (272, 272); NÃO
   `0271` (354, 276, som `02ed`, ou Esc); OK `026d` (397, 276, ou Enter). A
-  captura é da plataforma (`Effect::RecordStart`/`RecordStop`, dispositivo de
-  gravação da SDL3, mono 22 050 Hz, 16 bits): a gravação vai para
-  `sons/.gravacao-<pid>-<n>.wav` e o OK a renomeia para `sons/<nome>.wav`
-  ("Meu som" sem nome) e põe na mão. Sem microfone, o OK só fecha.
+  captura é da plataforma (`Effect::RecordStart`/`RecordStop`/`RecordCancel`,
+  `Mic` em `crates/app/src/audio.rs`): o dispositivo de gravação padrão da
+  SDL3 abre no formato dele (no mínimo 44 100 Hz mono S16) e o fluxo
+  converte para mono 22 050 Hz, 16 bits; ao parar, o dispositivo é pausado e
+  o reamostrador esvaziado. A gravação vai para
+  `sons/.gravacao-<pid>-<n>.wav` (`.wav` PCM com cabeçalho de 44 bytes) e
+  para nos 10 s do relógio da barra; o app também corta em 10 s de áudio
+  (220 500 amostras), caso a cena atrase. O OK a renomeia para
+  `sons/<nome>.wav` ("Meu som" sem nome; barras e espaços viram `_`, sem
+  ponto no começo, e `-2`, `-3`… em vez de sobrescrever outro som) e põe na
+  mão; o NÃO (ou Esc) descarta: no meio da gravação manda `RecordCancel` e
+  nada é escrito. Sem microfone, o OK só fecha. O som na mão vai para o
+  adesivo ou a palavra clicada (`.objetos.json`) e é tocado pelo clique sem
+  nada na mão e pela Varinha Mágica. Testado com microfone virtual (driver
+  `disk` da SDL3, ver README, "Microfone virtual"): `cargo test -p app
+  mic_tests` injeta 440 Hz e confere taxa, canais, cabeçalho, frequência,
+  correlação, o TOCAR no alto-falante virtual, o OK, o NÃO e o teto de 10 s;
+  pela interface (Xvfb + xdotool) o som gravado no peixe e tocado pela
+  Varinha saiu a 439,9 Hz, correlação 0,9999.
 - **Balões do McZee**: ao escolher uma ferramenta ou uma opção da faixa, e ao
   clicar no McZee (nicho x 533..580, y 56..104), um balão amarelo explica o
   uso — os registros `WHAT` do `ARTIST.EXE` (`1002` pincel, `1003` lata,

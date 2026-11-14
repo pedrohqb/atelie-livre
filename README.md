@@ -220,6 +220,35 @@ cargo fmt --all --check
 Sem `ATELIE_DATA`, os testes com dados reais são pulados e só os testes com
 dados sintéticos rodam. Os arquivos originais nunca entram no repositório.
 
+### Microfone virtual (Gravador)
+
+O teste `mic_tests` do crate `app` grava de verdade, sem placa de som: o
+driver de áudio `disk` da SDL3 lê a "captura" de um arquivo cru e escreve o
+que tocaria em outro. O teste injeta uma senoide de 440 Hz (e, com
+`ATELIE_DATA`, um som do jogo) e confere o `.wav` gravado, o TOCAR, o OK, o
+NÃO e o limite de 10 s:
+
+```sh
+cargo test -p app mic_tests -- --nocapture
+```
+
+Para gravar pela interface com o mesmo microfone virtual, gere um arquivo
+cru no formato do dispositivo de captura da SDL (44 100 Hz, mono, S16 nativo
+— a SDL reamostra para os 22 050 Hz da gravação) e rode:
+
+```sh
+python3 -c "import math,struct;r=44100;open('/tmp/mic.raw','wb').write(b''.join(struct.pack('<h',int(16000*math.sin(2*math.pi*440*i/r))) for i in range(r*12)))"
+SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_INPUT_FILE=/tmp/mic.raw \
+SDL_AUDIO_DISK_OUTPUT_FILE=/tmp/alto-falante.raw \
+atelie-livre --data caminho/MSKIDS --window --scene paint
+```
+
+Cada gravação lê o arquivo desde o começo (silêncio depois do fim); o que o
+programa toca vai para `/tmp/alto-falante.raw` (44 100 Hz, estéreo, S16).
+O driver `disk` marca o tempo com pausas do sistema: com a máquina carregada
+ele entrega menos que o tempo real (uma gravação de 10 s pode sair com 9,7 s
+de som, contíguos).
+
 ## Licença
 
 GPL-3.0-or-later (ver `LICENSE`).
