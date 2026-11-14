@@ -166,6 +166,12 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   apertado) e `scenes::writer_easel` (Cavalete de lápis de cera, que os
   adesivos do Escritório podem reaproveitar); ver
   `docs/telas/creative-writer-ideias.md`.
+- **Bordas e fundos de página**: `formats::bor` lê os `.BOR` (e as cópias
+  no `.MAX`), `formats::wmf_draw` rasteriza as peças WMF vetoriais e
+  `crate::writer::borders` desenha borda e fundo numa folha
+  (`border_layout`, `render_page`, `PageArt::from_document`, obstáculos do
+  fundo para a diagramação); ver `docs/formats/bor.md`. Os rolos BORDA e
+  FUNDO da Preparação da página ainda não existem.
 
 ## Creative Writer: specs por programa
 

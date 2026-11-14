@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod atag;
+pub mod bor;
 pub mod chnk;
 pub mod cp1252;
 pub mod dct;
@@ -33,6 +34,7 @@ pub mod what;
 pub mod winres;
 pub mod winres_ui;
 pub mod wmf;
+pub mod wmf_draw;
 pub mod workshop;
 
 pub use error::{ErrorKind, Format, FormatError, Result};

@@ -22,7 +22,9 @@
 //!   não guarda em [`convert::MaxExtra`];
 //! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
 //!   "Salvar como texto".
+//! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
 
+pub mod borders;
 pub mod convert;
 pub mod dict;
 pub mod doc;
