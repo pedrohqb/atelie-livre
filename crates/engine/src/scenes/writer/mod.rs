@@ -4,6 +4,9 @@
 //! de clip-art dentro do texto, o ovo (desfazer/refazer) e a explosão da
 //! tesoura. Posições medidas no original (spec 3a).
 
+mod chrome;
+mod tools;
+
 use super::stickers::{blit_clipped, blit_part};
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
@@ -16,6 +19,8 @@ use formats::palette::Rgb;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+pub use tools::Tool;
+use tools::{Action, TOOLS};
 
 /// Bibliotecas de clip-art do Creative Writer (o Fine Artist tem também `MAG100.ART`).
 pub const LIBRARIES: [&str; 2] = ["MAXMAG10.ART", "MAX100.ART"];
@@ -57,112 +62,6 @@ const FILM_Y: i32 = 99;
 const FILM_H: i32 = 368;
 const FILM_W: i32 = 42;
 const FILM_CELLS: usize = 8;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tool {
-    Text,
-    Stickers,
-    Scissors,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action {
-    Select(Tool),
-    Undo,
-    Unavailable(&'static str),
-}
-
-struct ToolDef {
-    x: i32,
-    y: i32,
-    w: i32,
-    normal: (u16, u16),
-    active: (u16, u16),
-    action: Action,
-}
-
-const TOOLS: [ToolDef; 10] = [
-    ToolDef {
-        x: 17,
-        y: 12,
-        w: 39,
-        normal: (0x0251, 0x0253),
-        active: (0x0252, 0x0253),
-        action: Action::Select(Tool::Text),
-    },
-    ToolDef {
-        x: 65,
-        y: 12,
-        w: 32,
-        normal: (0x01ff, 0x0201),
-        active: (0x0200, 0x0201),
-        action: Action::Select(Tool::Stickers),
-    },
-    ToolDef {
-        x: 110,
-        y: 10,
-        w: 34,
-        normal: (0x0205, 0x0207),
-        active: (0x0206, 0x0207),
-        action: Action::Unavailable("sons"),
-    },
-    ToolDef {
-        x: 159,
-        y: 16,
-        w: 46,
-        normal: (0x0800, 0x0801),
-        active: (0x0800, 0x0801),
-        action: Action::Unavailable("página"),
-    },
-    ToolDef {
-        x: 214,
-        y: 11,
-        w: 43,
-        normal: (0x091f, 0x0921),
-        active: (0x0920, 0x0921),
-        action: Action::Unavailable("inseto"),
-    },
-    ToolDef {
-        x: 266,
-        y: 6,
-        w: 44,
-        normal: (0x0212, 0x0213),
-        active: (0x0212, 0x0213),
-        action: Action::Undo,
-    },
-    ToolDef {
-        x: 319,
-        y: 9,
-        w: 44,
-        normal: (0x08e8, 0x08e9),
-        active: (0x08e8, 0x08e9),
-        action: Action::Select(Tool::Scissors),
-    },
-    ToolDef {
-        x: 372,
-        y: 9,
-        w: 36,
-        normal: (0x0219, 0x0223),
-        active: (0x0222, 0x0223),
-        action: Action::Unavailable("mão"),
-    },
-    ToolDef {
-        x: 417,
-        y: 12,
-        w: 46,
-        normal: (0x0804, 0x0805),
-        active: (0x0804, 0x0805),
-        action: Action::Unavailable("livro"),
-    },
-    ToolDef {
-        x: 472,
-        y: 11,
-        w: 42,
-        normal: (0x0226, 0x0227),
-        active: (0x0226, 0x0227),
-        action: Action::Unavailable("imprimir"),
-    },
-];
 
 /// Listas suspensas da faixa do Texto.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -758,89 +657,6 @@ impl Writer {
 
     fn rgb(&self, index: u8) -> [u8; 3] {
         crate::ui::pal_rgb(&self.pal, index)
-    }
-
-    fn draw_chrome(&self, f: &mut Frame, a: &Assets) {
-        f.fill(DARK);
-        // bordas laranja em relevo, como na pintura
-        for y0 in [0, 104, 456, 475] {
-            for (dy, c) in [(0, BLACK), (1, ORANGE), (2, ORANGE), (3, BROWN), (4, BLACK)] {
-                f.rect(0, y0 + dy, 640, 1, c);
-            }
-        }
-        for (x, c) in [(0, BLACK), (1, BROWN), (2, ORANGE), (3, ORANGE), (4, BLACK)] {
-            f.rect(x, 0, 1, 480, c);
-        }
-        for (x, c) in [
-            (635, BLACK),
-            (636, BROWN),
-            (637, ORANGE),
-            (638, ORANGE),
-            (639, BLACK),
-        ] {
-            f.rect(x, 0, 1, 480, c);
-        }
-        // faixa de opções e linha sob a barra de ferramentas
-        f.rect(5, 56, 630, 48, LIGHT);
-        f.rect(5, 55, 630, 1, BLACK);
-        // nicho escuro do McZee
-        f.rect(532, 55, 1, 49, BLACK);
-        f.rect(533, 56, 47, 48, DARK);
-        // página branca com borda preta de 1 px por fora
-        f.rect(PAGE.0 - 1, PAGE.1, 1, PAGE.3, BLACK);
-        f.rect(PAGE.0 + PAGE.2, PAGE.1, 1, PAGE.3, BLACK);
-        f.rect(PAGE.0, PAGE.1, PAGE.2, PAGE.3, WHITE);
-        // barra inferior
-        for (x0, x1) in [(22, 137), (155, 486), (518, 616)] {
-            f.rect(x0, 461, 1, 14, BLACK);
-            f.rect(x1, 461, 1, 14, BLACK);
-            f.rect(x0 + 1, 461, x1 - x0 - 1, 14, WHITE);
-        }
-        let pages = format!("Pág. {}", self.page + 1);
-        match a.font(8) {
-            Some(font) => {
-                f.text_font(&font, 69, 461, "Escritório", BLACK);
-                let name = "Documento Novo";
-                let w = font.width(name) as i32;
-                f.text_font(&font, 320 - w / 2, 462, name, BLACK);
-                f.text_font(&font, 537, 462, &pages, BLACK);
-            }
-            None => {
-                f.text(44, 464, "Escritório", BLACK);
-                f.text(264, 464, "Documento Novo", BLACK);
-                f.text(536, 464, &pages, BLACK);
-            }
-        }
-        f.blit(&a.image(&pic(0x03c3)), 27, 463);
-        f.blit(&a.image(&pic(0x03c3)), 523, 463);
-        f.blit_masked(
-            &a.image(&pic(0x02db)),
-            &a.image(&pic(0x02dd)),
-            PAGE_PREV.0,
-            PAGE_PREV.1,
-        );
-        f.blit_masked(
-            &a.image(&pic(0x02df)),
-            &a.image(&pic(0x02e1)),
-            PAGE_NEXT.0,
-            PAGE_NEXT.1,
-        );
-    }
-
-    fn draw_tools(&self, f: &mut Frame, a: &Assets) {
-        for t in &TOOLS {
-            let active = t.action == Action::Select(self.tool);
-            let (img, mask) = if active { t.active } else { t.normal };
-            if active {
-                let w = a.image(&pic(img)).width as i32;
-                f.rect(t.x - 5, 5, w + 11, 51, LIGHT);
-                f.rect(t.x - 6, 5, 1, 50, BLACK);
-                f.rect(t.x + w + 6, 5, 1, 50, BLACK);
-            }
-            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), t.x, t.y);
-        }
-        f.blit_masked(&a.image(&pic(0x0235)), &a.image(&pic(0x0237)), 536, 47);
-        f.blit_masked(&a.image(&pic(0x023d)), &a.image(&pic(0x023f)), 581, 16);
     }
 
     fn draw_options(&self, f: &mut Frame, a: &Assets) {
