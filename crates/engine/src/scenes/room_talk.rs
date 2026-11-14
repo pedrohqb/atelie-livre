@@ -10,10 +10,13 @@ use crate::assets::{Assets, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::scene::SceneId;
 use crate::scenes::entry::Entry;
+use crate::scenes::entry_spec::QuitSpec;
 use crate::scenes::projects::ProjectKind;
+use crate::scenes::room_spec::{RoomKit, Tip};
+use crate::scenes::rooms_data::ARTIST_KIT;
 use crate::scenes::wizard::TrickKind;
 use crate::text_balloon::TextBalloon;
-use formats::what::{Item, PIC_TIP};
+use formats::what::Item;
 
 /// Bloco `WHAT` com os balões das salas.
 pub const ROOMS_WHAT: u16 = 0x100d;
@@ -102,18 +105,30 @@ pub fn sound(id: u16) -> SoundRef {
 
 /// Hotkeys "Tecla de atalho" (figura `21C`) viram ligações como as dicas da
 /// lâmpada (`21B`): o clique abre o registro que elas apontam.
-const PIC_HOTKEY: u16 = 0x21c;
+pub const PIC_HOTKEY: u16 = 0x21c;
 
 /// Balão `k` do bloco, na posição dada; sem os dados (ou com outro número
 /// de opções), o reserva.
 pub fn load(assets: &Assets, k: usize, pos: (i32, i32), user: &str, fallback: Balloon) -> Balloon {
-    let mut records = assets.dialogs(Program::Artist, ROOMS_WHAT);
-    if let Some(r) = records.get_mut(k) {
+    load_in(&ARTIST_KIT, assets, k, pos, user, fallback)
+}
+
+/// Como [`load`], com o bloco `WHAT` do kit (Fine Artist ou Creative Writer).
+pub fn load_in(
+    kit: &RoomKit,
+    assets: &Assets,
+    k: usize,
+    pos: (i32, i32),
+    user: &str,
+    fallback: Balloon,
+) -> Balloon {
+    let mut records = assets.dialogs(kit.program, kit.what);
+    if let (Some(r), Some((hotkey, tip))) = (records.get_mut(k), kit.hotkey_pic) {
         for i in &mut r.items {
             if let Item::Picture { id, .. } = i
-                && *id == PIC_HOTKEY
+                && *id == hotkey
             {
-                *id = PIC_TIP;
+                *id = tip;
             }
         }
     }
@@ -133,7 +148,8 @@ pub fn load(assets: &Assets, k: usize, pos: (i32, i32), user: &str, fallback: Ba
     }
 }
 
-fn fallback(w: i32, text: &str, options: &[&str], links: &[(usize, &str)]) -> Balloon {
+/// Balão reserva (sem posição: quem chama a dá).
+pub fn fallback(w: i32, text: &str, options: &[&str], links: &[(usize, &str)]) -> Balloon {
     Balloon {
         x: 0,
         y: 0,
@@ -145,137 +161,170 @@ fn fallback(w: i32, text: &str, options: &[&str], links: &[(usize, &str)]) -> Ba
     }
 }
 
-/// Posição, largura, texto reserva e ligações de uma dica.
-type TipSpec = (
-    (i32, i32),
-    i32,
-    &'static str,
-    &'static [(usize, &'static str)],
-);
-
-/// Dica (sem opções) do registro `k`: posição medida no original e texto
+/// Dicas (sem opções) do `WHAT 100d`: posição medida no original e texto
 /// reserva.
+pub const ARTIST_TIPS: &[Tip] = &[
+    Tip {
+        record: rec::LOBBY_STUDIO,
+        pos: (34, 111),
+        w: 167,
+        text: "Clique no andar do Ateliê de Pintura para começar a desenhar por conta própria.\nVocê pode desenhar qualquer coisa aqui, desde um simples rabisco até a Monalisa!",
+        links: &[],
+    },
+    Tip {
+        record: rec::LOBBY_PROJECTS,
+        pos: (30, 65),
+        w: 172,
+        text: "Clique na Oficina de Projetos para trabalhar com a Maggie.\nEla está esperando para ajudar você a fazer quadrinhos, botões e adesivos, ou para montar um Desenho Animado!",
+        links: &[],
+    },
+    Tip {
+        record: rec::LOBBY_TRICKS,
+        pos: (25, 45),
+        w: 162,
+        text: "Inseguro quanto ao seu talento de desenhista? Não esquenta! Clique aqui para ir até o andar dos Truques de Desenho.\nA Maggie pode te mostrar alguns dos truques que ela aprendeu.",
+        links: &[],
+    },
+    Tip {
+        record: rec::LOBBY_GALLERY,
+        pos: (95, 182),
+        w: 162,
+        text: "Clique na seta da Galeria para ver todas as obras que você pintou.\nAli você também pode copiar, jogar fora ou levar os quadros para outros lugares.",
+        links: &[],
+    },
+    Tip {
+        record: rec::STUDIO_NEW,
+        pos: (130, 233),
+        w: 204,
+        text: "Para criar um quadro novo\n• Dê um clique duplo na tela em branco.",
+        links: &[],
+    },
+    Tip {
+        record: rec::STUDIO_LAST,
+        pos: (62, 110),
+        w: 166,
+        text: "Esta é a última coisa que você salvou no Ateliê de Pintura.\nPara trabalhar neste quadro outra vez\n• Dê um clique duplo nele.",
+        links: &[],
+    },
+    Tip {
+        record: rec::STUDIO_PORTFOLIO,
+        pos: (266, 178),
+        w: 175,
+        text: "A pasta é o lugar em que são guardados todos os seus quadros (e os dos outros também).\nPara abrir a pasta\n• Clique nela.",
+        links: &[],
+    },
+    Tip {
+        record: rec::STUDIO_POLE,
+        pos: (340, 82),
+        w: 200,
+        text: "Você quer que a Maggie te ajude a fazer uma história em quadrinhos, um botão ou adesivo, ou um Desenho Animado?\n• Clique no mastro de bombeiro para subir até a Oficina de Projetos!\nQuer aprender os Truques de Desenho da Maggie?\n• Use o mastro de bombeiro para subir DOIS andares até o andar dos Truques de Desenho.",
+        links: &[
+            (rec::HOTKEY_UP, "Tecla de atalho"),
+            (rec::POLE_DOWN, "Descendo?"),
+        ],
+    },
+    Tip {
+        record: rec::HOTKEY_UP,
+        pos: (195, 204),
+        w: 240,
+        text: "Quer subir DOIS andares?\nSegure Ctrl enquanto clica no mastro de bombeiro.",
+        links: &[],
+    },
+    Tip {
+        record: rec::POLE_DOWN,
+        pos: (195, 204),
+        w: 249,
+        text: "Quer descer pelo mastro de bombeiro?\n• Clique na abertura do mastro de bombeiro do andar em que você está.",
+        links: &[],
+    },
+    Tip {
+        record: rec::PROJECTS_POLE,
+        pos: (376, 92),
+        w: 164,
+        text: "Precisa de inspiração para desenhar?\n• Clique no mastro de bombeiro para subir até o andar dos Truques de Desenho.\nQuer pintar por conta própria?\n• Clique na abertura do mastro de bombeiro para descer até o Ateliê de Pintura.",
+        links: &[],
+    },
+    Tip {
+        record: rec::TRICKS_POLE,
+        pos: (432, 62),
+        w: 165,
+        text: "Quer a ajuda da Maggie para fazer uma história em quadrinhos, um botão ou adesivo, ou um desenho animado?\n• Clique na abertura do mastro de bombeiro para descer até a Oficina de Projetos.\nQuer pintar por conta própria?\n• Use a abertura do mastro de bombeiro para descer dois andares até o Ateliê de Pintura",
+        links: &[(rec::HOTKEY_DOWN, "Tecla de atalho")],
+    },
+    Tip {
+        record: rec::HOTKEY_DOWN,
+        pos: (195, 204),
+        w: 251,
+        text: "Quer descer DOIS andares?\nSegure a tecla Ctrl enquanto clica na abertura do mastro de bombeiro do andar em que você está.",
+        links: &[],
+    },
+    Tip {
+        record: rec::SKIP_PROJECT,
+        pos: (203, 190),
+        w: 233,
+        text: "Quer ignorar este balão e começar um novo projeto imediatamente?\n• Na próxima vez, segure Ctrl quando clicar no projeto que você quer começar.",
+        links: &[],
+    },
+    Tip {
+        record: rec::SKIP_BASIC,
+        pos: (203, 190),
+        w: 232,
+        text: "Você quer começar os truques básicos sem nenhuma mensagem?\n• Na próxima vez, segure Ctrl quando clicar em Básico.",
+        links: &[],
+    },
+    Tip {
+        record: rec::SKIP_PERSP,
+        pos: (157, 210),
+        w: 325,
+        text: "Quer começar a lição tridimensional sem nenhuma mensagem?\n• Da próxima vez, segure Ctrl quando clicar em 3D.",
+        links: &[],
+    },
+    Tip {
+        record: rec::GLOSS_3D,
+        pos: (238, 192),
+        w: 162,
+        text: "tridimensional\nUma figura é tridimensional ou 3-D quando mostra profundidade. As imagens no quadro parecem saltar da página.",
+        links: &[],
+    },
+];
+
+/// Dica (sem opções) do registro `k`, do Fine Artist.
 pub fn tip(assets: &Assets, k: usize, user: &str) -> Balloon {
-    let (pos, w, text, links): TipSpec = match k {
-        rec::LOBBY_STUDIO => (
-            (34, 111),
-            167,
-            "Clique no andar do Ateliê de Pintura para começar a desenhar por conta própria.\nVocê pode desenhar qualquer coisa aqui, desde um simples rabisco até a Monalisa!",
-            &[],
-        ),
-        rec::LOBBY_PROJECTS => (
-            (30, 65),
-            172,
-            "Clique na Oficina de Projetos para trabalhar com a Maggie.\nEla está esperando para ajudar você a fazer quadrinhos, botões e adesivos, ou para montar um Desenho Animado!",
-            &[],
-        ),
-        rec::LOBBY_TRICKS => (
-            (25, 45),
-            162,
-            "Inseguro quanto ao seu talento de desenhista? Não esquenta! Clique aqui para ir até o andar dos Truques de Desenho.\nA Maggie pode te mostrar alguns dos truques que ela aprendeu.",
-            &[],
-        ),
-        rec::LOBBY_GALLERY => (
-            (95, 182),
-            162,
-            "Clique na seta da Galeria para ver todas as obras que você pintou.\nAli você também pode copiar, jogar fora ou levar os quadros para outros lugares.",
-            &[],
-        ),
-        rec::STUDIO_NEW => (
-            (130, 233),
-            204,
-            "Para criar um quadro novo\n• Dê um clique duplo na tela em branco.",
-            &[],
-        ),
-        rec::STUDIO_LAST => (
-            (62, 110),
-            166,
-            "Esta é a última coisa que você salvou no Ateliê de Pintura.\nPara trabalhar neste quadro outra vez\n• Dê um clique duplo nele.",
-            &[],
-        ),
-        rec::STUDIO_PORTFOLIO => (
-            (266, 178),
-            175,
-            "A pasta é o lugar em que são guardados todos os seus quadros (e os dos outros também).\nPara abrir a pasta\n• Clique nela.",
-            &[],
-        ),
-        rec::STUDIO_POLE => (
-            (340, 82),
-            200,
-            "Você quer que a Maggie te ajude a fazer uma história em quadrinhos, um botão ou adesivo, ou um Desenho Animado?\n• Clique no mastro de bombeiro para subir até a Oficina de Projetos!\nQuer aprender os Truques de Desenho da Maggie?\n• Use o mastro de bombeiro para subir DOIS andares até o andar dos Truques de Desenho.",
-            &[
-                (rec::HOTKEY_UP, "Tecla de atalho"),
-                (rec::POLE_DOWN, "Descendo?"),
-            ],
-        ),
-        rec::HOTKEY_UP => (
-            (195, 204),
-            240,
-            "Quer subir DOIS andares?\nSegure Ctrl enquanto clica no mastro de bombeiro.",
-            &[],
-        ),
-        rec::POLE_DOWN => (
-            (195, 204),
-            249,
-            "Quer descer pelo mastro de bombeiro?\n• Clique na abertura do mastro de bombeiro do andar em que você está.",
-            &[],
-        ),
-        rec::PROJECTS_POLE => (
-            (376, 92),
-            164,
-            "Precisa de inspiração para desenhar?\n• Clique no mastro de bombeiro para subir até o andar dos Truques de Desenho.\nQuer pintar por conta própria?\n• Clique na abertura do mastro de bombeiro para descer até o Ateliê de Pintura.",
-            &[],
-        ),
-        rec::TRICKS_POLE => (
-            (432, 62),
-            165,
-            "Quer a ajuda da Maggie para fazer uma história em quadrinhos, um botão ou adesivo, ou um desenho animado?\n• Clique na abertura do mastro de bombeiro para descer até a Oficina de Projetos.\nQuer pintar por conta própria?\n• Use a abertura do mastro de bombeiro para descer dois andares até o Ateliê de Pintura",
-            &[(rec::HOTKEY_DOWN, "Tecla de atalho")],
-        ),
-        rec::HOTKEY_DOWN => (
-            (195, 204),
-            251,
-            "Quer descer DOIS andares?\nSegure a tecla Ctrl enquanto clica na abertura do mastro de bombeiro do andar em que você está.",
-            &[],
-        ),
-        rec::SKIP_PROJECT => (
-            (203, 190),
-            233,
-            "Quer ignorar este balão e começar um novo projeto imediatamente?\n• Na próxima vez, segure Ctrl quando clicar no projeto que você quer começar.",
-            &[],
-        ),
-        rec::SKIP_BASIC => (
-            (203, 190),
-            232,
-            "Você quer começar os truques básicos sem nenhuma mensagem?\n• Na próxima vez, segure Ctrl quando clicar em Básico.",
-            &[],
-        ),
-        rec::SKIP_PERSP => (
-            (157, 210),
-            325,
-            "Quer começar a lição tridimensional sem nenhuma mensagem?\n• Da próxima vez, segure Ctrl quando clicar em 3D.",
-            &[],
-        ),
-        rec::GLOSS_3D => (
-            (238, 192),
-            162,
-            "tridimensional\nUma figura é tridimensional ou 3-D quando mostra profundidade. As imagens no quadro parecem saltar da página.",
-            &[],
-        ),
-        _ => ((200, 200), 200, "", &[]),
+    let kit = &ARTIST_KIT;
+    tip_in(
+        kit,
+        kit.tips.iter().find(|t| t.record == k),
+        assets,
+        k,
+        user,
+    )
+}
+
+/// Dica do registro `k` do bloco do kit; `found` é a posição e o texto
+/// reserva (`RoomSpec::tip`), sem eles um balão genérico.
+pub fn tip_in(
+    kit: &RoomKit,
+    found: Option<&Tip>,
+    assets: &Assets,
+    k: usize,
+    user: &str,
+) -> Balloon {
+    let (pos, w, text, links) = match found {
+        Some(t) => (t.pos, t.w, t.text, t.links),
+        None => ((200, 200), 200, "", &[][..]),
     };
-    load(assets, k, pos, user, fallback(w, text, &[], links))
+    load_in(kit, assets, k, pos, user, fallback(w, text, &[], links))
 }
 
 /// Som da dica aberta por uma ligação (lâmpada ou tecla de atalho).
 pub fn link_sound(k: usize) -> u16 {
-    match k {
-        rec::GLOSS_3D | rec::HOTKEY_UP | rec::HOTKEY_DOWN => snd::GLOSSARY,
-        _ => snd::TIP,
-    }
+    ARTIST_KIT.link_sound(k)
 }
 
-/// Objeto da Oficina de Projetos ou dos Truques que abre um balão de escolha.
+/// Objeto que abre um balão de escolha ("criar novo" / "trabalhar com um
+/// que você já criou" / "Ignorar isto"): os da Oficina de Projetos e dos
+/// Truques do Fine Artist e os da Oficina de Projetos e de Ideias do
+/// Creative Writer (dados em `writer_floors`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pick {
     /// Vaca (QUADRINHOS).
@@ -288,6 +337,16 @@ pub enum Pick {
     Basic,
     /// O Pensador (3D).
     ThreeD,
+    /// Writer: alce JORNAL.
+    Newspaper,
+    /// Writer: burro CARTÃO.
+    Card,
+    /// Writer: rinoceronte FAIXA.
+    Banner,
+    /// Writer: Máquina de Ideias.
+    IdeaMachine,
+    /// Writer: Quadro de Figuras.
+    PictureBoard,
 }
 
 /// Linha "Ignorar isto" do balão de escolha (depois das duas opções).
@@ -301,31 +360,38 @@ pub enum Start {
     AskButton,
 }
 
+/// Dados do balão de escolha de um objeto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PickSpec {
+    /// Registro do bloco `WHAT` do kit da sala.
+    pub record: usize,
+    /// Onde o balão aparece (apontando o objeto).
+    pub pos: (i32, i32),
+    /// Largura, texto e opções reserva.
+    pub w: i32,
+    pub text: &'static str,
+    pub options: [&'static str; 2],
+    /// Dica do "Ignorar isto" ("segure Ctrl…").
+    pub skip: usize,
+    /// O que a primeira opção (ou Ctrl+clique) começa.
+    pub start: Start,
+}
+
 impl Pick {
-    pub fn record(self) -> usize {
+    /// Dados do objeto (os do Writer vêm de `writer_floors::pick`).
+    pub fn spec(self) -> PickSpec {
+        let p = |record, pos, w, text, options, skip, start| PickSpec {
+            record,
+            pos,
+            w,
+            text,
+            options,
+            skip,
+            start,
+        };
         match self {
-            Pick::Comics => rec::COMIC,
-            Pick::Sticker => rec::STICKER,
-            Pick::Flipbook => rec::PIGTURE,
-            Pick::Basic => rec::BASIC,
-            Pick::ThreeD => rec::PERSP,
-        }
-    }
-
-    pub fn start(self) -> Start {
-        match self {
-            Pick::Comics => Start::Scene(SceneId::Project(ProjectKind::Comics)),
-            Pick::Sticker => Start::AskButton,
-            Pick::Flipbook => Start::Scene(SceneId::Project(ProjectKind::Flipbook)),
-            Pick::Basic => Start::Scene(SceneId::Tricks(TrickKind::Basic)),
-            Pick::ThreeD => Start::Scene(SceneId::Tricks(TrickKind::ThreeD)),
-        }
-    }
-
-    /// Balão de escolha do objeto, apontando para ele.
-    pub fn balloon(self, assets: &Assets, user: &str) -> Balloon {
-        let (pos, w, text, opts, skip): ((i32, i32), i32, &str, [&str; 2], usize) = match self {
-            Pick::Comics => (
+            Pick::Comics => p(
+                rec::COMIC,
                 (8, 116),
                 204,
                 "Oi! Você quer:",
@@ -334,8 +400,10 @@ impl Pick {
                     "Trabalhar com uma história em quadrinhos que você já criou?",
                 ],
                 rec::SKIP_PROJECT,
+                Start::Scene(SceneId::Project(ProjectKind::Comics)),
             ),
-            Pick::Sticker => (
+            Pick::Sticker => p(
+                rec::STICKER,
                 (183, 239),
                 175,
                 "Você quer:",
@@ -344,8 +412,10 @@ impl Pick {
                     "Trabalhar com um botão ou adesivo que você já criou?",
                 ],
                 rec::SKIP_PROJECT,
+                Start::AskButton,
             ),
-            Pick::Flipbook => (
+            Pick::Flipbook => p(
+                rec::PIGTURE,
                 (232, 82),
                 175,
                 "Oi! Você quer:",
@@ -354,8 +424,10 @@ impl Pick {
                     "Trabalhar com um desenho animado que você já criou?",
                 ],
                 rec::SKIP_PROJECT,
+                Start::Scene(SceneId::Project(ProjectKind::Flipbook)),
             ),
-            Pick::Basic => (
+            Pick::Basic => p(
+                rec::BASIC,
                 (140, 193),
                 179,
                 "Tudo bem! Você quer:",
@@ -364,8 +436,10 @@ impl Pick {
                     "Trabalhar com um truque que você já começou?",
                 ],
                 rec::SKIP_BASIC,
+                Start::Scene(SceneId::Tricks(TrickKind::Basic)),
             ),
-            Pick::ThreeD => (
+            Pick::ThreeD => p(
+                rec::PERSP,
                 (323, 215),
                 198,
                 "O truque tridimensional! Você quer:",
@@ -374,14 +448,39 @@ impl Pick {
                     "Trabalhar com um truque que você já começou",
                 ],
                 rec::SKIP_PERSP,
+                Start::Scene(SceneId::Tricks(TrickKind::ThreeD)),
             ),
-        };
-        let mut b = load(
+            Pick::Newspaper
+            | Pick::Card
+            | Pick::Banner
+            | Pick::IdeaMachine
+            | Pick::PictureBoard => super::writer_floors::pick(self),
+        }
+    }
+
+    pub fn record(self) -> usize {
+        self.spec().record
+    }
+
+    pub fn start(self) -> Start {
+        self.spec().start
+    }
+
+    /// Balão de escolha do objeto, apontando para ele (bloco do Fine Artist).
+    pub fn balloon(self, assets: &Assets, user: &str) -> Balloon {
+        self.balloon_in(&ARTIST_KIT, assets, user)
+    }
+
+    /// Balão de escolha com o bloco `WHAT` do kit da sala.
+    pub fn balloon_in(self, kit: &RoomKit, assets: &Assets, user: &str) -> Balloon {
+        let s = self.spec();
+        let mut b = load_in(
+            kit,
             assets,
-            self.record(),
-            pos,
+            s.record,
+            s.pos,
             user,
-            fallback(w, text, &opts, &[(skip, "Ignorar isto")]),
+            fallback(s.w, s.text, &s.options, &[(s.skip, "Ignorar isto")]),
         );
         // no original "Ignorar isto" vem depois das opções: vira a última
         // linha (opção `IGNORE`), que a sala trata como a dica
@@ -392,26 +491,27 @@ impl Pick {
 
     /// Dica do "Ignorar isto" ("segure Ctrl…").
     pub fn skip_tip(self) -> usize {
-        match self {
-            Pick::Comics | Pick::Sticker | Pick::Flipbook => rec::SKIP_PROJECT,
-            Pick::Basic => rec::SKIP_BASIC,
-            Pick::ThreeD => rec::SKIP_PERSP,
-        }
+        self.spec().skip
     }
 }
 
-/// Personagem do andar: McZee (saguão e Ateliê) ou Maggie (Projetos e Truques).
+/// Personagem do andar: McZee (saguão e Ateliê/Escritório), Maggie
+/// (Projetos e Truques do Fine Artist) ou Max (Projetos e Ideias do Writer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Helper {
     McZee,
     Maggie,
+    Max,
 }
 
 impl Helper {
+    /// Fala ao ser clicado (sons do Fine Artist; as salas usam a do
+    /// `CharacterSpec`, que vale para os dois programas).
     pub fn sound(self) -> u16 {
         match self {
             Helper::McZee => snd::MCZEE,
             Helper::Maggie => snd::MAGGIE,
+            Helper::Max => super::writer_rooms::snd::MAX,
         }
     }
 
@@ -419,10 +519,23 @@ impl Helper {
     /// chamou de novo." (ajuda desligada).
     /// `pos` depende do andar (medido no original).
     pub fn balloon(self, assets: &Assets, user: &str, help_off: bool, pos: (i32, i32)) -> Balloon {
+        self.balloon_in(&ARTIST_KIT, assets, user, help_off, pos)
+    }
+
+    /// Como [`Helper::balloon`], com os registros do kit da sala.
+    pub fn balloon_in(
+        self,
+        kit: &RoomKit,
+        assets: &Assets,
+        user: &str,
+        help_off: bool,
+        pos: (i32, i32),
+    ) -> Balloon {
         if help_off {
-            load(
+            load_in(
+                kit,
                 assets,
-                rec::HELP_ON,
+                kit.help_on,
                 pos,
                 user,
                 fallback(
@@ -436,9 +549,10 @@ impl Helper {
                 ),
             )
         } else {
-            load(
+            load_in(
+                kit,
                 assets,
-                rec::HELP_OFF,
+                kit.help_off,
                 pos,
                 user,
                 fallback(
@@ -460,6 +574,14 @@ impl Helper {
 /// trabalhando), o mesmo da Entrada, sobre a sala.
 pub fn quit_balloon(assets: &Assets, pos: (i32, i32)) -> TextBalloon {
     let mut b = Entry::quit_balloon(assets);
+    b.x = pos.0;
+    b.y = pos.1;
+    b
+}
+
+/// Como [`quit_balloon`], com o "EPA!" do programa (`kit.quit`).
+pub fn quit_balloon_in(q: &QuitSpec, assets: &Assets, pos: (i32, i32)) -> TextBalloon {
+    let mut b = Entry::quit_balloon_in(q, assets);
     b.x = pos.0;
     b.y = pos.1;
     b

@@ -1,6 +1,10 @@
 //! Salas do prédio do Fine Artist: saguão, Ateliê de Pintura, Oficina de
-//! Projetos, Truques de Desenho e o sótão escuro. Fundo e elementos fixos vêm
-//! de `rooms_data` (medidos no original); as áreas clicáveis estão aqui. Em
+//! Projetos, Truques de Desenho e o sótão escuro; e as do Creative Writer
+//! (saguão, Escritório, Oficinas de Projetos e de Ideias, sótão), com a
+//! mesma mecânica. Tudo o que muda de sala para sala (fundo, elementos,
+//! áreas clicáveis, balões, personagem, bolsa…) é um `RoomSpec`
+//! (`room_spec`): os do Fine Artist em `rooms_data`, os do Writer em
+//! `writer_rooms` e vizinhos. Em
 //! cada andar há um personagem parado à esquerda (McZee com uma fantasia
 //! sorteada no saguão e no Ateliê; Maggie nos andares 3 e 4) e, de tempos em
 //! tempos, uma animação ambiente do andar (`gags`). Os objetos do chão
@@ -16,12 +20,13 @@
 //! uma e Ctrl anda duas.
 
 use super::attic;
-use super::elevator::{self, Elevator, Outcome};
-use super::gags::{self, Character, GagPlayer};
+use super::elevator::{Elevator, Outcome};
+use super::gags::{Character, GagPlayer};
 use super::projects::ProjectKind;
-use super::room_objects::{self as objects, BagLayout, BagPart, MagicBag, Surprises, Target, snd};
-use super::room_talk::{self as talk, Helper, Pick, Start, rec, sound};
-use super::rooms_data::{self, Element};
+use super::room_objects::{BagPart, MagicBag, Target};
+use super::room_spec::{self, Action, RoomKit, RoomSpec, Rooms};
+use super::room_talk::{self as talk, Helper, Pick, Start};
+use super::rooms_data;
 use super::studio_wall::{self, End, NameField};
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
@@ -32,67 +37,24 @@ use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::TextBalloon;
 use crate::ui::DoubleClick;
-use crate::ui::{Rect, inside};
+use crate::ui::inside;
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
 use std::path::PathBuf;
 
+/// Posição no prédio (os dois programas têm os mesmos cinco lugares).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Floor {
+    /// Saguão (térreo).
     Lobby,
+    /// Andar 2: Ateliê de Pintura (FA) / Escritório (CW).
     Studio,
+    /// Andar 3: Oficina de Projetos.
     Projects,
+    /// Andar 4: Truques de Desenho (FA) / Oficina de Ideias (CW).
     Tricks,
-    /// Sótão escuro acima dos Truques (só pelo mastro).
+    /// Sótão escuro acima do andar 4 (só pelo mastro).
     Attic,
-}
-
-/// O que um clique numa área faz.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action {
-    /// Fecha o balão.
-    Close,
-    /// Andar do quadro do saguão (nome ou figura): fala `304`.
-    Floor(Floor),
-    /// Galeria pelo saguão, com o som (quadro `304`, seta `2fb`).
-    Gallery(u16),
-    /// Luminária ou "Tchau": o "EPA!" (Sair / Continuar).
-    Quit,
-    /// Pergunta "Botão ou adesivo?" num segundo balão.
-    AskButton,
-    /// Mastro de bombeiro: sobe um andar (Ctrl: dois).
-    PoleUp,
-    /// Abertura do mastro no chão: desce um andar (Ctrl: dois).
-    PoleDown,
-    /// Buraco do rato (com a Varinha Mágica, a surpresa).
-    MouseHole,
-    /// Portas do elevador, botão de chamar ou skate "ELEVADOR".
-    Elevator,
-    /// Skate "LÁ FORA" do saguão: volta para a rua.
-    Outside,
-    /// Cavalete do Ateliê: dica; clique duplo abre um quadro novo.
-    Easel,
-    /// Quadro da parede do Ateliê: dica; clique duplo abre o último quadro.
-    Wall,
-    /// Plaqueta do quadro da parede: troca o nome do último quadro.
-    WallLabel,
-    /// Objeto com balão de escolha (vaca, cobra, porco, estátuas).
-    Pick(Pick),
-    /// Moldura dos Truques: troca a obra-prima.
-    Painting,
-    /// Dica do `WHAT 100d` (opções do balão de chegada).
-    Tip(usize),
-}
-
-impl Action {
-    /// Objetos que respondem com balão: clicar num deles com outro balão
-    /// aberto troca direto para o balão dele.
-    fn talks(self) -> bool {
-        matches!(
-            self,
-            Action::Easel | Action::Wall | Action::Pick(_) | Action::Painting | Action::Quit
-        )
-    }
 }
 
 /// De que é o balão aberto.
@@ -107,11 +69,6 @@ enum Talk {
     },
     Wand,
     AskButton,
-}
-
-struct Hotspot {
-    rect: Rect,
-    action: Action,
 }
 
 /// As cinco posições do mastro, na ordem em que ele sobe.
@@ -133,108 +90,10 @@ impl Floor {
         }
     }
 
-    fn elements(self) -> &'static [Element] {
-        match self {
-            Floor::Lobby => rooms_data::LOBBY,
-            Floor::Studio => rooms_data::STUDIO,
-            Floor::Projects => rooms_data::PROJECTS,
-            Floor::Tricks => rooms_data::TRICKS,
-            Floor::Attic => &[],
-        }
-    }
-
     /// O andar `d` posições acima pelo mastro (negativo: abaixo), com volta.
     pub fn step(self, d: i32) -> Floor {
         let i = CYCLE.iter().position(|f| *f == self).unwrap_or(0) as i32;
         CYCLE[(i + d).rem_euclid(CYCLE.len() as i32) as usize]
-    }
-
-    /// Áreas clicáveis, medidas no original; a primeira que contém o ponto vale.
-    fn hotspots(self) -> Vec<Hotspot> {
-        let h = |rect, action| Hotspot { rect, action };
-        match self {
-            Floor::Lobby => vec![
-                // quadro de andares: os nomes e os andares da figura do
-                // prédio (a setinha "Galeria" fica no térreo dela)
-                h((98, 38, 90, 18), Action::Floor(Floor::Tricks)),
-                h((98, 58, 90, 18), Action::Floor(Floor::Projects)),
-                h((98, 78, 90, 18), Action::Floor(Floor::Studio)),
-                h((98, 98, 90, 18), Action::Gallery(talk::snd::STUDIO_ARRIVAL)),
-                h((12, 18, 86, 35), Action::Floor(Floor::Tricks)),
-                h((12, 53, 86, 22), Action::Floor(Floor::Projects)),
-                h((12, 75, 86, 21), Action::Floor(Floor::Studio)),
-                h((10, 96, 88, 22), Action::Gallery(talk::snd::STUDIO_ARRIVAL)),
-                h((513, 346, 54, 47), Action::MouseHole),
-                // abertura do mastro no chão, à direita do skate
-                h((560, 390, 80, 20), Action::PoleDown),
-                h((584, 410, 56, 16), Action::PoleDown),
-                h((502, 411, 81, 66), Action::Outside),
-                h((480, 202, 36, 71), Action::Elevator),
-                h((210, 130, 260, 270), Action::Elevator),
-                // topo do arco da porta
-                h((236, 64, 210, 66), Action::Elevator),
-                h((146, 290, 48, 20), Action::Quit),
-                h((148, 183, 52, 105), Action::Quit),
-                h((95, 316, 95, 52), Action::Gallery(talk::snd::GALLERY_ARROW)),
-                h((594, 0, 26, 390), Action::PoleUp),
-            ],
-            Floor::Studio => vec![
-                h((283, 63, 158, 120), Action::Wall),
-                h(studio_wall::LABEL, Action::WallLabel),
-                // tela e plaqueta do cavalete, poste de cima e pés
-                h((105, 135, 186, 165), Action::Easel),
-                h((150, 300, 100, 92), Action::Easel),
-                h((466, 328, 54, 47), Action::MouseHole),
-                h((466, 407, 81, 66), Action::Elevator),
-                h((531, 390, 105, 43), Action::PoleDown),
-                h((575, 0, 24, 395), Action::PoleUp),
-                h((474, 250, 46, 20), Action::Quit),
-                h((473, 146, 52, 104), Action::Quit),
-            ],
-            Floor::Projects => vec![
-                h((479, 289, 54, 47), Action::MouseHole),
-                h((466, 407, 81, 66), Action::Elevator),
-                h((529, 371, 105, 43), Action::PoleDown),
-                h((573, 0, 24, 375), Action::PoleUp),
-                h((478, 185, 50, 20), Action::Quit),
-                h((478, 72, 54, 112), Action::Quit),
-                h((40, 20, 145, 165), Action::Pick(Pick::Comics)),
-                h((255, 0, 135, 120), Action::Pick(Pick::Flipbook)),
-                h((150, 165, 240, 120), Action::Pick(Pick::Sticker)),
-            ],
-            Floor::Tricks => vec![
-                h((8, 8, 110, 134), Action::Painting),
-                h((576, 273, 54, 47), Action::MouseHole),
-                h((457, 409, 81, 66), Action::Elevator),
-                h((495, 355, 105, 43), Action::PoleDown),
-                h((539, 0, 24, 360), Action::PoleUp),
-                h((564, 114, 50, 20), Action::Quit),
-                h((565, 5, 50, 108), Action::Quit),
-                h((325, 100, 200, 245), Action::Pick(Pick::ThreeD)),
-                h((150, 40, 150, 290), Action::Pick(Pick::Basic)),
-            ],
-            // o resto do escuro só toca um som
-            Floor::Attic => vec![h(attic::RING, Action::PoleUp)],
-        }
-    }
-}
-
-/// Obras-primas do McZee (cor, máscara) que aparecem na moldura do andar 4.
-const PAINTINGS: [(u16, u16); 8] = [
-    (0x6d37, 0x6d39),
-    (0x6d3b, 0x6d3d),
-    (0x6d3f, 0x6d45),
-    (0x6d47, 0x6d4d),
-    (0x6d4f, 0x6d51),
-    (0x6d53, 0x6d55),
-    (0x6d57, 0x6d59),
-    (0x6d5b, 0x6d5d),
-];
-const PAINTING_POS: (i32, i32) = (1, 4);
-
-impl Floor {
-    fn painting(self, rng: &mut XorShift) -> Option<(u16, u16)> {
-        (self == Floor::Tricks).then(|| PAINTINGS[rng.below(PAINTINGS.len())])
     }
 }
 
@@ -242,156 +101,6 @@ impl Floor {
 pub const DEFAULT_USER: &str = "artista";
 
 impl Floor {
-    /// Balão de chegada ao andar: o do `WHAT` do original quando os dados
-    /// estão instalados, senão o texto reserva. O sótão não tem.
-    fn balloon(self, assets: &Assets, user: &str) -> Option<Balloon> {
-        let k = match self {
-            Floor::Lobby => 1,
-            Floor::Studio => 26,
-            Floor::Projects => 31,
-            Floor::Tricks => 42,
-            Floor::Attic => return None,
-        };
-        let fallback = self.fallback_balloon();
-        let records = assets.dialogs(Program::Artist, talk::ROOMS_WHAT);
-        Some(match records.get(k) {
-            Some(r) if r.options().len() == fallback.options.len() => {
-                Balloon::from_block(&records, k, fallback.x, fallback.y, user).unwrap_or(fallback)
-            }
-            _ => fallback,
-        })
-    }
-
-    /// Balão do McZee ou da Maggie ao chegar ao andar (textos do original,
-    /// usados quando o `ARTIST.EXE` não está instalado).
-    fn fallback_balloon(self) -> Balloon {
-        let (x, y, w) = match self {
-            Floor::Lobby => (300, 20, 300),
-            Floor::Studio => (130, 230, 200),
-            Floor::Projects => (70, 150, 300),
-            Floor::Tricks | Floor::Attic => (70, 120, 260),
-        };
-        let (text, options): (&str, &[&str]) = match self {
-            Floor::Lobby => (
-                "Oi! Eu sou o McZee. O que você quer fazer?",
-                &[
-                    "Começar a desenhar por conta própria",
-                    "Fazer uma história em quadrinhos, um botão ou adesivo, ou montar um Desenho Animado",
-                    "Aprender alguns truques de desenho",
-                    "Copiar, apagar ou limpar desenhos",
-                ],
-            ),
-            Floor::Studio => (
-                "Oba! Este é o Ateliê de Pintura! O que você quer fazer?",
-                &[
-                    "Pintar alguma coisa nova",
-                    "Trabalhar na minha última obra",
-                    "Trabalhar em um quadro mais antigo",
-                    "Outra coisa?",
-                ],
-            ),
-            Floor::Projects => (
-                "Aqui é a Maggie! Estamos no Andar dos Projetos! Vamos fazer alguma coisa juntos?",
-                &[
-                    "É, uma história em quadrinhos",
-                    "OK, vamos fazer um botão ou um adesivo",
-                    "Quero fazer um desenho animado",
-                    "Outra coisa?",
-                ],
-            ),
-            Floor::Tricks | Floor::Attic => (
-                "Seja bem-vindo ao andar dos Truques de Desenho! Eu vou te mostrar os meus truques secretos para desenhar. Com que truque você quer que eu comece?",
-                &[
-                    "Um truque básico",
-                    "Fazendo uma coisa parecer tridimensional",
-                    "Quero fazer outra coisa",
-                ],
-            ),
-        };
-        Balloon {
-            x,
-            y,
-            w,
-            text: text.into(),
-            options: options.iter().map(|o| o.to_string()).collect(),
-            links: Vec::new(),
-            figures: Vec::new(),
-        }
-    }
-
-    /// Ação da opção `k` do balão de chegada: no saguão leva ao andar; nos
-    /// andares só aponta (dica ou balão do objeto), como no original.
-    fn balloon_action(self, k: usize) -> Action {
-        match (self, k) {
-            (Floor::Lobby, 0) => Action::Tip(rec::LOBBY_STUDIO),
-            (Floor::Lobby, 1) => Action::Tip(rec::LOBBY_PROJECTS),
-            (Floor::Lobby, 2) => Action::Tip(rec::LOBBY_TRICKS),
-            (Floor::Lobby, _) => Action::Tip(rec::LOBBY_GALLERY),
-            (Floor::Studio, 0) => Action::Tip(rec::STUDIO_NEW),
-            (Floor::Studio, 1) => Action::Tip(rec::STUDIO_LAST),
-            (Floor::Studio, 2) => Action::Tip(rec::STUDIO_PORTFOLIO),
-            (Floor::Studio, _) => Action::Tip(rec::STUDIO_POLE),
-            (Floor::Projects, 0) => Action::Pick(Pick::Comics),
-            (Floor::Projects, 1) => Action::Pick(Pick::Sticker),
-            (Floor::Projects, 2) => Action::Pick(Pick::Flipbook),
-            (Floor::Projects, _) => Action::Tip(rec::PROJECTS_POLE),
-            (Floor::Tricks, 0) => Action::Pick(Pick::Basic),
-            (Floor::Tricks, 1) => Action::Pick(Pick::ThreeD),
-            (Floor::Tricks, _) => Action::Tip(rec::TRICKS_POLE),
-            (Floor::Attic, _) => Action::Close,
-        }
-    }
-
-    /// Roteiros `ATAG` das animações ambientes do andar.
-    fn gag_scripts(self) -> &'static [u16] {
-        match self {
-            Floor::Lobby => gags::LOBBY_SCRIPTS,
-            Floor::Studio => gags::STUDIO_SCRIPTS,
-            Floor::Projects => gags::PROJECTS_SCRIPTS,
-            Floor::Tricks => gags::TRICKS_SCRIPTS,
-            Floor::Attic => &[],
-        }
-    }
-
-    /// Personagem parado do andar, com a fantasia ou pose sorteada.
-    fn character(self, rng: &mut XorShift) -> Option<Character> {
-        match self {
-            Floor::Lobby => Character::pick(gags::MCZEE_COSTUMES, gags::MCZEE_LOBBY, rng),
-            Floor::Studio => Character::pick(gags::MCZEE_COSTUMES, gags::MCZEE_STUDIO, rng),
-            Floor::Projects | Floor::Tricks => {
-                Character::pick(gags::MAGGIE_POSES, gags::MAGGIE_POS, rng)
-            }
-            Floor::Attic => None,
-        }
-    }
-
-    /// Onde fica o menu do personagem (medido no original).
-    fn helper_pos(self) -> (i32, i32) {
-        match self {
-            Floor::Lobby => (119, 221),
-            Floor::Studio => (130, 232),
-            Floor::Projects | Floor::Tricks | Floor::Attic => (109, 132),
-        }
-    }
-
-    fn helper(self) -> Option<Helper> {
-        match self {
-            Floor::Lobby | Floor::Studio => Some(Helper::McZee),
-            Floor::Projects | Floor::Tricks => Some(Helper::Maggie),
-            Floor::Attic => None,
-        }
-    }
-
-    /// Onde fica o "EPA!" da luminária (medido no original).
-    fn quit_pos(self) -> (i32, i32) {
-        match self {
-            Floor::Studio => (215, 180),
-            Floor::Projects => (214, 180),
-            Floor::Tricks => (214, 200),
-            Floor::Lobby | Floor::Attic => (214, 179),
-        }
-    }
-
     pub fn number(self) -> u8 {
         match self {
             Floor::Lobby => 1,
@@ -401,77 +110,7 @@ impl Floor {
             Floor::Attic => 5,
         }
     }
-
-    fn bag_layout(self) -> BagLayout {
-        match self {
-            Floor::Lobby => objects::LOBBY_BAG,
-            Floor::Studio => objects::STUDIO_BAG,
-            Floor::Projects => objects::PROJECTS_BAG,
-            Floor::Tricks | Floor::Attic => objects::TRICKS_BAG,
-        }
-    }
-
-    /// No original a bolsa já está aberta ao chegar ao Ateliê; nos outros
-    /// andares, fechada.
-    fn bag(self) -> MagicBag {
-        MagicBag::new(self.bag_layout(), self == Floor::Studio)
-    }
-
-    fn surprises(self) -> Surprises {
-        match self {
-            Floor::Lobby => objects::LOBBY_SURPRISES,
-            Floor::Studio => objects::STUDIO_SURPRISES,
-            Floor::Projects => objects::PROJECTS_SURPRISES,
-            Floor::Tricks => objects::TRICKS_SURPRISES,
-            Floor::Attic => Surprises {
-                pole: &[],
-                pole_anchor: (0, 0),
-                hole: &[],
-                hole_anchor: (0, 0),
-            },
-        }
-    }
-
-    /// Balão da Varinha Mágica (`WHAT 100d`): nos andares fala do mastro e
-    /// do buraco do rato.
-    fn wand_balloon(self, assets: &Assets, user: &str) -> Balloon {
-        let fallback = Balloon {
-            x: 0,
-            y: 0,
-            w: 168,
-            text: "Varinha Mágica\nQuando você clica no mastro de bombeiro ou no buraco do rato com a Varinha Mágica, coisas incríveis acontecem!".into(),
-            options: Vec::new(),
-            links: Vec::new(),
-            figures: Vec::new(),
-        };
-        let mut b = Balloon::from_block(
-            &assets.dialogs(Program::Artist, talk::ROOMS_WHAT),
-            WAND_FLOORS,
-            0,
-            0,
-            user,
-        )
-        .filter(|b| !b.text.is_empty())
-        .unwrap_or(fallback);
-        // a "Tecla de atalho" (Ctrl) não existe aqui
-        b.options.clear();
-        b.x = 120;
-        b.y = 235;
-        b
-    }
 }
-
-/// Balão "Wand - floors" do `WHAT 100d`.
-const WAND_FLOORS: usize = 59;
-
-/// Quadro da parede do Ateliê: o último desenho, reduzido a 1/4, e a
-/// plaqueta com o nome; plaqueta do cavalete ("Quadro Novo"). Medido no
-/// original: miolo branco da parede (287,65)-(434,151); texto das
-/// plaquetas centrado na parte branca.
-const WALL_PIC: (i32, i32) = (287, 65);
-const WALL_SCALE: u32 = 4;
-const WALL_LABEL: (i32, i32) = (363, 190);
-const EASEL_LABEL: (i32, i32) = (197, 277);
 
 /// Por onde se chegou a um andar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -480,9 +119,6 @@ enum Via {
     Board,
     Elevator,
 }
-
-/// Menu do McZee dentro do elevador.
-const ELEVATOR_HELPER: (i32, i32) = (117, 102);
 
 /// Dois cliques no mesmo ponto dentro deste tempo são um clique duplo.
 /// Folga (px) entre os dois cliques do clique duplo no cavalete e na parede.
@@ -496,8 +132,13 @@ const GAG_BETWEEN: (f32, f32) = (20.0, 40.0);
 
 pub struct Room {
     common: KidCommon,
+    /// Programa do prédio: para onde levam as saídas (`SceneId::in_program`).
+    program: Program,
+    /// As salas do prédio, por andar.
+    rooms: Rooms,
     floor: Floor,
-    hotspots: Vec<Hotspot>,
+    /// Dados da sala do andar atual.
+    spec: &'static RoomSpec,
     last_drawing: Option<Canvas>,
     /// Nome do último quadro (plaqueta da parede do Ateliê).
     last_name: Option<String>,
@@ -540,12 +181,26 @@ pub struct Room {
 }
 
 impl Room {
+    /// Sala do Fine Artist.
     pub fn new(
         floor: Floor,
         click: Option<SoundRef>,
         drawings: Option<PathBuf>,
         assets: &Assets,
     ) -> Room {
+        Room::for_program(Program::Artist, floor, click, drawings, assets)
+    }
+
+    /// Sala do prédio do programa `p` (salas de `room_spec::rooms(p)`).
+    pub fn for_program(
+        program: Program,
+        floor: Floor,
+        click: Option<SoundRef>,
+        drawings: Option<PathBuf>,
+        assets: &Assets,
+    ) -> Room {
+        let rooms = room_spec::rooms(program);
+        let spec = rooms(floor);
         let pal = assets.palettes(Program::Artist).pal256.clone();
         // um último quadro todo em branco é como nenhum (parede vazia)
         let last_drawing = drawings
@@ -554,16 +209,19 @@ impl Room {
             .filter(|c| c.px.iter().any(|&v| v != crate::paint::WHITE));
         let last_name = drawings.as_deref().and_then(load_name);
         let mut rng = XorShift::from_clock();
-        let character = floor.character(&mut rng);
-        let gags = GagPlayer::with_rng(floor.gag_scripts(), GAG_FIRST, GAG_BETWEEN, rng.clone());
+        let character = pick_character(spec, &mut rng);
+        let gags = GagPlayer::with_rng(spec.gags, GAG_FIRST, GAG_BETWEEN, rng.clone())
+            .in_program(spec.kit.program);
         Room {
             common: KidCommon::new(click),
-            hotspots: floor.hotspots(),
+            program,
+            rooms,
+            spec,
             last_drawing,
             last_name,
             pal,
             drawings,
-            balloon: floor.balloon(assets, DEFAULT_USER),
+            balloon: arrival_balloon(spec, assets, DEFAULT_USER),
             talk: Talk::Arrival,
             sub: None,
             quit: None,
@@ -573,12 +231,12 @@ impl Room {
             help_off: false,
             naming: None,
             floor,
-            painting: floor.painting(&mut rng),
+            painting: pick_painting(spec, &mut rng),
             rng,
             character,
             gags,
             user: DEFAULT_USER.to_string(),
-            bag: floor.bag(),
+            bag: new_bag(spec),
             surprise: None,
             elevator: None,
             wand_cursor: false,
@@ -588,7 +246,7 @@ impl Room {
     /// Com o apelido do usuário no lugar do `@` dos balões.
     pub fn with_user(mut self, user: &str, assets: &Assets) -> Room {
         self.user = user.to_string();
-        self.balloon = self.floor.balloon(assets, &self.user);
+        self.balloon = arrival_balloon(self.spec, assets, &self.user);
         self.talk = Talk::Arrival;
         self
     }
@@ -640,8 +298,27 @@ impl Room {
         self.sub = None;
     }
 
+    fn kit(&self) -> &'static RoomKit {
+        self.spec.kit
+    }
+
+    /// Som `id` do `.SND` do programa da sala.
+    fn snd(&self, id: u16) -> Effect {
+        Effect::PlaySound(self.kit().sound(id))
+    }
+
+    /// Troca de tela: o id do Fine Artist levado ao programa do prédio.
+    fn go(&self, id: SceneId) -> SceneId {
+        id.in_program(self.program)
+    }
+
+    /// Dica do registro `k` (a da sala ou a do kit).
+    fn tip(&self, k: usize, assets: &Assets) -> Balloon {
+        talk::tip_in(self.kit(), self.spec.tip(k), assets, k, &self.user)
+    }
+
     fn show_arrival(&mut self, assets: &Assets) {
-        match self.floor.balloon(assets, &self.user) {
+        match arrival_balloon(self.spec, assets, &self.user) {
             Some(b) => self.show(b, Talk::Arrival),
             None => self.close(),
         }
@@ -655,26 +332,24 @@ impl Room {
                 let open = self.bag.holding_wand || !self.bag.open;
                 self.bag.holding_wand = false;
                 self.bag.open = open;
-                fx.push(Effect::PlaySound(snd(if open {
-                    objects::SND_BAG_OPEN
-                } else {
-                    objects::SND_BAG_CLOSE
-                })));
+                let s = &self.kit().snd;
+                fx.push(self.snd(if open { s.bag_open } else { s.bag_close }));
             }
             BagPart::Suitcase => {
-                fx.push(Effect::PlaySound(snd(objects::SND_SUITCASE)));
-                fx.push(Effect::Push(SceneId::Portfolio));
+                fx.push(self.snd(self.kit().snd.suitcase));
+                fx.push(Effect::Push(self.go(SceneId::Portfolio)));
             }
             BagPart::Book => {
-                fx.extend(objects::SND_BOOK.map(|id| Effect::PlaySound(snd(id))));
-                fx.push(Effect::Push(SceneId::BookStory));
+                fx.extend(self.kit().snd.book.map(|id| self.snd(id)));
+                fx.push(Effect::Push(self.go(SceneId::BookStory)));
             }
             BagPart::Wand => {
                 self.bag.holding_wand = true;
                 self.bag.open = false;
-                fx.push(Effect::PlaySound(snd(objects::SND_WAND_TAKE)));
-                let b = self.floor.wand_balloon(assets, &self.user);
-                self.show(b, Talk::Wand);
+                fx.push(self.snd(self.kit().snd.wand_take));
+                if let Some(b) = wand_balloon(self.kit(), assets, &self.user) {
+                    self.show(b, Talk::Wand);
+                }
             }
         }
     }
@@ -683,11 +358,17 @@ impl Room {
     /// Depois dela a bolsa se abre com a varinha dentro.
     fn start_surprise(&mut self, target: Target, fx: &mut Vec<Effect>, assets: &Assets) {
         self.bag.holding_wand = false;
-        fx.push(Effect::PlaySound(snd(match target {
-            Target::Pole => objects::SND_POLE_UP,
-            Target::Hole => objects::SND_WAND_HOLE,
-        })));
-        match self.floor.surprises().start(target, &mut self.rng, assets) {
+        let s = &self.kit().snd;
+        fx.push(self.snd(match target {
+            Target::Pole => s.pole_up,
+            Target::Hole => s.wand_hole,
+        }));
+        let p = self.kit().program;
+        match self
+            .spec
+            .surprises
+            .start_in(p, target, &mut self.rng, assets)
+        {
             Some(mut a) => {
                 fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
                 self.surprise = Some(a);
@@ -697,18 +378,15 @@ impl Room {
     }
 
     fn enter_elevator(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
-        fx.push(Effect::PlaySound(snd(if self.floor == Floor::Lobby {
-            elevator::SND_DOORS
-        } else {
-            objects::SND_SKATE
-        })));
-        fx.push(Effect::PlaySound(snd(elevator::SND_ARRIVE)));
-        let costume = self
-            .character
-            .as_ref()
-            .map(|c| c.image)
-            .filter(|i| gags::MCZEE_COSTUMES.contains(i));
-        let mut e = Elevator::new(self.floor, costume, assets, &self.user);
+        fx.push(self.snd(self.spec.elevator_sound));
+        fx.push(self.snd(self.kit().snd.elevator_arrive));
+        // o McZee entra junto (a Maggie e o Max ficam)
+        let costume = self.character.as_ref().filter(|_| {
+            self.spec
+                .character
+                .is_some_and(|c| c.helper == Helper::McZee)
+        });
+        let mut e = Elevator::for_program(self.program, self.floor, costume, assets, &self.user);
         e.set_ask(!self.help_off);
         self.elevator = Some(e);
         self.close();
@@ -717,26 +395,31 @@ impl Room {
 
     /// Abre o "EPA!" por cima da sala, com a vinheta.
     fn open_quit(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
-        fx.extend(talk::snd::QUIT.map(|id| Effect::PlaySound(sound(id))));
+        fx.extend(self.kit().snd.quit.map(|id| self.snd(id)));
         self.close();
-        self.quit = Some(talk::quit_balloon(assets, self.floor.quit_pos()));
+        self.quit = Some(talk::quit_balloon_in(
+            self.kit().quit,
+            assets,
+            self.spec.quit_pos,
+        ));
     }
 
     /// Clique com o "EPA!" aberto: só as bolinhas respondem.
     fn quit_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, assets: &Assets) {
         let Some(q) = &self.quit else { return };
+        let s = &self.kit().snd;
         match q.hit_option(assets, x, y) {
             Some(0) => {
-                fx.push(Effect::PlaySound(sound(talk::snd::CHOICE)));
+                fx.push(self.snd(s.choice));
                 fx.push(Effect::Quit);
             }
             Some(_) => {
-                fx.push(Effect::PlaySound(sound(talk::snd::CHOICE)));
+                fx.push(self.snd(s.choice));
                 self.quit = None;
             }
             None => {
                 if !q.contains(assets, x, y) {
-                    fx.push(Effect::PlaySound(sound(talk::snd::REFUSE)));
+                    fx.push(self.snd(s.refuse));
                 }
             }
         }
@@ -745,17 +428,18 @@ impl Room {
     /// Clique no McZee ou na Maggie (na sala ou no elevador): o menu
     /// "Você quer me ver menos?" (ou "Que bom que você me chamou de novo").
     fn open_helper(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
-        let (h, pos) = if self.elevator.is_some() {
-            (Helper::McZee, ELEVATOR_HELPER)
+        let kit = self.kit();
+        let (h, pos, sound) = if self.elevator.is_some() {
+            (Helper::McZee, kit.elevator_helper, kit.snd.mczee)
         } else {
-            match self.floor.helper() {
-                Some(h) => (h, self.floor.helper_pos()),
+            match self.spec.character {
+                Some(c) => (c.helper, c.menu, c.sound),
                 None => return,
             }
         };
-        fx.push(Effect::PlaySound(sound(h.sound())));
+        fx.push(self.snd(sound));
         let off = self.help_off;
-        let b = h.balloon(assets, &self.user, off, pos);
+        let b = h.balloon_in(kit, assets, &self.user, off, pos);
         self.show(b, Talk::Helper { off });
     }
 
@@ -788,10 +472,10 @@ impl Room {
             self.open_link(p.skip_tip(), fx, assets);
             return;
         }
-        fx.push(Effect::PlaySound(sound(talk::snd::CHOICE)));
+        fx.push(self.snd(self.kit().snd.choice));
         match self.talk {
             Talk::Arrival => {
-                let action = self.floor.balloon_action(k);
+                let action = self.spec.arrival_action(k);
                 self.act(action, fx, assets);
             }
             Talk::Pick(p) => {
@@ -799,8 +483,8 @@ impl Room {
                 if k == 0 {
                     self.start_pick(p, fx, assets);
                 } else {
-                    fx.push(Effect::PlaySound(sound(talk::snd::PORTFOLIO)));
-                    fx.push(Effect::Push(SceneId::Portfolio));
+                    fx.push(self.snd(self.kit().snd.portfolio));
+                    fx.push(Effect::Push(self.go(SceneId::Portfolio)));
                 }
             }
             Talk::Helper { off: false } => match k {
@@ -834,88 +518,88 @@ impl Room {
 
     /// Ligação (dica, tecla de atalho, glossário): abre por cima do balão.
     fn open_link(&mut self, k: usize, fx: &mut Vec<Effect>, assets: &Assets) {
-        fx.push(Effect::PlaySound(sound(talk::link_sound(k))));
-        self.sub = Some(talk::tip(assets, k, &self.user));
+        fx.push(self.snd(self.kit().link_sound(k)));
+        self.sub = Some(self.tip(k, assets));
     }
 
-    /// Palavra "tridimensional" do balão de chegada dos Truques (glossário).
-    fn glossary_hit(&self, b: &Balloon, x: i32, y: i32, assets: &Assets) -> bool {
-        self.talk == Talk::Arrival
-            && self.floor == Floor::Tricks
-            && b.option_word_rect(assets, 1, "tridimensional")
-                .is_some_and(|r| inside(r, x, y))
+    /// Palavra do glossário numa opção do balão de chegada ("tridimensional"
+    /// dos Truques): o registro que ela abre.
+    fn glossary_hit(&self, b: &Balloon, x: i32, y: i32, assets: &Assets) -> Option<usize> {
+        let g = self.spec.arrival?.glossary?;
+        (self.talk == Talk::Arrival
+            && b.option_word_rect(assets, g.option, g.word)
+                .is_some_and(|r| inside(r, x, y)))
+        .then_some(g.record)
     }
 
     fn act(&mut self, action: Action, fx: &mut Vec<Effect>, assets: &Assets) {
         match action {
             Action::Floor(fl) => {
-                fx.push(Effect::PlaySound(sound(talk::snd::STUDIO_ARRIVAL)));
+                fx.push(self.snd(self.kit().snd.board));
                 self.set_floor(fl, Via::Board, fx, assets);
             }
             Action::Gallery(id) => {
-                fx.push(Effect::PlaySound(sound(id)));
-                fx.push(Effect::ChangeScene(SceneId::Gallery));
+                fx.push(self.snd(id));
+                fx.push(Effect::ChangeScene(self.go(SceneId::Gallery)));
             }
             Action::PoleUp => {
-                fx.push(Effect::PlaySound(snd(objects::SND_POLE_UP)));
+                fx.push(self.snd(self.kit().snd.pole_up));
                 let to = self.floor.step(if self.ctrl { 2 } else { 1 });
                 self.set_floor(to, Via::Pole, fx, assets);
             }
             Action::PoleDown => {
-                fx.push(Effect::PlaySound(snd(objects::SND_POLE_DOWN)));
+                fx.push(self.snd(self.kit().snd.pole_down));
                 let to = self.floor.step(if self.ctrl { -2 } else { -1 });
                 self.set_floor(to, Via::Pole, fx, assets);
             }
-            Action::MouseHole => fx.push(Effect::PlaySound(sound(talk::snd::MOUSE_HOLE))),
+            Action::MouseHole => fx.push(self.snd(self.kit().snd.mouse_hole)),
             Action::Elevator => self.enter_elevator(fx, assets),
             Action::Outside => {
-                fx.push(Effect::PlaySound(snd(objects::SND_SKATE)));
-                fx.push(Effect::ChangeScene(SceneId::Street));
+                fx.push(self.snd(self.kit().snd.skate));
+                fx.push(Effect::ChangeScene(self.go(SceneId::Street)));
             }
             Action::Quit => self.open_quit(fx, assets),
             Action::Close => self.close(),
             Action::AskButton => {
-                self.show(
-                    Balloon {
-                        x: 183,
-                        y: 239,
-                        w: 200,
-                        text: "Legal! O que você quer fazer?".into(),
-                        options: vec!["Um botão".into(), "Um adesivo".into()],
-                        links: Vec::new(),
-                        figures: Vec::new(),
-                    },
-                    Talk::AskButton,
+                let mut b = talk::fallback(
+                    200,
+                    "Legal! O que você quer fazer?",
+                    &["Um botão", "Um adesivo"],
+                    &[],
                 );
+                (b.x, b.y) = (183, 239);
+                self.show(b, Talk::AskButton);
             }
-            Action::Easel => {
-                fx.push(Effect::PlaySound(sound(talk::snd::OBJECT)));
-                let b = talk::tip(assets, rec::STUDIO_NEW, &self.user);
-                self.show(b, Talk::Tip);
-            }
-            Action::Wall => {
-                fx.push(Effect::PlaySound(sound(talk::snd::OBJECT)));
-                let b = talk::tip(assets, rec::STUDIO_LAST, &self.user);
-                self.show(b, Talk::Tip);
+            Action::Easel | Action::Wall => {
+                fx.push(self.snd(self.kit().snd.object));
+                if let Some(st) = self.spec.studio {
+                    let k = if action == Action::Easel {
+                        st.easel_tip
+                    } else {
+                        st.wall_tip
+                    };
+                    let b = self.tip(k, assets);
+                    self.show(b, Talk::Tip);
+                }
             }
             Action::Pick(p) => {
-                fx.push(Effect::PlaySound(sound(talk::snd::OBJECT)));
+                fx.push(self.snd(self.kit().snd.object));
                 if self.ctrl {
                     self.close();
                     self.start_pick(p, fx, assets);
                 } else {
-                    fx.push(Effect::PlaySound(sound(talk::snd::PICK)));
-                    let b = p.balloon(assets, &self.user);
+                    fx.push(self.snd(self.kit().snd.pick));
+                    let b = p.balloon_in(self.kit(), assets, &self.user);
                     self.show(b, Talk::Pick(p));
                 }
             }
             Action::Painting => {
-                fx.push(Effect::PlaySound(sound(talk::snd::PAINTING)));
-                self.painting = self.floor.painting(&mut self.rng);
+                fx.push(self.snd(self.kit().snd.painting));
+                self.painting = pick_painting(self.spec, &mut self.rng);
             }
             Action::WallLabel => {
                 if self.last_drawing.is_some() {
-                    fx.push(Effect::PlaySound(sound(talk::snd::OBJECT)));
+                    fx.push(self.snd(self.kit().snd.object));
                     let name = self.wall_name().unwrap_or_default();
                     self.naming = Some(NameField::new(&name));
                     let b = studio_wall::balloon(assets, &self.user);
@@ -923,8 +607,12 @@ impl Room {
                 }
             }
             Action::Tip(k) => {
-                let b = talk::tip(assets, k, &self.user);
+                let b = self.tip(k, assets);
                 self.show(b, Talk::Tip);
+            }
+            Action::Sound(id) => {
+                fx.push(self.snd(id));
+                self.close();
             }
         }
     }
@@ -935,11 +623,11 @@ impl Room {
         let Some(action) = self.clicks.take(self.clock, (x, y)) else {
             return false;
         };
-        fx.push(Effect::PlaySound(sound(talk::snd::OBJECT)));
-        fx.push(Effect::ChangeScene(match action {
+        fx.push(self.snd(self.kit().snd.object));
+        fx.push(Effect::ChangeScene(self.go(match action {
             Action::Easel => SceneId::PaintNew,
             _ => SceneId::Paint,
-        }));
+        })));
         true
     }
 
@@ -948,7 +636,7 @@ impl Room {
         if self.bag.holding_wand != self.wand_cursor {
             self.wand_cursor = self.bag.holding_wand;
             fx.push(Effect::SetCursor(if self.wand_cursor {
-                objects::WAND_CURSOR
+                self.kit().wand_cursor
             } else {
                 DEFAULT_CURSOR
             }));
@@ -963,30 +651,33 @@ impl Room {
     /// toca no clique; pelo elevador, ao chegar ao Ateliê).
     fn set_floor(&mut self, floor: Floor, via: Via, fx: &mut Vec<Effect>, assets: &Assets) {
         self.floor = floor;
-        self.hotspots = floor.hotspots();
+        self.spec = (self.rooms)(floor);
+        let spec = self.spec;
         self.close();
         self.quit = None;
         if !self.help_off {
             self.show_arrival(assets);
         }
-        self.character = floor.character(&mut self.rng);
-        self.painting = floor.painting(&mut self.rng);
-        self.bag = floor.bag();
+        self.character = pick_character(spec, &mut self.rng);
+        self.painting = pick_painting(spec, &mut self.rng);
+        self.bag = new_bag(spec);
         self.surprise = None;
         self.clicks.reset();
         self.naming = None;
         self.gags = GagPlayer::with_rng(
-            floor.gag_scripts(),
+            spec.gags,
             GAG_FIRST,
             GAG_BETWEEN,
             XorShift::new(self.rng.next_u32()),
-        );
-        match floor {
-            Floor::Attic => fx.push(Effect::PlaySound(sound(attic::SND_ARRIVE))),
-            Floor::Studio if via == Via::Elevator => {
-                fx.push(Effect::PlaySound(sound(talk::snd::STUDIO_ARRIVAL)))
-            }
-            _ => {}
+        )
+        .in_program(spec.kit.program);
+        if let Some(id) = spec.arrival_sound {
+            fx.push(self.snd(id));
+        }
+        if via == Via::Elevator
+            && let Some(id) = spec.elevator_arrival_sound
+        {
+            fx.push(self.snd(id));
         }
     }
 
@@ -1004,8 +695,8 @@ impl Room {
             return true;
         }
         if let Some(b) = &self.balloon {
-            if self.glossary_hit(b, x, y, assets) {
-                self.open_link(rec::GLOSS_3D, fx, assets);
+            if let Some(k) = self.glossary_hit(b, x, y, assets) {
+                self.open_link(k, fx, assets);
                 return true;
             }
             if let Some(k) = b.hit(assets, x, y) {
@@ -1021,7 +712,7 @@ impl Room {
             }
             // o menu do personagem é modal: fora dele, a vinheta de recusa
             if matches!(self.talk, Talk::Helper { .. }) {
-                fx.push(Effect::PlaySound(sound(talk::snd::REFUSE)));
+                fx.push(self.snd(self.kit().snd.refuse));
                 return true;
             }
             // clicar fora do balão o fecha; o da varinha deixa o clique
@@ -1049,7 +740,8 @@ impl Room {
         }
         let Some(action) = self.hotspot_at(x, y) else {
             if self.floor == Floor::Attic {
-                fx.push(Effect::PlaySound(sound(attic::dark_sound(&mut self.rng))));
+                let id = attic::dark_sound_in(self.program, &mut self.rng);
+                fx.push(self.snd(id));
                 return true;
             }
             return false;
@@ -1070,7 +762,8 @@ impl Room {
     }
 
     fn hotspot_at(&self, x: i32, y: i32) -> Option<Action> {
-        self.hotspots
+        self.spec
+            .hotspots
             .iter()
             .find(|h| inside(h.rect, x, y))
             .map(|h| h.action)
@@ -1115,14 +808,15 @@ impl Room {
     }
 
     /// Último quadro reduzido no miolo do quadro da parede.
-    fn draw_wall_picture(&self, frame: &mut Frame) {
+    fn draw_wall_picture(&self, st: &room_spec::Studio, frame: &mut Frame) {
         let Some(c) = &self.last_drawing else { return };
-        for y in 0..c.h / WALL_SCALE {
-            for x in 0..c.w / WALL_SCALE {
-                let i = c.px[((y * WALL_SCALE) * c.w + x * WALL_SCALE) as usize];
+        let k = st.wall_scale;
+        for y in 0..c.h / k {
+            for x in 0..c.w / k {
+                let i = c.px[((y * k) * c.w + x * k) as usize];
                 frame.put(
-                    WALL_PIC.0 + x as i32,
-                    WALL_PIC.1 + y as i32,
+                    st.wall_pic.0 + x as i32,
+                    st.wall_pic.1 + y as i32,
                     crate::ui::pal_rgb(&self.pal, i),
                 );
             }
@@ -1131,17 +825,17 @@ impl Room {
 
     /// Nome na plaqueta: o do último quadro (ou "Quadro Novo" se ele não
     /// tem nome) na parede; "Quadro Novo" no cavalete.
-    fn draw_labels(&self, frame: &mut Frame, assets: &Assets) {
+    fn draw_labels(&self, st: &room_spec::Studio, frame: &mut Frame, assets: &Assets) {
         let wall = if self.naming.is_some() {
             None
         } else {
             self.wall_name()
         };
         let labels = [
-            (wall, WALL_LABEL),
+            (wall, st.wall_label),
             (
                 Some(super::paint::rename::DEFAULT_NAME.to_string()),
-                EASEL_LABEL,
+                st.easel_label,
             ),
         ];
         let font = assets.font(8);
@@ -1159,6 +853,50 @@ impl Room {
             n.draw(frame, font.as_deref());
         }
     }
+}
+
+/// Personagem da sala, com a fantasia ou pose sorteada.
+fn pick_character(spec: &RoomSpec, rng: &mut XorShift) -> Option<Character> {
+    let c = spec.character?;
+    Character::pick_in(spec.kit.program, c.choices, c.pos, rng)
+}
+
+/// Obra-prima sorteada para a moldura da sala, se houver moldura.
+fn pick_painting(spec: &RoomSpec, rng: &mut XorShift) -> Option<(u16, u16)> {
+    spec.painting.map(|p| p.choices[rng.below(p.choices.len())])
+}
+
+fn new_bag(spec: &RoomSpec) -> MagicBag {
+    MagicBag::with_pics(spec.kit.bag, spec.bag, spec.bag_open)
+}
+
+/// Balão de chegada à sala: o do `WHAT` do original quando os dados estão
+/// instalados (e têm as opções esperadas), senão o texto reserva. O sótão
+/// não tem.
+fn arrival_balloon(spec: &RoomSpec, assets: &Assets, user: &str) -> Option<Balloon> {
+    let a = spec.arrival?;
+    let f = a.fallback;
+    let mut fallback = talk::fallback(f.w, f.text, f.options, &[]);
+    (fallback.x, fallback.y) = (f.x, f.y);
+    let records = assets.dialogs(spec.kit.program, spec.kit.what);
+    Some(match records.get(a.record) {
+        Some(r) if r.options().len() == fallback.options.len() => {
+            Balloon::from_block(&records, a.record, f.x, f.y, user).unwrap_or(fallback)
+        }
+        _ => fallback,
+    })
+}
+
+/// Balão da Varinha Mágica nos andares (fala do mastro e do buraco do
+/// rato), sem a "Tecla de atalho".
+fn wand_balloon(kit: &RoomKit, assets: &Assets, user: &str) -> Option<Balloon> {
+    let w = kit.wand?;
+    let mut b = Balloon::from_block(&assets.dialogs(kit.program, kit.what), w.record, 0, 0, user)
+        .filter(|b| !b.text.is_empty())
+        .unwrap_or_else(|| talk::fallback(w.w, w.text, &[], w.links));
+    b.options.clear();
+    (b.x, b.y) = w.pos;
+    Some(b)
 }
 
 /// Copia a imagem tratando branco puro como transparente (elementos sem máscara).
@@ -1232,8 +970,12 @@ impl Scene for Room {
                     continue;
                 }
                 // clicar fora da plaqueta guarda o nome digitado
+                let label = self
+                    .spec
+                    .studio
+                    .map_or(studio_wall::LABEL, |st| st.label_rect);
                 if let Input::Click { x, y, .. } = *i
-                    && !inside(studio_wall::LABEL, x, y)
+                    && !inside(label, x, y)
                 {
                     self.finish_naming(End::Commit, &mut fx);
                 }
@@ -1279,36 +1021,40 @@ impl Scene for Room {
             return;
         }
         if self.floor == Floor::Attic {
-            attic::draw(frame, assets);
+            attic::draw_in(self.program, frame, assets);
             return;
         }
+        let spec = self.spec;
+        let p = spec.kit.program;
         frame.fill([0, 0, 0]);
-        let bg = assets.image(&ImageRef::Pic(Program::Artist, self.floor.background()));
-        frame.blit(
-            &bg,
-            (SCREEN_W as i32 - bg.width as i32) / 2,
-            (SCREEN_H as i32 - bg.height as i32) / 2,
-        );
-        for e in self.floor.elements() {
-            let img = assets.image(&ImageRef::Pic(Program::Artist, e.id));
+        if spec.background != 0 {
+            let bg = assets.image(&ImageRef::Pic(p, spec.background));
+            frame.blit(
+                &bg,
+                (SCREEN_W as i32 - bg.width as i32) / 2,
+                (SCREEN_H as i32 - bg.height as i32) / 2,
+            );
+        }
+        for e in spec.elements {
+            let img = assets.image(&ImageRef::Pic(p, e.id));
             if e.mask != 0 {
-                let mask = assets.image(&ImageRef::Pic(Program::Artist, e.mask));
+                let mask = assets.image(&ImageRef::Pic(p, e.mask));
                 frame.blit_masked(&img, &mask, e.x, e.y);
             } else {
                 blit_white_transparent(frame, &img, e.x, e.y);
             }
         }
-        if self.floor == Floor::Studio {
-            self.draw_wall_picture(frame);
-            self.draw_labels(frame, assets);
+        if let Some(st) = &spec.studio {
+            self.draw_wall_picture(st, frame);
+            self.draw_labels(st, frame, assets);
         }
         self.bag.draw(frame, assets);
-        if let Some((img, mask)) = self.painting {
+        if let (Some((img, mask)), Some(pt)) = (self.painting, spec.painting) {
             frame.blit_masked(
-                &assets.image(&ImageRef::Pic(Program::Artist, img)),
-                &assets.image(&ImageRef::Pic(Program::Artist, mask)),
-                PAINTING_POS.0,
-                PAINTING_POS.1,
+                &assets.image(&ImageRef::Pic(p, img)),
+                &assets.image(&ImageRef::Pic(p, mask)),
+                pt.pos.0,
+                pt.pos.1,
             );
         }
         if let Some(c) = &self.character {
@@ -1335,6 +1081,10 @@ impl Scene for Room {
 mod tests {
     use super::*;
     use crate::scenes::testutil::empty_assets;
+    use crate::scenes::{elevator, gags, room_objects as objects};
+
+    /// Menu do McZee dentro do elevador.
+    const ELEVATOR_HELPER: (i32, i32) = rooms_data::ARTIST_KIT.elevator_helper;
 
     fn click(x: i32, y: i32) -> Input {
         Input::Click {
@@ -1975,6 +1725,67 @@ mod tests {
         // a bolsa aberta no chão: a maleta vermelha em (300, 430)
         let p = f.pixel(300, 430);
         assert!(p[0] > 150 && p[1] < 80, "{p:?}");
+    }
+
+    /// Clique no meio da primeira área da sala com a ação dada.
+    fn spot(r: &Room, action: Action) -> Input {
+        let h = r
+            .spec
+            .hotspots
+            .iter()
+            .find(|h| h.action == action)
+            .unwrap_or_else(|| panic!("{action:?}"));
+        click(h.rect.0 + h.rect.2 / 2, h.rect.1 + h.rect.3 / 2)
+    }
+
+    /// No prédio do Writer as saídas levam às telas do Writer (as salas
+    /// usam o próprio `RoomSpec`, do Writer ou, enquanto ele não existe, o
+    /// do Fine Artist).
+    #[test]
+    fn writer_building_leads_to_writer_screens() {
+        use crate::scene::CwScene;
+        let (_d, a) = empty_assets();
+        let mut r = Room::for_program(Program::Writer, Floor::Lobby, None, None, &a);
+        r.close();
+        let fx = r.update(&[spot(&r, Action::Outside)], 0.0, &a);
+        assert_eq!(changes(&fx), [SceneId::Cw(CwScene::Street)]);
+        let gallery = r
+            .spec
+            .hotspots
+            .iter()
+            .find_map(|h| match h.action {
+                Action::Gallery(_) => Some(h.action),
+                _ => None,
+            })
+            .unwrap();
+        let fx = r.update(&[spot(&r, gallery)], 0.0, &a);
+        assert_eq!(changes(&fx), [SceneId::Cw(CwScene::Library)]);
+        // a bolsa: o livro e a maleta abrem as telas do Writer por cima
+        let l = r.spec.bag;
+        r.bag.open = true;
+        let fx = r.update(&[click(l.book.0 + 10, l.book.1 + 10)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Cw(CwScene::BookStory))));
+        let fx = r.update(&[click(l.suitcase.0 + 10, l.suitcase.1 + 10)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Cw(CwScene::Portfolio))));
+        // andar 2: clique duplo no cavalete/prancheta = documento novo; no
+        // quadro da parede, a área de escrita
+        let mut r = Room::for_program(Program::Writer, Floor::Studio, None, None, &a);
+        r.close();
+        let easel = spot(&r, Action::Easel);
+        r.update(std::slice::from_ref(&easel), 0.0, &a);
+        let fx = r.update(&[easel], 0.1, &a);
+        assert_eq!(changes(&fx), [SceneId::Cw(CwScene::NewDocument)]);
+        let mut r = Room::for_program(Program::Writer, Floor::Studio, None, None, &a);
+        r.close();
+        let wall = spot(&r, Action::Wall);
+        r.update(std::slice::from_ref(&wall), 0.0, &a);
+        let fx = r.update(&[wall], 0.1, &a);
+        assert_eq!(changes(&fx), [SceneId::Writer]);
+        // o mesmo prédio do Fine Artist continua levando às telas dele
+        let mut r = Room::new(Floor::Lobby, None, None, &a);
+        r.close();
+        let fx = r.update(&[spot(&r, Action::Outside)], 0.0, &a);
+        assert_eq!(changes(&fx), [SceneId::Street]);
     }
 
     /// Fixa o que a sala sorteia (fantasia, pose, obra-prima), para comparar

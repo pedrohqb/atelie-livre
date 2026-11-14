@@ -33,6 +33,13 @@ const DARK_SOUNDS: [(u16, u32); 10] = [
     (0x254, 1),
 ];
 
+/// Som de um clique no escuro no sótão do programa `p` (id do `.SND` do
+/// programa do kit da sala). Por enquanto o do Fine Artist nos dois: o do
+/// Writer (som sorteado e lampejo de um objeto) vem em `writer_attic`.
+pub fn dark_sound_in(_p: Program, rng: &mut XorShift) -> u16 {
+    dark_sound(rng)
+}
+
 /// Sorteia o som de um clique no escuro.
 pub fn dark_sound(rng: &mut XorShift) -> u16 {
     let total: u32 = DARK_SOUNDS.iter().map(|s| s.1).sum();
@@ -72,6 +79,12 @@ fn blit_flipped(f: &mut Frame, img: &Image, mask: &Image, x: i32, y: i32) {
             }
         }
     }
+}
+
+/// Desenha o sótão do programa `p` (por enquanto o do Fine Artist nos
+/// dois; ver `writer_attic`).
+pub fn draw_in(_p: Program, frame: &mut Frame, assets: &Assets) {
+    draw(frame, assets)
 }
 
 pub fn draw(f: &mut Frame, a: &Assets) {

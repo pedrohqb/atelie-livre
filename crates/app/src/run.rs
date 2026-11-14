@@ -62,8 +62,7 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     };
     let room = |floor| {
         Box::new(
-            // TODO(T4): as salas do programa
-            Room::new(floor, cfg.click_sound.clone(), pictures(), assets)
+            Room::for_program(p, floor, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), assets),
         )
     };
