@@ -417,7 +417,9 @@ fn band_h(f: &mut Frame, x: i32, y: i32, w: i32) {
 fn help(a: &Assets) -> Option<Balloon> {
     let (block, k, (x, y)) = HELP;
     let records = a.dialogs(Program::Writer, block);
-    Balloon::from_block(&records, k, x, y, "").or_else(|| {
+    Balloon::from_block(&records, k, x, y, "")
+        .map(|b| b.in_program(Program::Writer))
+        .or_else(|| {
         let mut b = crate::scenes::room_talk::fallback(
             144,
             "Este é o Cavalete de lápis de cera. Use-o para desenhar ou modificar uma figura.\nQuando terminar, clique em OK.",

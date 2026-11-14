@@ -125,7 +125,7 @@ pub fn max_balloon(
     options: &[&str],
 ) -> Balloon {
     let fb = fallback(w, text, options, &[]);
-    let mut b = load_in(&WRITER_KIT, a, k, pos, user, fb);
+    let mut b = load_in(&WRITER_KIT, a, k, pos, user, fb).in_program(Program::Writer);
     (b.x, b.y) = pos;
     b
 }
@@ -142,7 +142,9 @@ pub fn plain_balloon(
 ) -> Balloon {
     let records = a.dialogs(Program::Writer, 0x0805);
     match Balloon::from_block(&records, k, pos.0, pos.1, "") {
-        Some(b) if b.options.len() == options.len() && !b.text.is_empty() => b,
+        Some(b) if b.options.len() == options.len() && !b.text.is_empty() => {
+            b.in_program(Program::Writer)
+        }
         _ => {
             let mut b = fallback(w, text, options, &[]);
             (b.x, b.y) = pos;
