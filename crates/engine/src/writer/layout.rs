@@ -13,8 +13,10 @@
 //! fontes de verdade; os testes usam [`SimpleMeasure`].
 //!
 //! Medidas ainda não conferidas no original (W26) ficam nas constantes
-//! [`INDENT`], [`BULLET_INDENT`], [`SPACE_AFTER`], [`WRAP_GAP`],
-//! [`MIN_SEGMENT`], [`DROP_GAP`] e [`RAISED_SCALE`].
+//! [`INDENT`], [`BULLET_INDENT`], [`WRAP_GAP`], [`MIN_SEGMENT`],
+//! [`DROP_GAP`] e [`RAISED_SCALE`]. Os espaçamentos foram medidos
+//! (`office-complemento.md` §3.1): "entre as linhas" (sprm `0x1c`) dobra a
+//! entrelinha e "depois do parágrafo" (`0x1b`) soma meia linha (a última).
 
 use super::doc::{Align, CharProps, Document, Indent, Item, Paragraph, Pos, Range};
 
@@ -24,8 +26,6 @@ pub const INDENT: i32 = 36;
 pub const BULLET_INDENT: i32 = 18;
 /// O marcador.
 pub const BULLET: char = '•';
-/// "Espaço extra depois do parágrafo", em pontos.
-pub const SPACE_AFTER: i32 = 12;
 /// Folga entre o texto e um objeto.
 pub const WRAP_GAP: i32 = 6;
 /// Segmento mais estreito em que ainda se escreve.
@@ -471,8 +471,11 @@ impl Builder<'_> {
                 break;
             }
         }
-        if props.space_after {
-            self.y += SPACE_AFTER;
+        if props.space_after
+            && let Some(l) = self.lines.last().filter(|l| l.para == pi)
+        {
+            // meia linha (a última do parágrafo): +7 na fonte padrão de 15
+            self.y += l.height / 2;
         }
     }
 
@@ -635,7 +638,8 @@ impl Builder<'_> {
             bullet,
             last_in_para: last,
         });
-        self.y += h + if props.line_spacing { h / 2 } else { 0 };
+        // "entre as linhas": entrelinha dupla
+        self.y += h + if props.line_spacing { h } else { 0 };
         if last && let Some(d) = drop {
             // o parágrafo seguinte não passa por baixo da capitular
             if let Some((p, col, t)) = d.placed
@@ -1072,12 +1076,12 @@ mod tests {
             Range::at(Pos::new(0, 0)),
             ParaChange::Spacing(Spacing::ExtraLines),
         );
-        assert_eq!(lay(&d).lines[1].top, 72 + 13 + 6);
+        assert_eq!(lay(&d).lines[1].top, 72 + 13 + 13);
         d.apply_para(
             Range::at(Pos::new(0, 0)),
             ParaChange::Spacing(Spacing::ExtraAfter),
         );
-        assert_eq!(lay(&d).lines[1].top, 72 + 13 + SPACE_AFTER);
+        assert_eq!(lay(&d).lines[1].top, 72 + 13 + 6);
         d.apply_para(
             Range::at(Pos::new(1, 0)),
             ParaChange::Spacing(Spacing::NewPage),

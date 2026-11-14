@@ -123,8 +123,8 @@ sprms acima (Título = negrito + 24 pt + parágrafo centralizado, ✔).
 |---|---|---|---|
 | `0x19` | 1 | alinhamento | 0 (ou ausente) esquerda, 1 direita ✔, 2 centro ✔, 3 esquerda e direita (justificado) ✔ |
 | `0x1a` | 1 | recuo | 1 só a 1ª linha ✔, 2 todas menos a 1ª ~, 3 todas as linhas ✔ |
-| `0x1b` | 1 | espaço extra entre as linhas | `ff` ✔ |
-| `0x1c` | 1 | espaço extra depois do parágrafo | `ff` ✔ |
+| `0x1b` | 1 | espaço extra depois do parágrafo (≈ meia linha: +7 px na fonte padrão) | `ff` ✔ (conferido com `MIX_TE53.MAX`) |
+| `0x1c` | 1 | espaço extra entre as linhas (entrelinha dupla) | `ff` ✔ (conferido com `MIX_TE53.MAX`) |
 | `0x1d` | 1 | letra capitular (grande e caída) | 3 ✔ (provável nº de linhas) |
 | `0x1e` | 1 | letra destacada (grande e saltada) | `ff` ✔ |
 | `0x1f` | 1 | começa uma nova página | `ff` ✔ |

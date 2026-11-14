@@ -375,9 +375,9 @@ pub struct ParaProps {
     pub align: Align,
     /// `0x1a`.
     pub indent: Indent,
-    /// `0x1b`: espaço extra entre as linhas.
+    /// `0x1c`: espaço extra entre as linhas (entrelinha dupla).
     pub line_spacing: bool,
-    /// `0x1c`: espaço extra depois do parágrafo.
+    /// `0x1b`: espaço extra depois do parágrafo (meia linha).
     pub space_after: bool,
     /// `0x1d`: letra capitular (grande e caída); o valor (3 nos exemplos)
     /// deve ser o número de linhas.
@@ -410,8 +410,8 @@ impl ParaProps {
                         Indent::All,
                     ][a[0] as usize]
                 }
-                (0x1b, 1) => p.line_spacing = a[0] != 0,
-                (0x1c, 1) => p.space_after = a[0] != 0,
+                (0x1b, 1) => p.space_after = a[0] != 0,
+                (0x1c, 1) => p.line_spacing = a[0] != 0,
                 (0x1d, 1) if a[0] != 0 => p.drop_cap = Some(a[0]),
                 (0x1e, 1) => p.raised_cap = a[0] != 0,
                 (0x1f, 1) => p.new_page = a[0] != 0,
@@ -444,8 +444,8 @@ impl ParaProps {
             Indent::All => Some(3),
         };
         put_u8(&mut v, 0x1a, indent);
-        put_flag(&mut v, 0x1b, self.line_spacing);
-        put_flag(&mut v, 0x1c, self.space_after);
+        put_flag(&mut v, 0x1b, self.space_after);
+        put_flag(&mut v, 0x1c, self.line_spacing);
         put_u8(&mut v, 0x1d, self.drop_cap);
         put_flag(&mut v, 0x1e, self.raised_cap);
         put_flag(&mut v, 0x1f, self.new_page);
@@ -771,6 +771,23 @@ mod tests {
             .step_by(2)
             .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
             .collect()
+    }
+
+    #[test]
+    fn spacing_sprms_1b_after_and_1c_between_lines() {
+        // MIX_TE53.MAX (office-complemento.md §3.1): "Era uma vez" grava
+        // `1d 03 1b ff` = capitular + espaço depois do parágrafo
+        let p = ParaProps::from_grpprl(&hex("1d03 1bff"));
+        assert!(p.space_after && !p.line_spacing);
+        assert_eq!(p.drop_cap, Some(3));
+        let p = ParaProps::from_grpprl(&hex("1cff"));
+        assert!(p.line_spacing && !p.space_after);
+        assert_eq!(p.to_grpprl(), hex("1cff"));
+        let p = ParaProps {
+            space_after: true,
+            ..ParaProps::default()
+        };
+        assert_eq!(p.to_grpprl(), hex("1bff"));
     }
 
     #[test]
