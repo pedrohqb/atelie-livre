@@ -68,8 +68,7 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         )
     };
     let entry = || {
-        // TODO(T1): a Entrada do programa
-        let e = Entry::new(users_dir(), cfg.click_sound.clone(), assets);
+        let e = Entry::for_program(p, users_dir(), cfg.click_sound.clone(), assets);
         Box::new(match &cfg.user {
             Some(u) => e.with_user(u),
             None => e,

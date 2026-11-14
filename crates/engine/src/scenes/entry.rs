@@ -1,12 +1,17 @@
-//! Entrada do Fine Artist: o McZee de livro na mão sobre as nuvens (fundo
-//! `4139`), o quadro-negro com a lista de usuários e os botões Sou eu /
-//! Primeira vez / Procurar; o cadastro (nome, bicho preferido, pasta,
-//! apelido) em balões sucessivos do `WHAT 4400`, com os avisos "EPA!" do
-//! `WHAT 4402` e o balão de saída do `WHAT 1001[2]`. Posições e sons
-//! medidos no original (ver `docs/telas/fine-artist.md`).
+//! Entrada do Fine Artist e do Creative Writer: o McZee de livro na mão
+//! sobre as nuvens (fundo `4139`), o quadro-negro com a lista de usuários e
+//! os botões Sou eu / Primeira vez / Procurar; o cadastro (nome, bicho
+//! preferido, pasta, apelido) em balões sucessivos do `WHAT 4400`, com os
+//! avisos "EPA!" do `WHAT 4402` e o balão de saída do `WHAT 1001[2]`.
+//! Posições e sons medidos no original (ver `docs/telas/fine-artist.md`).
+//! O que muda no Writer (fundo, McZee, blocos, sons, opção 4) é um
+//! [`EntrySpec`] (`entry_spec`, `writer_entry`).
 
+use super::entry_spec::{self, ARTIST_ENTRY, ARTIST_QUIT, EntrySpec, QuitSpec};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::{balloon_font, draw_line};
+#[cfg(test)]
+use crate::scene::CwScene;
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::{Button, PIC_ALERT, PIC_ANIMAL0, Part, TextBalloon, blit_pic};
 use crate::ui::SoundQueue;
@@ -34,10 +39,6 @@ const LIST: Rect = (130, 179, 142, 163);
 const ROW_H: i32 = 18;
 /// Linhas visíveis de usuários (a primeira linha é o caminho da pasta).
 const ROWS: usize = 8;
-/// Blocos `WHAT` da entrada, dos avisos e do balão de saída.
-const ENTRY_WHAT: u16 = 0x4400;
-const ERRORS_WHAT: u16 = 0x4402;
-const QUIT_WHAT: u16 = 0x1001;
 /// Posição dos balões do McZee: o grande (lista), os de opções (boas-vindas
 /// e agradecimento), os do cadastro, e os avisos "EPA!" sobre o quadro-negro,
 /// sobre o formulário e o de saída.
@@ -48,7 +49,7 @@ const ALERT_BOARD: (i32, i32) = (213, 173);
 const ALERT_FORM: (i32, i32) = (205, 148);
 const ALERT_QUIT: (i32, i32) = (214, 179);
 
-/// Sons da Entrada (ids do `ARTIST.SND`, medidos no original pelo tamanho
+/// Sons da Entrada do Fine Artist (ids do `ARTIST.SND`, medidos no original pelo tamanho
 /// dos buffers do `waveOutWrite`; quando vários ids têm o mesmo som, o
 /// primeiro).
 pub mod snd {
@@ -84,10 +85,6 @@ pub mod snd {
 
 fn pic_rect(p: (u16, i32, i32), w: i32, h: i32) -> Rect {
     (p.1, p.2, w, h)
-}
-
-fn sound(id: u16) -> SoundRef {
-    SoundRef::Snd(Program::Artist, id)
 }
 
 /// Avisos do `WHAT 4402`.
@@ -134,6 +131,8 @@ enum Step {
 
 pub struct Entry {
     common: KidCommon,
+    /// Dados do programa (Fine Artist ou Creative Writer).
+    spec: &'static EntrySpec,
     dir: Option<PathBuf>,
     users: Vec<String>,
     selected: Option<usize>,
@@ -167,20 +166,20 @@ pub struct Entry {
     done: bool,
 }
 
-fn record(assets: &Assets, block: u16, k: usize) -> Option<Record> {
-    assets.dialogs(Program::Artist, block).into_iter().nth(k)
+fn record(assets: &Assets, program: Program, block: u16, k: usize) -> Option<Record> {
+    assets.dialogs(program, block).into_iter().nth(k)
 }
 
 /// Balão do `WHAT` com os campos e as opções no número esperado; senão o
 /// reserva. Posição, botões e fundo vêm do reserva.
 fn form_balloon(
     assets: &Assets,
-    block: u16,
+    (program, block): (Program, u16),
     k: usize,
     name: &str,
     fallback: TextBalloon,
 ) -> TextBalloon {
-    match record(assets, block, k) {
+    match record(assets, program, block, k) {
         Some(r) => {
             let mut b = TextBalloon::from_record(
                 &r,
@@ -211,22 +210,43 @@ fn strings(v: &[&str]) -> Vec<String> {
 }
 
 impl Entry {
+    /// Entrada do Fine Artist.
     pub fn new(dir: Option<PathBuf>, click: Option<SoundRef>, assets: &Assets) -> Entry {
+        Entry::with_spec(&ARTIST_ENTRY, dir, click, assets)
+    }
+
+    /// Entrada do programa `p`.
+    pub fn for_program(
+        p: Program,
+        dir: Option<PathBuf>,
+        click: Option<SoundRef>,
+        assets: &Assets,
+    ) -> Entry {
+        Entry::with_spec(entry_spec::for_program(p), dir, click, assets)
+    }
+
+    pub fn with_spec(
+        spec: &'static EntrySpec,
+        dir: Option<PathBuf>,
+        click: Option<SoundRef>,
+        assets: &Assets,
+    ) -> Entry {
         let users = dir.as_deref().map(users::list).unwrap_or_default();
         let mut e = Entry {
             common: KidCommon::new(click),
+            spec,
             dir,
             users,
             selected: None,
             scroll: 0,
             step: Step::List,
             quit_from: Step::List,
-            intro: Self::intro_balloon(assets),
+            intro: Self::intro_balloon(spec, assets),
             options: None,
-            name_form: Self::name_balloon(assets),
-            animal_form: Self::animal_balloon(assets, ""),
-            home_form: Self::home_balloon(assets),
-            nick_form: Self::nick_balloon(assets),
+            name_form: Self::name_balloon(spec, assets),
+            animal_form: Self::animal_balloon(spec, assets, ""),
+            home_form: Self::home_balloon(spec, assets),
+            nick_form: Self::nick_balloon(spec, assets),
             warning: None,
             quit: None,
             draft: Profile::default(),
@@ -273,7 +293,7 @@ impl Entry {
             .map(String::as_str)
     }
 
-    fn intro_balloon(assets: &Assets) -> TextBalloon {
+    fn intro_balloon(spec: &EntrySpec, assets: &Assets) -> TextBalloon {
         let fallback = TextBalloon::new(
             BIG.0,
             BIG.1,
@@ -287,10 +307,10 @@ impl Entry {
             ],
             vec![Button::Stop],
         );
-        form_balloon(assets, ENTRY_WHAT, 1, "", fallback)
+        form_balloon(assets, (spec.program, spec.what), 1, "", fallback)
     }
 
-    fn name_balloon(assets: &Assets) -> TextBalloon {
+    fn name_balloon(spec: &EntrySpec, assets: &Assets) -> TextBalloon {
         let fallback = TextBalloon::new(
             FORM.0,
             FORM.1,
@@ -310,10 +330,10 @@ impl Entry {
             ],
             vec![Button::Back, Button::Stop, Button::Next],
         );
-        form_balloon(assets, ENTRY_WHAT, 4, "", fallback)
+        form_balloon(assets, (spec.program, spec.what), 4, "", fallback)
     }
 
-    fn animal_balloon(assets: &Assets, name: &str) -> TextBalloon {
+    fn animal_balloon(spec: &EntrySpec, assets: &Assets, name: &str) -> TextBalloon {
         let fallback = TextBalloon::new(
             FORM.0,
             FORM.1,
@@ -330,12 +350,12 @@ impl Entry {
             ],
             vec![Button::Back, Button::Stop, Button::Next],
         );
-        form_balloon(assets, ENTRY_WHAT, 8, name, fallback)
+        form_balloon(assets, (spec.program, spec.what), 8, name, fallback)
     }
 
     /// "Onde você quer que eu guarde o seu trabalho?" (`4400[6]`), sem a
     /// dica do disquete (o Ateliê Livre guarda tudo na pasta de dados).
-    fn home_balloon(assets: &Assets) -> TextBalloon {
+    fn home_balloon(spec: &EntrySpec, assets: &Assets) -> TextBalloon {
         let fallback = TextBalloon::new(
             FORM.0,
             FORM.1,
@@ -349,7 +369,7 @@ impl Entry {
             ],
             vec![Button::Back, Button::Stop],
         );
-        let mut b = form_balloon(assets, ENTRY_WHAT, 6, "", fallback);
+        let mut b = form_balloon(assets, (spec.program, spec.what), 6, "", fallback);
         for p in &mut b.parts {
             if let Part::Text(t) = p {
                 *t = t
@@ -366,7 +386,7 @@ impl Entry {
         b
     }
 
-    fn nick_balloon(assets: &Assets) -> TextBalloon {
+    fn nick_balloon(spec: &EntrySpec, assets: &Assets) -> TextBalloon {
         let fallback = TextBalloon::new(
             FORM.0,
             FORM.1,
@@ -383,10 +403,10 @@ impl Entry {
             ],
             vec![Button::Back, Button::Stop, Button::Next],
         );
-        form_balloon(assets, ENTRY_WHAT, 5, "", fallback)
+        form_balloon(assets, (spec.program, spec.what), 5, "", fallback)
     }
 
-    fn welcome_balloon(assets: &Assets, name: &str) -> TextBalloon {
+    fn welcome_balloon(spec: &EntrySpec, assets: &Assets, name: &str) -> TextBalloon {
         let fallback = TextBalloon::new(
             OPTIONS.0,
             OPTIONS.1,
@@ -399,15 +419,15 @@ impl Entry {
                     "Ir direto para Imaginópolis",
                     "Mudar o que você sabe sobre mim",
                     "Conte mais sobre o seu mundo",
-                    "Ir direto para o Ateliê de Pintura",
+                    spec.direct_label,
                 ])),
             ],
             vec![Button::Back, Button::Stop],
         );
-        form_balloon(assets, ENTRY_WHAT, 2, name, fallback)
+        form_balloon(assets, (spec.program, spec.what), 2, name, fallback)
     }
 
-    fn thanks_balloon(assets: &Assets, name: &str) -> TextBalloon {
+    fn thanks_balloon(spec: &EntrySpec, assets: &Assets, name: &str) -> TextBalloon {
         let fallback = TextBalloon::new(
             OPTIONS.0 + 6,
             OPTIONS.1,
@@ -424,27 +444,32 @@ impl Entry {
             ],
             vec![Button::Stop],
         );
-        form_balloon(assets, ENTRY_WHAT, 3, name, fallback)
+        form_balloon(assets, (spec.program, spec.what), 3, name, fallback)
     }
 
     /// "EPA! O que você quer fazer?" (`1001[2]`): Sair / Continuar.
     pub(crate) fn quit_balloon(assets: &Assets) -> TextBalloon {
+        Self::quit_balloon_in(&ARTIST_QUIT, assets)
+    }
+
+    /// O "EPA!" de saída do programa (no Writer, `0805[12]`).
+    pub(crate) fn quit_balloon_in(q: &QuitSpec, assets: &Assets) -> TextBalloon {
         let fallback = TextBalloon::new(
             ALERT_QUIT.0,
             ALERT_QUIT.1,
-            210,
+            q.w,
             vec![
                 Part::Figure(PIC_ALERT),
                 text("O que você quer fazer?"),
-                Part::Options(strings(&["Sair do Fine Artist", "Continuar trabalhando"])),
+                Part::Options(strings(&q.options)),
             ],
             vec![],
         )
         .as_alert();
-        form_balloon(assets, QUIT_WHAT, 2, "", fallback)
+        form_balloon(assets, (q.program, q.block), q.record, "", fallback)
     }
 
-    fn warning_balloon(assets: &Assets, w: Warning, name: &str) -> TextBalloon {
+    fn warning_balloon(spec: &EntrySpec, assets: &Assets, w: Warning, name: &str) -> TextBalloon {
         let (k, msg, width, pos) = match w {
             Warning::Duplicate => (
                 0,
@@ -481,7 +506,7 @@ impl Entry {
             vec![],
         )
         .as_alert();
-        form_balloon(assets, ERRORS_WHAT, k, name, fallback)
+        form_balloon(assets, (spec.program, spec.errors), k, name, fallback)
     }
 
     fn list_rows(&self) -> Vec<Rect> {
@@ -516,7 +541,8 @@ impl Entry {
     /// Toca sons em sequência: o primeiro já, os outros quando o anterior
     /// acabar. Uma ação nova interrompe a sequência pendente.
     fn play(&mut self, ids: &[u16]) {
-        self.sounds.play(ids.iter().map(|&id| sound(id)));
+        let p = self.spec.program;
+        self.sounds.play(ids.iter().map(|&id| SoundRef::Snd(p, id)));
     }
 
     /// Toca o próximo som da fila quando o anterior acabou.
@@ -534,20 +560,20 @@ impl Entry {
         self.quit = None;
         let name = self.display_name();
         match step {
-            Step::Welcome => self.options = Some(Self::welcome_balloon(assets, &name)),
-            Step::Thanks => self.options = Some(Self::thanks_balloon(assets, &name)),
+            Step::Welcome => self.options = Some(Self::welcome_balloon(self.spec, assets, &name)),
+            Step::Thanks => self.options = Some(Self::thanks_balloon(self.spec, assets, &name)),
             Step::Warn(w) => {
                 let n = if w == Warning::Duplicate {
                     self.nick_form.fields[0].clone()
                 } else {
                     name
                 };
-                self.warning = Some(Self::warning_balloon(assets, w, &n));
+                self.warning = Some(Self::warning_balloon(self.spec, assets, w, &n));
             }
-            Step::Quit => self.quit = Some(Self::quit_balloon(assets)),
+            Step::Quit => self.quit = Some(Self::quit_balloon_in(self.spec.quit, assets)),
             Step::Animal => {
                 let sel = self.animal_form.selected;
-                self.animal_form = Self::animal_balloon(assets, &self.draft.nome);
+                self.animal_form = Self::animal_balloon(self.spec, assets, &self.draft.nome);
                 self.animal_form.selected = sel.min(ANIMALS - 1);
             }
             Step::Nickname => {
@@ -561,7 +587,8 @@ impl Entry {
 
     /// Abre o balão de saída por cima do passo atual.
     fn ask_quit(&mut self, assets: &Assets) {
-        self.play(&[snd::STOP, snd::ALERT]);
+        let s = self.spec.snd;
+        self.play(&[s.stop, s.alert]);
         self.quit_from = self.step;
         self.go(Step::Quit, assets);
     }
@@ -582,16 +609,18 @@ impl Entry {
         if !self.draft.nome.is_empty() {
             return self.draft.nome.clone();
         }
-        self.selected().unwrap_or("artista").to_string()
+        self.selected()
+            .unwrap_or(self.spec.default_user)
+            .to_string()
     }
 
     fn start_registration(&mut self, prefill: Option<Profile>, back: Step, assets: &Assets) {
         self.editing = prefill.as_ref().map(|p| p.apelido.clone());
         self.draft = prefill.unwrap_or_default();
-        self.name_form = Self::name_balloon(assets);
+        self.name_form = Self::name_balloon(self.spec, assets);
         self.name_form.fields[0] = self.draft.nome.clone();
         self.name_form.fields[1] = self.draft.sobrenome.clone();
-        self.nick_form = Self::nick_balloon(assets);
+        self.nick_form = Self::nick_balloon(self.spec, assets);
         self.nick_form.fields[0] = self.draft.apelido.clone();
         self.animal_form.selected = self.draft.bicho;
         self.home_selected = false;
@@ -599,10 +628,12 @@ impl Entry {
         self.go(Step::Name, assets);
     }
 
+    /// Vai à tela `next` (id do Fine Artist, levado ao programa da Entrada)
+    /// com o usuário escolhido.
     fn finish(&mut self, user: &str, next: SceneId, fx: &mut Vec<Effect>) {
         self.done = true;
         fx.push(Effect::SetUser(user.to_string()));
-        fx.push(Effect::ChangeScene(next));
+        fx.push(Effect::ChangeScene(next.in_program(self.spec.program)));
     }
 
     /// Grava o cadastro; `Err` com o aviso a mostrar.
@@ -661,22 +692,22 @@ impl Entry {
                     let idx = self.scroll + k;
                     if idx < self.users.len() && self.selected != Some(idx) {
                         self.selected = Some(idx);
-                        self.play(&[snd::SELECT]);
+                        self.play(&[self.spec.snd.select]);
                     }
                 } else if inside(pic_rect(BTN_ME, 114, 21), x, y) {
                     if self.selected.is_some() {
-                        self.play(&[snd::ME]);
+                        self.play(&[self.spec.snd.me]);
                         self.go(Step::Welcome, assets);
                     } else {
-                        self.play(&[snd::ME, snd::ALERT]);
+                        self.play(&[self.spec.snd.me, self.spec.snd.alert]);
                         self.go(Step::Warn(Warning::NoLogin), assets);
                     }
                 } else if inside(pic_rect(BTN_FIRST, 143, 20), x, y) {
-                    self.play(&[snd::FIRST]);
+                    self.play(&[self.spec.snd.first]);
                     self.start_registration(None, Step::List, assets);
                 } else if inside(pic_rect(BTN_BROWSE, 140, 24), x, y) {
                     // procura usuários de novo: a lista é relida e perde a escolha
-                    self.play(&[snd::BROWSE]);
+                    self.play(&[self.spec.snd.browse]);
                     self.reload_users();
                     self.selected = None;
                     fx.push(Effect::Log(
@@ -684,15 +715,15 @@ impl Entry {
                             .into(),
                     ));
                 } else if inside(pic_rect(ARROW_UP, 12, 12), x, y) {
-                    self.play(&[snd::ARROW]);
+                    self.play(&[self.spec.snd.arrow]);
                     self.scroll = self.scroll.saturating_sub(1);
                 } else if inside(pic_rect(ARROW_DOWN, 12, 12), x, y) {
-                    self.play(&[snd::ARROW]);
+                    self.play(&[self.spec.snd.arrow]);
                     if self.scroll + ROWS < self.users.len() {
                         self.scroll += 1;
                     }
                 } else if Self::mczee_hit(x, y) {
-                    self.play(&[snd::MCZEE]);
+                    self.play(&[self.spec.snd.mczee]);
                 }
             }
             Input::Key { key: Key::Down, .. } if !self.users.is_empty() => {
@@ -714,7 +745,7 @@ impl Entry {
             Input::Key {
                 key: Key::Enter, ..
             } if self.selected.is_some() => {
-                self.play(&[snd::ME]);
+                self.play(&[self.spec.snd.me]);
                 self.go(Step::Welcome, assets);
             }
             _ => {}
@@ -732,9 +763,12 @@ impl Entry {
             return;
         };
         let Some(b) = &self.options else { return };
-        let user = self.selected().unwrap_or("artista").to_string();
+        let user = self
+            .selected()
+            .unwrap_or(self.spec.default_user)
+            .to_string();
         if let Some(k) = b.hit_option(assets, x, y) {
-            self.play(&[snd::CHOICE]);
+            self.play(&[self.spec.snd.choice]);
             match k {
                 0 => self.finish(&user, SceneId::Imaginopolis, fx),
                 1 => {
@@ -749,21 +783,30 @@ impl Entry {
                     self.start_registration(Some(prof), Step::List, assets);
                 }
                 2 => self.finish(&user, SceneId::Story, fx),
-                // direto à tela de pintura, sem passar pelo cômodo
-                _ => self.finish(&user, SceneId::Paint, fx),
+                // direto à tela de trabalho, sem passar pela sala
+                _ => {
+                    let p = self.spec.program;
+                    fx.extend(
+                        self.spec
+                            .direct_sounds
+                            .iter()
+                            .map(|&id| Effect::PlaySound(SoundRef::Snd(p, id))),
+                    );
+                    self.finish(&user, self.spec.direct, fx)
+                }
             }
             return;
         }
         match b.hit_button(assets, x, y) {
             Some(Button::Back) => {
-                self.play(&[snd::BACK]);
+                self.play(&[self.spec.snd.back]);
                 self.selected = None;
                 self.go(Step::List, assets);
             }
             Some(Button::Stop) => self.ask_quit(assets),
             _ => {
                 if !b.contains(assets, x, y) {
-                    self.play(&[snd::REFUSE]);
+                    self.play(&[self.spec.snd.refuse]);
                 }
             }
         }
@@ -781,7 +824,7 @@ impl Entry {
         let Some(b) = &self.options else { return };
         let user = self.draft.apelido.clone();
         if let Some(k) = b.hit_option(assets, x, y) {
-            self.play(&[snd::CHOICE]);
+            self.play(&[self.spec.snd.choice]);
             match k {
                 0 => self.finish(&user, SceneId::Story, fx),
                 1 => self.finish(&user, SceneId::Imaginopolis, fx),
@@ -814,7 +857,7 @@ impl Entry {
         match (step, b) {
             (_, Button::Stop) => self.ask_quit(assets),
             (Step::Name, Button::Back) => {
-                self.play(&[snd::BACK]);
+                self.play(&[self.spec.snd.back]);
                 let back = self.name_back;
                 self.go(back, assets);
             }
@@ -822,39 +865,39 @@ impl Entry {
                 let nome = self.name_form.fields[0].trim().to_string();
                 let sobrenome = self.name_form.fields[1].trim().to_string();
                 if nome.is_empty() || sobrenome.is_empty() {
-                    self.play(&[snd::NEXT, snd::ALERT]);
+                    self.play(&[self.spec.snd.next, self.spec.snd.alert]);
                     self.go(Step::Warn(Warning::BadName), assets);
                 } else {
-                    self.play(&[snd::NEXT]);
+                    self.play(&[self.spec.snd.next]);
                     self.draft.nome = nome;
                     self.draft.sobrenome = sobrenome;
                     self.go(Step::Animal, assets);
                 }
             }
             (Step::Animal, Button::Back) => {
-                self.play(&[snd::BACK]);
+                self.play(&[self.spec.snd.back]);
                 self.go(Step::Name, assets);
             }
             (Step::Animal, Button::Next) => {
-                self.play(&[snd::NEXT]);
+                self.play(&[self.spec.snd.next]);
                 self.draft.bicho = self.animal_form.selected.min(ANIMALS - 1);
                 self.go(Step::Home, assets);
             }
             (Step::Home, _) => {
-                self.play(&[snd::BACK]);
+                self.play(&[self.spec.snd.back]);
                 self.go(Step::Animal, assets);
             }
             (_, Button::Back) => {
-                self.play(&[snd::BACK]);
+                self.play(&[self.spec.snd.back]);
                 self.go(Step::Home, assets);
             }
             (_, Button::Next) => match self.save(fx) {
                 Ok(()) => {
-                    self.play(&[snd::NEXT]);
+                    self.play(&[self.spec.snd.next]);
                     self.go(Step::Thanks, assets);
                 }
                 Err(w) => {
-                    self.play(&[snd::NEXT, snd::ALERT]);
+                    self.play(&[self.spec.snd.next, self.spec.snd.alert]);
                     self.go(Step::Warn(w), assets);
                 }
             },
@@ -874,10 +917,10 @@ impl Entry {
         if inside(self.list_rows()[0], x, y) {
             if !self.home_selected {
                 self.home_selected = true;
-                self.play(&[snd::SELECT_HOME]);
+                self.play(&[self.spec.snd.select_home]);
             }
         } else if inside(pic_rect(BTN_PUT_HERE, 109, 32), x, y) {
-            self.play(&[snd::ME]);
+            self.play(&[self.spec.snd.me]);
             if self.nick_form.fields[0].is_empty() {
                 self.nick_form.fields[0] = users::suggest_nickname(&self.draft.nome);
             }
@@ -889,7 +932,7 @@ impl Entry {
         } else if inside(pic_rect(ARROW_UP, 12, 12), x, y)
             || inside(pic_rect(ARROW_DOWN, 12, 12), x, y)
         {
-            self.play(&[snd::ARROW]);
+            self.play(&[self.spec.snd.arrow]);
         }
     }
 
@@ -920,17 +963,17 @@ impl Entry {
         let Some(b) = &self.quit else { return };
         match b.hit_option(assets, x, y) {
             Some(0) => {
-                self.play(&[snd::CHOICE]);
+                self.play(&[self.spec.snd.choice]);
                 fx.push(Effect::Quit);
             }
             Some(_) => {
-                self.play(&[snd::CHOICE]);
+                self.play(&[self.spec.snd.choice]);
                 let back = self.quit_from;
                 self.go(back, assets);
             }
             None => {
                 if !b.contains(assets, x, y) {
-                    self.play(&[snd::REFUSE]);
+                    self.play(&[self.spec.snd.refuse]);
                 }
             }
         }
@@ -1029,7 +1072,7 @@ impl Scene for Entry {
         }
         if !self.opened && !self.done {
             self.opened = true;
-            self.play(&snd::OPENING);
+            self.play(&self.spec.snd.opening.clone());
         }
         for i in input {
             if self.done {
@@ -1052,13 +1095,17 @@ impl Scene for Entry {
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         frame.fill([136, 136, 230]);
-        let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+        let bg = assets.image(&ImageRef::Pic(self.spec.program, self.spec.background));
         frame.blit(
             &bg,
             (SCREEN_W as i32 - bg.width as i32) / 2,
             (SCREEN_H as i32 - bg.height as i32) / 2,
         );
-        blit_pic(frame, assets, MCZEE.0, MCZEE.1, MCZEE.2, true);
+        let (id, x, y) = self.spec.mczee;
+        match self.spec.program {
+            Program::Artist => blit_pic(frame, assets, id, x, y, true),
+            p => blit_masked_pic(frame, assets, p, id, x, y),
+        }
         if self.board_visible(self.step) {
             self.draw_board(frame, assets);
         }
@@ -1072,9 +1119,27 @@ impl Scene for Entry {
     }
 }
 
+/// Figura colorida do `.PIC` do programa `p` com a máscara duas imagens
+/// adiante (o McZee da Entrada do Writer); sem máscara, inteira.
+fn blit_masked_pic(f: &mut Frame, a: &Assets, p: Program, id: u16, x: i32, y: i32) {
+    let img = a.image(&ImageRef::Pic(p, id));
+    let mask = a
+        .pic_next_id(p, id, 2)
+        .map(|m| a.image(&ImageRef::Pic(p, m)))
+        .filter(|m| m.height == img.height && m.width.abs_diff(img.width) <= 1);
+    match mask {
+        Some(m) => crate::anim::blit_masked(f, &img, &m, x, y),
+        None => f.blit(&img, x, y),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sound(id: u16) -> SoundRef {
+        SoundRef::Snd(Program::Artist, id)
+    }
     use crate::scenes::testutil::{assets, empty_assets};
 
     fn click(x: i32, y: i32) -> Input {
@@ -1492,7 +1557,7 @@ mod tests {
         assert_eq!(q.parts[0], Part::Figure(PIC_ALERT));
         assert_eq!(q.options()[0], "Sair do Fine Artist");
         assert!(q.alert && q.buttons.is_empty());
-        let h = Entry::home_balloon(&a);
+        let h = Entry::home_balloon(&ARTIST_ENTRY, &a);
         assert!(matches!(&h.parts[0], Part::Text(t) if t.starts_with("Onde você quer")));
         assert!(
             !h.parts
@@ -1524,8 +1589,88 @@ mod tests {
             [255, 255, 255]
         );
         // as boas-vindas do WHAT têm as quatro opções e Volta/Para
-        let w = Entry::welcome_balloon(&a, "Ana");
+        let w = Entry::welcome_balloon(&ARTIST_ENTRY, &a, "Ana");
         assert_eq!(w.options().len(), 4);
         assert_eq!(w.buttons, [Button::Back, Button::Stop]);
+    }
+
+    /// Entrada do Creative Writer: o mesmo cadastro (a mesma pasta de
+    /// usuários), os sons do `WRITER.SND` e as saídas para as telas do
+    /// Writer; a opção 4 vai à área de escrita com um documento novo.
+    #[test]
+    fn writer_entry_goes_to_writer_screens() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Entry::for_program(Program::Writer, Some(dir.path().to_path_buf()), None, &a);
+        let fx = e.update(&[], 0.0, &a);
+        assert!(fx.contains(&Effect::PlaySound(SoundRef::Snd(Program::Writer, 0x300))));
+        register(&mut e, &a, "Ana", "Teste", "ana");
+        let fx = option(&mut e, &a, 1);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Cw(CwScene::Imaginopolis))));
+        // o usuário criado aparece também na Entrada do Fine Artist
+        assert_eq!(
+            Entry::new(Some(dir.path().to_path_buf()), None, &a).users(),
+            ["ana".to_string()]
+        );
+        let mut e = Entry::for_program(Program::Writer, Some(dir.path().to_path_buf()), None, &a);
+        let row = e.list_rows()[0];
+        // nome na lista: o tique do Writer (`22d`)
+        let s = seq(&mut e, &a, click(row.0 + 5, row.1 + 5));
+        assert_eq!(s, [0x22d]);
+        e.update(&[click(BTN_ME.1 + 5, BTN_ME.2 + 5)], 0.0, &a);
+        assert_eq!(e.step_name(), "boas-vindas");
+        assert!(
+            e.options
+                .as_ref()
+                .unwrap()
+                .options()
+                .contains(&"Ir direto para o Escritório".to_string())
+        );
+        let fx = option(&mut e, &a, 3);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Cw(CwScene::NewDocument))));
+        assert!(fx.contains(&Effect::PlaySound(SoundRef::Snd(Program::Writer, 0x304))));
+        assert!(fx.contains(&Effect::PlaySound(SoundRef::Snd(Program::Writer, 0x2ff))));
+        let mut f = Frame::new(640, 480);
+        e.draw(&mut f, &a);
+        // usuário dado na configuração: direto à Imaginópolis do Writer
+        let mut e = Entry::for_program(Program::Writer, None, None, &a).with_user("ana");
+        let fx = e.update(&[], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Cw(CwScene::Imaginopolis))));
+    }
+
+    /// Texto de um balão (as partes de texto, juntas).
+    fn text_of(b: &TextBalloon) -> String {
+        b.parts
+            .iter()
+            .filter_map(|p| match p {
+                Part::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Com os dados reais: os balões do Writer vêm do `WHAT 4e00/4e02` e o
+    /// "EPA!" de saída do `0805[12]`; o McZee é o de livro do `WRITER.PIC`.
+    #[test]
+    fn writer_entry_balloons_with_real_data() {
+        let Some(a) = assets() else { return };
+        let spec = &crate::scenes::writer_entry::WRITER_ENTRY;
+        let e = Entry::with_spec(spec, None, None, &a);
+        assert!(text_of(&e.intro).starts_with("Oi, eu sou o McZee!"));
+        let w = Entry::welcome_balloon(spec, &a, "Ana");
+        assert_eq!(w.options()[3], "Ir direto para o Escritório");
+        let q = Entry::quit_balloon_in(spec.quit, &a);
+        assert_eq!(q.options()[0], "Sair do Creative Writer");
+        assert_eq!(q.options().len(), 2);
+        let nb = Entry::warning_balloon(spec, &a, Warning::NoLogin, "Ana");
+        assert!(text_of(&nb).contains("nome"), "{}", text_of(&nb));
+        let m = a.image(&ImageRef::Pic(Program::Writer, spec.mczee.0));
+        assert_eq!((m.width, m.height), (123, 309));
+        let mut f = Frame::new(640, 480);
+        e.draw(&mut f, &a);
+        // o livro verde do McZee do Writer em (455,235)
+        let p = f.pixel(470, 250);
+        assert!(p[1] > p[0] && p[1] > p[2], "{p:?}");
     }
 }

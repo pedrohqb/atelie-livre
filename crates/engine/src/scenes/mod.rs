@@ -5,6 +5,7 @@ pub mod browser;
 pub mod chooser;
 pub mod elevator;
 pub mod entry;
+pub mod entry_spec;
 pub mod finder_dialog;
 pub mod gags;
 pub mod gallery;
@@ -38,6 +39,7 @@ pub mod writer;
 // (um arquivo por tarefa; ver docs/arquitetura.md, "Creative Writer: specs
 // por programa").
 pub mod writer_elevator;
+pub mod writer_entry;
 pub mod writer_library;
 pub mod writer_portfolio;
 pub mod writer_story;
