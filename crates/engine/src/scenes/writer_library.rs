@@ -119,8 +119,8 @@ pub mod sfx {
 /// Os documentos do Writer na Biblioteca.
 pub const DOCUMENTS: Works = Works {
     load: load_documents,
-    load_wall: load_wall,
-    save_wall: save_wall,
+    load_wall,
+    save_wall,
     open: open_document,
     print: print_document,
     remove: |it| std::fs::remove_file(&it.path),

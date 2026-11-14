@@ -288,15 +288,20 @@ pub struct Drive {
 pub type PrintFn =
     fn(&Item, &[Rgb], Option<PathBuf>, &str, &Assets) -> Result<PrintPreview, String>;
 
+/// Lê a parede: pasta, recursos, trabalhos e quantas molduras.
+pub type LoadWallFn = fn(Option<&Path>, &Assets, &[Item], usize) -> Vec<Option<usize>>;
+/// Grava a parede (o trabalho de cada moldura).
+pub type SaveWallFn = fn(Option<&Path>, &Assets, &[Option<&Item>]) -> Result<(), String>;
+
 /// Os trabalhos mostrados na sala e o que se faz com eles.
 pub struct Works {
     /// Trabalhos da criança (mais recentes primeiro) e os exemplos, com as
     /// miniaturas prontas para a moldura.
     pub load: fn(Option<&Path>, &Assets, &[Rgb]) -> Vec<Item>,
     /// O que vai em cada uma das `n` molduras (índices em `items`).
-    pub load_wall: fn(Option<&Path>, &Assets, &[Item], usize) -> Vec<Option<usize>>,
+    pub load_wall: LoadWallFn,
     /// Grava as molduras.
-    pub save_wall: fn(Option<&Path>, &Assets, &[Option<&Item>]) -> Result<(), String>,
+    pub save_wall: SaveWallFn,
     /// Abre o trabalho (efeitos da troca de tela).
     pub open: fn(&Item, Option<&Path>, &[Rgb], Program) -> Vec<Effect>,
     /// Monta a prévia de impressão.
@@ -1760,18 +1765,20 @@ fn load_wall(dir: Option<&Path>, items: &[Item]) -> [Option<usize>; 3] {
 }
 
 /// Preenche as molduras vazias com os trabalhos na ordem da lista (os da
-/// criança, mais recentes primeiro, e depois os exemplos), sem repetir.
+/// criança, mais recentes primeiro, e depois os exemplos), sem repetir um
+/// que já esteja na parede.
 pub fn fill_wall(wall: &mut [Option<usize>], items: &[Item]) {
     let mut next = 0;
     for k in 0..wall.len() {
-        if wall[k].is_none() {
-            while next < items.len() && wall_contains(&[wall[k]], next) {
-                next += 1;
-            }
-            if next < items.len() {
-                wall[k] = Some(next);
-                next += 1;
-            }
+        if wall[k].is_some() {
+            continue;
+        }
+        while next < items.len() && wall_contains(wall, next) {
+            next += 1;
+        }
+        if next < items.len() {
+            wall[k] = Some(next);
+            next += 1;
         }
     }
 }
