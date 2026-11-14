@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod dct;
 mod detect;
 mod extract;
 mod html;
@@ -36,6 +37,20 @@ enum Command {
         /// Id do bloco em hexadecimal (ex.: 3a00).
         #[arg(long)]
         block: Option<String>,
+    },
+    /// Dicionários do Creative Writer: palavras, verificação, sugestões, sinônimos, anagramas.
+    Dct {
+        #[command(subcommand)]
+        action: dct::Action,
+        /// Pasta MSKIDS (padrão: ATELIE_DATA).
+        #[arg(long, env = "ATELIE_DATA", global = true)]
+        data: Option<PathBuf>,
+        /// Usa os dicionários livres do sistema (Hunspell pt_BR + MyThes) em vez do .DCT.
+        #[arg(long, global = true)]
+        livre: bool,
+        /// Grafia: br ou pt.
+        #[arg(long, default_value = "br", global = true)]
+        variante: String,
     },
     /// Converte um desenho .MAG do Fine Artist em PNG.
     Mag2png { input: PathBuf, output: PathBuf },
@@ -110,6 +125,12 @@ fn main() -> ExitCode {
             }
         },
         Command::What { exe, block } => simple(what::run(&exe, block.as_deref())),
+        Command::Dct {
+            action,
+            data,
+            livre,
+            variante,
+        } => simple(dct::run(&action, data.as_deref(), livre, &variante)),
         Command::Mag2png { input, output } => simple(mag::mag2png(&input, &output)),
         Command::Png2mag {
             input,

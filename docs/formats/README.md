@@ -15,6 +15,7 @@ leitores sem consultar o código original.
 | [`atag.md`](atag.md) | Roteiros de animação `ATAG` (recursos dos executáveis e adesivos animados) |
 | [`mag.md`](mag.md) | Desenhos salvos do Fine Artist (`.MAG`, `.PTM`): chunks, paleta, miniaturas |
 | [`what.md`](what.md) | Balões de ajuda e dos assistentes (`WHAT` dos executáveis): texto formatado, opções, dicas, glossário |
+| [`dct.md`](dct.md) | Dicionários do Creative Writer (`SPELL.DCT`, `THES.DCT`): gramática de pares, lista ortográfica, thesaurus; alternativa livre |
 | [`animacao.md`](animacao.md) | Pasta `animacao-…/` gravada pelo Ateliê Livre (desenho animado): PNGs, `animacao.json` e GIF animado |
 
 ## Mapa dos arquivos
@@ -30,7 +31,7 @@ leitores sem consultar o código original.
 | `SHARED/STUFF/*.ART`, `*.BOR`, `*.ANI`, `*.CHK` | `CHNK` (clip-art, molduras, animações, checks) | `chnk.md` |
 | `SHARED/STUFF/MAG100.SND`, `MAX100.SND` | `CHNK` com sons WAV | `chnk.md`, `sons.md` |
 | `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | não interpretada |
-| `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO) | fora do escopo |
+| `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO; Houghton Mifflin), comprimidos com gramática de pares | `dct.md` |
 | `WRITER/PICTIMP.FLT` | filtro de importação de imagens (DLL NE) | fora do escopo |
 
 Os arquivos que o próprio Ateliê Livre grava ao lado dos desenhos
