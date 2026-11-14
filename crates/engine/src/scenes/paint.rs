@@ -2,6 +2,7 @@
 //! lata de tinta, palavras, ovo desfazer, aspirador (limpar), cores e padrões.
 //! Posições medidas no original (spec 2b, seção 4).
 
+mod add_sticker;
 mod bucket;
 pub mod exit_dialog;
 mod fresh;
@@ -1688,6 +1689,9 @@ impl Paint {
                     self.vacuum_down(cx, cy, assets);
                 }
                 Tool::Transformers => {
+                    if self.add_to_user_roll(cx, cy, fx) {
+                        return;
+                    }
                     if self.transformers.press(
                         cx,
                         cy,

@@ -166,3 +166,25 @@ fn vacuum_removes_the_sound_of_a_sticker() {
     tap(&mut p, &a, 275, 25); // ovo
     assert!(sound(&p).is_some(), "o ovo não devolveu o som");
 }
+
+/// Transformadores, Coloca-adesivos: o adesivo clicado vai para o rolo
+/// "Meus adesivos" (e para a pasta de desenhos).
+#[test]
+fn add_sticker_transformer_puts_the_object_in_the_user_roll() {
+    let Some(a) = real_assets() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = engine::scenes::Paint::new_blank(Some(tmp.path().to_path_buf()), &a);
+    tap(&mut p, &a, 300, 455);
+    let (x, y) = place_clipart(&mut p, &a, 200, 300);
+    let before = p.stickers().user_stickers().len();
+    tap(&mut p, &a, 375, 25); // Transformadores
+    tap(&mut p, &a, 512, 96); // página 2
+    tap(&mut p, &a, 41 + 37 * 6, 79); // Coloca-adesivos
+    tap(&mut p, &a, 300, 455);
+    tap(&mut p, &a, x, y);
+    let roll = p.stickers().user_stickers();
+    assert_eq!(roll.len(), before + 1, "o adesivo não foi para o rolo");
+    let name = &roll.last().unwrap().name;
+    assert!(tmp.path().join(name).exists(), "{name} não foi gravado");
+    assert_eq!(p.objects().len(), 1, "o quadro não deve mudar");
+}
