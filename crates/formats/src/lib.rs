@@ -23,6 +23,7 @@ pub mod tag;
 pub mod wave;
 pub mod what;
 pub mod winres;
+pub mod winres_ui;
 pub mod wmf;
 
 pub use error::{ErrorKind, Format, FormatError, Result};
