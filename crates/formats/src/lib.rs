@@ -15,6 +15,7 @@ pub mod glob;
 pub mod macpaint;
 pub mod macres;
 pub mod mag;
+pub mod max;
 pub mod maxprefs;
 pub mod ne;
 pub mod palette;
