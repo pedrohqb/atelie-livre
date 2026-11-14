@@ -513,7 +513,8 @@ pub struct Room {
     quit: Option<TextBalloon>,
     /// Ctrl apertado.
     ctrl: bool,
-    /// Relógio da sala (s), para o clique duplo.
+    /// Relógio do clique duplo (s): cada quadro conta no máximo
+    /// [`crate::scene::CLICK_FRAME_MAX`].
     clock: f32,
     /// Último clique simples no cavalete ou na parede: ação, hora e ponto.
     clicks: DoubleClick<Action>,
@@ -1176,7 +1177,7 @@ fn blit_white_transparent(f: &mut Frame, img: &crate::Image, x: i32, y: i32) {
 impl Scene for Room {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
-        self.clock += dt;
+        self.clock += crate::scene::click_time(dt);
         for i in input {
             if let Input::Ctrl(down) = i {
                 self.ctrl = *down;
@@ -1223,6 +1224,7 @@ impl Scene for Room {
             self.sync_cursor(&mut fx);
             return fx;
         }
+        let mut used = false;
         for i in input {
             if let Some(n) = self.naming.as_mut() {
                 if let Some(end) = n.input(i) {
@@ -1251,9 +1253,15 @@ impl Scene for Room {
             if self.surprise.is_some() {
                 continue;
             }
-            if self.click(x, y, &mut fx, assets) {
-                break;
+            if used {
+                // o resto do quadro espera, mas um clique duplo pode chegar
+                // inteiro num quadro só (mouse rápido, quadro lento)
+                if self.double_click(x, y, &mut fx) {
+                    break;
+                }
+                continue;
             }
+            used = self.click(x, y, &mut fx, assets);
         }
         self.sync_cursor(&mut fx);
         fx
@@ -1504,11 +1512,15 @@ mod tests {
         assert_eq!(sounds(&fx), [talk::snd::OBJECT]);
         let fx = r.update(&[click(191, 201)], 0.2, &a);
         assert_eq!(changes(&fx), [SceneId::PaintNew]);
-        // devagar demais não é clique duplo
+        // devagar demais não é clique duplo (o tempo passa em vários quadros:
+        // um quadro só conta no máximo `CLICK_FRAME_MAX`)
         let mut r = Room::new(Floor::Studio, None, None, &a);
         r.update(&[click(600, 470), click(350, 100)], 0.0, &a);
         assert!(r.balloon_open());
-        let fx = r.update(&[click(350, 100)], 1.0, &a);
+        for _ in 0..10 {
+            r.update(&[], 0.1, &a);
+        }
+        let fx = r.update(&[click(350, 100)], 0.0, &a);
         assert!(changes(&fx).is_empty());
         let fx = r.update(&[click(350, 100)], 0.1, &a);
         assert_eq!(changes(&fx), [SceneId::Paint]);

@@ -245,6 +245,8 @@ pub struct GalleryRoom {
     binder: Binder,
     drag: Option<Drag>,
     clicks: DoubleClick<Source>,
+    /// Relógio do clique duplo (s): cada quadro conta no máximo
+    /// [`crate::scene::CLICK_FRAME_MAX`].
     clock: f32,
     balloon: Option<(Ask, Balloon)>,
     alert: Option<Alert>,
@@ -1087,7 +1089,7 @@ fn wall_contains(w: &[Option<usize>], i: usize) -> bool {
 
 impl Scene for GalleryRoom {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
-        self.clock += dt;
+        self.clock += crate::scene::click_time(dt);
         let mut fx = self.common.update(input);
         if !self.arrived {
             self.arrived = true;
