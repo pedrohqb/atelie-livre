@@ -4,21 +4,22 @@
 //! Redondo, Quadrado, Oval alto ou Oval largo" para o adesivo (roteiro de
 //! ajuda `WHAT` 3c00 do `ARTIST.EXE`, registros 4 e 26; os bitmaps das
 //! formas que ele cita não existem no `ARTIST.PIC`, por isso as formas são
-//! geométricas). A forma é overlay por cima do quadro; a pintura fica
-//! limitada à máscara de recorte (`Canvas::clip_mask`) e fora dela o quadro
-//! é branco. A forma escolhida fica gravada em `ultimo-<tipo>.projeto.txt`.
+//! geométricas). Tamanho e lugar de cada forma, o contorno preto de 1 px e
+//! o quadro cinza em volta foram medidos no original no Wine
+//! (`/home/claude/sweep/report/fid-button.md`). A forma é overlay por cima do
+//! quadro; a pintura fica limitada à máscara de recorte (`Canvas::clip_mask`)
+//! e fora dela o quadro é branco (na tela aparece cinza). A forma escolhida fica gravada em `ultimo-<tipo>.projeto.txt`.
 
-use super::{BLACK, GRAY, NICHE, STRIP, card, clear_niche, inside, label};
+use super::{BLACK, NICHE, STRIP, card, clear_niche, inside, label};
 use crate::Frame;
 use crate::assets::Assets;
-use crate::paint::store::nearest;
 use crate::paint::{BLACK as INK_BLACK, CANVAS_H, CANVAS_W, Canvas, History, ORIGIN, WHITE};
 use formats::palette::Rgb;
 
-/// Espessura da borda preta.
-pub const BORDER: f32 = 3.0;
-/// Largura do anel cinza (a "aba" de metal) dos botões.
-pub const RING: f32 = 12.0;
+/// Espessura da borda preta (1 px, como no original).
+pub const BORDER: f32 = 1.0;
+/// Cor do quadro fora da forma, na tela.
+pub const OUTSIDE: [u8; 3] = [100, 100, 100];
 /// Folha de impressão: 210×297 mm a 100 ppp.
 pub const PAGE_W: u32 = 827;
 pub const PAGE_H: u32 = 1169;
@@ -43,9 +44,10 @@ impl Outline {
     pub fn distance(self, cx: f32, cy: f32, px: f32, py: f32) -> f32 {
         match self {
             Outline::Rounded { w, h, r } => {
-                let dx = ((px - cx).abs() - (w / 2.0 - r)).max(0.0);
-                let dy = ((py - cy).abs() - (h / 2.0 - r)).max(0.0);
-                (dx * dx + dy * dy).sqrt() - r
+                let qx = (px - cx).abs() - (w / 2.0 - r);
+                let qy = (py - cy).abs() - (h / 2.0 - r);
+                let (ox, oy) = (qx.max(0.0), qy.max(0.0));
+                (ox * ox + oy * oy).sqrt() + qx.max(qy).min(0.0) - r
             }
             Outline::Ellipse { w, h } => {
                 let (a, b) = (w / 2.0, h / 2.0);
@@ -60,19 +62,19 @@ impl Outline {
 /// `WHAT` 3c00 [4] e [26]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// Botão redondo: círculo de 300 px.
+    /// Botão redondo: círculo de 163 px.
     Round,
-    /// Botão quadrado: 300×300, cantos de raio 30.
+    /// Botão quadrado: 146×146.
     Square,
-    /// Adesivo retangular: 360×260, cantos de raio 24.
+    /// Adesivo retangular: 218×164.
     Rect,
-    /// Adesivo redondo: círculo de 300 px, sem aba.
+    /// Adesivo redondo: círculo de 199 px.
     StickerRound,
-    /// Adesivo quadrado: 300×300, cantos de raio 30, sem aba.
+    /// Adesivo quadrado: 200×200.
     StickerSquare,
-    /// Adesivo oval alto: elipse de 260×318 (proporção 162:198 do original).
+    /// Adesivo oval alto: elipse de 163×199.
     TallOval,
-    /// Adesivo oval largo: elipse de 318×260.
+    /// Adesivo oval largo: elipse de 199×163.
     WideOval,
 }
 
@@ -125,24 +127,12 @@ impl Kind {
     }
 
     pub fn outline(self) -> Outline {
+        let (_, _, w, h) = self.bbox();
+        let (w, h) = (w as f32, h as f32);
         match self {
-            Kind::Round | Kind::StickerRound => Outline::Rounded {
-                w: 300.0,
-                h: 300.0,
-                r: 150.0,
-            },
-            Kind::Square | Kind::StickerSquare => Outline::Rounded {
-                w: 300.0,
-                h: 300.0,
-                r: 30.0,
-            },
-            Kind::Rect => Outline::Rounded {
-                w: 360.0,
-                h: 260.0,
-                r: 24.0,
-            },
-            Kind::TallOval => Outline::Ellipse { w: 260.0, h: 318.0 },
-            Kind::WideOval => Outline::Ellipse { w: 318.0, h: 260.0 },
+            Kind::Round | Kind::StickerRound => Outline::Rounded { w, h, r: w / 2.0 },
+            Kind::Square | Kind::StickerSquare | Kind::Rect => Outline::Rounded { w, h, r: 0.0 },
+            Kind::TallOval | Kind::WideOval => Outline::Ellipse { w, h },
         }
     }
 
@@ -151,34 +141,38 @@ impl Kind {
         if self.is_sticker() { (3, 4) } else { (2, 3) }
     }
 
-    /// Caixa `(x, y, w, h)` da forma no quadro, centrada.
+    /// Caixa `(x, y, w, h)` da forma (com o contorno) no quadro: a medida na
+    /// tela do original menos a origem do quadro.
     pub fn bbox(self) -> (i32, i32, i32, i32) {
-        let (w, h) = self.outline().size();
-        let x = ((CANVAS_W as f32 - w) / 2.0).floor() as i32;
-        let y = ((CANVAS_H as f32 - h) / 2.0).floor() as i32;
-        (x, y, w as i32, h as i32)
+        let (x, y, w, h) = match self {
+            Kind::Round => (230, 186, 163, 163),
+            Kind::Square => (243, 209, 146, 146),
+            Kind::Rect => (216, 196, 218, 164),
+            Kind::StickerRound => (224, 180, 199, 199),
+            Kind::StickerSquare => (224, 180, 200, 200),
+            Kind::TallOval => (232, 180, 163, 199),
+            Kind::WideOval => (224, 196, 199, 163),
+        };
+        (x - ORIGIN.0, y - ORIGIN.1, w, h)
     }
 
     /// Distância com sinal do centro do pixel `(x, y)` à borda da forma
     /// (negativa dentro).
     fn distance(self, x: i32, y: i32) -> f32 {
-        let cx = CANVAS_W as f32 / 2.0;
-        let cy = CANVAS_H as f32 / 2.0;
+        let (bx, by, bw, bh) = self.bbox();
+        let cx = bx as f32 + bw as f32 / 2.0;
+        let cy = by as f32 + bh as f32 / 2.0;
         self.outline()
             .distance(cx, cy, x as f32 + 0.5, y as f32 + 0.5)
     }
 
-    /// Largura da moldura (borda + anel) que não se pinta.
+    /// Largura da moldura (o contorno) que não se pinta.
     fn rim(self) -> f32 {
-        if self.is_sticker() {
-            BORDER
-        } else {
-            BORDER + RING
-        }
+        BORDER
     }
 
-    /// Pixel da moldura: `Some(true)` borda preta, `Some(false)` anel cinza,
-    /// `None` fora da moldura.
+    /// Pixel do contorno: `Some(true)` borda preta, `None` fora dele (o
+    /// `Some(false)`, anel, não existe mais: o original não tem aba).
     fn rim_at(self, x: i32, y: i32) -> Option<bool> {
         let d = self.distance(x, y);
         if d >= 0.0 || d < -self.rim() {
@@ -367,18 +361,17 @@ impl Button {
         }
     }
 
-    /// Borda e anel por cima do quadro e o rótulo da forma no nicho.
+    /// Contorno por cima do quadro, o cinza em volta da forma e o rótulo
+    /// da forma no nicho.
     pub fn draw_overlay(&self, f: &mut Frame, _a: &Assets) {
         let kind = self.kind();
-        let (bx, by, bw, bh) = kind.bbox();
-        for y in by - 1..by + bh + 1 {
-            for x in bx - 1..bx + bw + 1 {
-                if let Some(border) = kind.rim_at(x, y) {
-                    f.put(
-                        ORIGIN.0 + x,
-                        ORIGIN.1 + y,
-                        if border { BLACK } else { GRAY },
-                    );
+        for y in 0..CANVAS_H as i32 {
+            for x in 0..CANVAS_W as i32 {
+                let d = kind.distance(x, y);
+                if d >= 0.0 {
+                    f.put(ORIGIN.0 + x, ORIGIN.1 + y, OUTSIDE);
+                } else if d >= -BORDER {
+                    f.put(ORIGIN.0 + x, ORIGIN.1 + y, BLACK);
                 }
             }
         }
@@ -389,9 +382,8 @@ impl Button {
         kind.glyph(f, r.0 + 4, r.1 + 4, r.2 - 8, r.3 - 8);
     }
 
-    /// Cópia do quadro com a borda e o anel em índices da paleta.
-    pub fn compose(&self, c: &Canvas, pal: &[Rgb]) -> Canvas {
-        let gray = nearest(pal, GRAY[0], GRAY[1], GRAY[2]);
+    /// Cópia do quadro com o contorno em índices da paleta.
+    pub fn compose(&self, c: &Canvas, _pal: &[Rgb]) -> Canvas {
         let kind = self.kind();
         let mut out = c.clone();
         out.clip = None;
@@ -399,8 +391,8 @@ impl Button {
         let (bx, by, bw, bh) = kind.bbox();
         for y in by - 1..by + bh + 1 {
             for x in bx - 1..bx + bw + 1 {
-                if let Some(border) = kind.rim_at(x, y) {
-                    out.set(x, y, if border { INK_BLACK } else { gray });
+                if kind.rim_at(x, y).is_some() {
+                    out.set(x, y, INK_BLACK);
                 }
             }
         }
@@ -471,43 +463,37 @@ mod tests {
         p
     }
 
-    #[test]
-    fn round_mask_is_a_disc_inside_the_rim() {
-        let m = Kind::Round.mask();
-        let at = |x: i32, y: i32| m[(y as u32 * CANVAS_W + x as u32) as usize];
-        assert!(at(297, 173));
-        // 134 px do centro ainda dentro; 136 já é anel
-        assert!(at(297 + 134, 173));
-        assert!(!at(297 + 136, 173));
-        assert!(!at(0, 0));
-        assert!(!at(297, 173 - 149));
-        let n = m.iter().filter(|&&b| b).count() as f32;
-        let r = 150.0 - BORDER - RING;
-        assert!((n - std::f32::consts::PI * r * r).abs() < 600.0);
+    /// Centro da caixa da forma no quadro.
+    fn center(k: Kind) -> (i32, i32) {
+        let (x, y, w, h) = k.bbox();
+        (x + w / 2, y + h / 2)
     }
 
     #[test]
-    fn sticker_shapes_have_their_own_outlines() {
-        assert_eq!(Kind::StickerRound.bbox(), (147, 23, 300, 300));
-        assert_eq!(Kind::StickerSquare.bbox(), (147, 23, 300, 300));
-        assert_eq!(Kind::TallOval.bbox(), (167, 14, 260, 318));
-        assert_eq!(Kind::WideOval.bbox(), (138, 43, 318, 260));
-        let at = |k: Kind, x: i32, y: i32| k.mask()[(y as u32 * CANVAS_W + x as u32) as usize];
-        // adesivo redondo: sem anel, pinta até 4 px da borda
-        assert!(at(Kind::StickerRound, 297 + 145, 173));
-        assert!(!at(Kind::Round, 297 + 145, 173));
-        assert!(!at(Kind::StickerRound, 297 + 148, 173));
-        // oval alto: o ponto (297, 14+5) está dentro, (297+128, 173) também; o canto não
-        assert!(at(Kind::TallOval, 297, 14 + 5));
-        assert!(at(Kind::TallOval, 297 + 125, 173));
-        assert!(!at(Kind::TallOval, 297 + 110, 14 + 20));
-        assert!(!at(Kind::TallOval, 167 + 2, 173));
-        // oval largo é o alto deitado
-        assert!(at(Kind::WideOval, 297 + 154, 173));
-        assert!(!at(Kind::WideOval, 297, 43 + 1));
-        assert!(at(Kind::WideOval, 297, 43 + 5));
-        assert_eq!(Kind::TallOval.rim_at(167 + 1, 173), Some(true));
-        assert_eq!(Kind::TallOval.rim_at(167 + 5, 173), None);
+    fn round_mask_is_a_disc_inside_the_outline() {
+        let m = Kind::Round.mask();
+        let at = |x: i32, y: i32| m[(y as u32 * CANVAS_W + x as u32) as usize];
+        let (cx, cy) = center(Kind::Round);
+        assert!(at(cx, cy));
+        // raio 81,5: 80 px do centro ainda dentro; 81 já é o contorno
+        assert!(at(cx + 79, cy));
+        assert!(!at(cx + 81, cy));
+        assert!(!at(0, 0));
+        let n = m.iter().filter(|&&b| b).count() as f32;
+        let r = 163.0 / 2.0 - BORDER;
+        assert!((n - std::f32::consts::PI * r * r).abs() < 300.0, "{n}");
+    }
+
+    #[test]
+    fn boxes_are_the_ones_measured_in_the_original() {
+        // tela do original menos a origem do quadro (23, 109)
+        assert_eq!(Kind::Round.bbox(), (207, 77, 163, 163));
+        assert_eq!(Kind::Square.bbox(), (220, 100, 146, 146));
+        assert_eq!(Kind::Rect.bbox(), (193, 87, 218, 164));
+        assert_eq!(Kind::StickerRound.bbox(), (201, 71, 199, 199));
+        assert_eq!(Kind::StickerSquare.bbox(), (201, 71, 200, 200));
+        assert_eq!(Kind::TallOval.bbox(), (209, 71, 163, 199));
+        assert_eq!(Kind::WideOval.bbox(), (201, 87, 199, 163));
         for k in Kind::STICKERS {
             assert!(k.is_sticker());
             assert_eq!(k.sheet_grid(), (3, 4));
@@ -521,30 +507,19 @@ mod tests {
     }
 
     #[test]
-    fn square_and_sticker_boxes_are_centered() {
-        assert_eq!(Kind::Round.bbox(), (147, 23, 300, 300));
-        assert_eq!(Kind::Square.bbox(), (147, 23, 300, 300));
-        assert_eq!(Kind::Rect.bbox(), (117, 43, 360, 260));
+    fn squares_have_sharp_corners_and_a_one_pixel_outline() {
+        let (x, y, w, h) = Kind::Rect.bbox();
+        assert_eq!(Kind::Rect.rim_at(x, y), Some(true));
+        assert_eq!(Kind::Rect.rim_at(x + w - 1, y + h - 1), Some(true));
+        assert_eq!(Kind::Rect.rim_at(x + 1, y + 1), None);
+        assert_eq!(Kind::Rect.rim_at(x - 1, y + 5), None);
         let m = Kind::Rect.mask();
-        let at = |x: i32, y: i32| m[(y as u32 * CANVAS_W + x as u32) as usize];
-        assert!(at(297, 173));
-        assert!(at(117 + 5, 173));
-        assert!(!at(117 + 1, 173));
-        // canto arredondado fica de fora
-        assert!(!at(117 + 4, 43 + 4));
-        let sq = Kind::Square.mask();
-        assert!(!sq[(27 * CANVAS_W + 151) as usize]);
-        assert!(sq[(173 * CANVAS_W + 165) as usize]);
-    }
-
-    #[test]
-    fn rim_has_border_outside_and_ring_inside() {
-        assert_eq!(Kind::Round.rim_at(297 + 148, 173), Some(true));
-        assert_eq!(Kind::Round.rim_at(297 + 140, 173), Some(false));
-        assert_eq!(Kind::Round.rim_at(297 + 130, 173), None);
-        assert_eq!(Kind::Round.rim_at(297 + 160, 173), None);
-        assert_eq!(Kind::Rect.rim_at(117 + 1, 173), Some(true));
-        assert_eq!(Kind::Rect.rim_at(117 + 6, 173), None);
+        assert!(m[((y + 1) as u32 * CANVAS_W + (x + 1) as u32) as usize]);
+        // oval alto: o topo do meio está dentro, o canto da caixa não
+        let (ox, oy, ow, _) = Kind::TallOval.bbox();
+        let tm = Kind::TallOval.mask();
+        assert!(tm[((oy + 3) as u32 * CANVAS_W + (ox + ow / 2) as u32) as usize]);
+        assert!(!tm[((oy + 3) as u32 * CANVAS_W + (ox + 3) as u32) as usize]);
     }
 
     #[test]
@@ -554,7 +529,8 @@ mod tests {
         let b = Button::new(false);
         b.prepare(&mut c);
         assert_eq!(c.get(0, 0), Some(WHITE));
-        assert_eq!(c.get(297, 173), Some(5));
+        let (cx, cy) = center(Kind::Round);
+        assert_eq!(c.get(cx, cy), Some(5));
         c.plot(1, 1, &Ink::solid(INK_BLACK));
         assert_eq!(c.get(1, 1), Some(WHITE));
     }
@@ -565,20 +541,21 @@ mod tests {
         let mut h = History::default();
         let mut b = Button::new(false);
         b.prepare(&mut c);
-        // pinta perto da borda esquerda do círculo: fora do adesivo (x < 117+3)
-        c.plot(297 - 134, 173, &Ink::solid(INK_BLACK));
-        assert_eq!(c.get(163, 173), Some(INK_BLACK));
+        let (cx, cy) = center(Kind::Round);
+        c.plot(cx, cy, &Ink::solid(INK_BLACK));
         assert!(!b.set_kind(Kind::Round, &mut c, &mut h));
-        // o pixel cabe no adesivo: a troca não muda o quadro
+        // o pixel do centro cabe no adesivo: a troca não muda o quadro
         assert!(!b.set_kind(Kind::Rect, &mut c, &mut h));
         assert_eq!(b.kind(), Kind::Rect);
-        assert_eq!(c.get(163, 173), Some(INK_BLACK));
-        // pintura longe do centro some ao virar botão quadrado? não: cabe. Vira redondo: some.
-        c.plot(117 + 10, 173, &Ink::solid(INK_BLACK));
+        assert_eq!(c.get(cx, cy), Some(INK_BLACK));
+        // perto da borda esquerda do retângulo: some ao virar botão redondo
+        let (rx, ry, _, rh) = Kind::Rect.bbox();
+        let (px, py) = (rx + 5, ry + rh / 2);
+        c.plot(px, py, &Ink::solid(INK_BLACK));
         assert!(b.set_kind(Kind::Round, &mut c, &mut h));
-        assert_eq!(c.get(127, 173), Some(WHITE));
+        assert_eq!(c.get(px, py), Some(WHITE));
         assert!(h.toggle(&mut c, &mut crate::paint::Objects::default()));
-        assert_eq!(c.get(127, 173), Some(INK_BLACK));
+        assert_eq!(c.get(px, py), Some(INK_BLACK));
     }
 
     #[test]
@@ -625,7 +602,8 @@ mod tests {
         let mut c = Canvas::new(CANVAS_W, CANVAS_H);
         let b = Button::new(false);
         b.prepare(&mut c);
-        c.plot(297, 173, &Ink::solid(INK_BLACK));
+        let (cx, cy) = center(Kind::Round);
+        c.plot(cx, cy, &Ink::solid(INK_BLACK));
         let page = b.print_sheet(&c, &pal());
         assert_eq!((page.w, page.h), (PAGE_W, PAGE_H));
         // seis centros pretos, cada um numa célula de 413×389
@@ -642,11 +620,9 @@ mod tests {
             }
         }
         assert_eq!(centers, 6);
-        // bordas pretas: ao menos 6 círculos de perímetro ~942 px
+        // contornos pretos de 1 px: 6 círculos de perímetro ~512 px
         let black = page.px.iter().filter(|&&v| v == INK_BLACK).count();
-        assert!(black > 6 * 900 && black < 6 * 3000, "{black}");
-        let gray = page.px.iter().filter(|&&v| v == 2).count();
-        assert!(gray > 6 * 9000, "{gray}");
+        assert!(black > 6 * 400 && black < 6 * 1500, "{black}");
     }
 
     #[test]
@@ -655,7 +631,7 @@ mod tests {
         let b = Button::new(true);
         b.prepare(&mut c);
         let page = b.print_sheet(&c, &pal());
-        // cada cópia de 360×260 cabe numa célula de 275×292: escala 275/360
+        // cada cópia de 218×164 cabe inteira numa célula de 275×292
         let cell_w = PAGE_W / 3;
         let row_y = (PAGE_H / 4 / 2) as i32;
         let mut copies = 0;
@@ -664,13 +640,13 @@ mod tests {
             let n = (x0..x0 + cell_w as i32)
                 .filter(|&x| page.get(x, row_y) == Some(INK_BLACK))
                 .count();
-            // as duas bordas de 3 px, reduzidas a ~2 px cada
-            if n >= 3 {
+            // as duas bordas de 1 px
+            if n >= 2 {
                 copies += 1;
             }
         }
         assert_eq!(copies, 3);
         let black = page.px.iter().filter(|&&v| v == INK_BLACK).count();
-        assert!(black > 12 * 1500 && black < 12 * 5000, "{black}");
+        assert!(black > 12 * 600 && black < 12 * 1500, "{black}");
     }
 }

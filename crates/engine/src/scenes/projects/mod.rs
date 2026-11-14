@@ -23,7 +23,6 @@ pub const NICHE: (i32, i32, i32, i32) = (533, 56, 47, 48);
 pub(crate) const BLACK: [u8; 3] = [0, 0, 0];
 pub(crate) const WHITE: [u8; 3] = [255, 255, 255];
 pub(crate) const RED: [u8; 3] = [250, 0, 57];
-pub(crate) const GRAY: [u8; 3] = [140, 140, 140];
 pub(crate) const DARK: [u8; 3] = [100, 100, 100];
 
 /// Limpa o nicho (fundo escuro) antes de mostrar o estado do projeto nele.

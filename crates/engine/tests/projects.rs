@@ -149,19 +149,22 @@ fn button_stroke_across_border_paints_only_inside() {
     let (_d, a) = empty_assets();
     let mut p = Paint::new_project(ProjectKind::Button, None, &a);
     assert!(matches!(p.project(), Some(Project::Button(b)) if b.kind() == Kind::Round));
-    let (cx, cy) = (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2);
-    p.update(&stroke(cx + 60, cy, cx + 220, cy), 0.0, &a);
+    // o círculo de 163 px medido no original, com contorno de 1 px
+    let (bx, by, bw, bh) = Kind::Round.bbox();
+    let (fx, fy) = (bx as f32 + bw as f32 / 2.0, by as f32 + bh as f32 / 2.0);
+    let (cx, cy) = (fx as i32, fy as i32);
+    p.update(&stroke(cx + 30, cy, cx + 150, cy), 0.0, &a);
     let pts = painted(p.canvas());
     assert!(!pts.is_empty());
-    let inner = 150.0 - 3.0 - 12.0;
+    let inner = bw as f32 / 2.0 - 1.0;
     for &(x, y) in &pts {
-        let (dx, dy) = (x as f32 + 0.5 - cx as f32, y as f32 + 0.5 - cy as f32);
+        let (dx, dy) = (x as f32 + 0.5 - fx, y as f32 + 0.5 - fy);
         assert!(
             (dx * dx + dy * dy).sqrt() < inner,
             "({x}, {y}) fora do botão"
         );
     }
-    assert!(pts.iter().any(|&(x, _)| x > cx + 120));
+    assert!(pts.iter().any(|&(x, _)| x > cx + 70));
 }
 
 #[test]
@@ -170,7 +173,8 @@ fn button_print_sheet_has_six_copies_and_sticker_twelve() {
     let dir = tempfile::tempdir().unwrap();
     let pal = a.palettes(Program::Artist).pal256.clone();
     let mut p = Paint::new_project(ProjectKind::Button, Some(dir.path().to_path_buf()), &a);
-    let (cx, cy) = (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2);
+    let (bx, by, bw, bh) = Kind::Round.bbox();
+    let (cx, cy) = (bx + bw / 2, by + bh / 2);
     p.update(&stroke(cx, cy, cx, cy), 0.0, &a);
     print_now(&mut p, &a);
     let name = files(dir.path(), "impressao-").pop().unwrap();
@@ -206,8 +210,8 @@ fn button_print_sheet_has_six_copies_and_sticker_twelve() {
         let blacks = (0..w)
             .filter(|&x| px[((y * w + x) * 3) as usize..][..3] == [black.r, black.g, black.b])
             .count();
-        // 3 cópias × 2 bordas de ~2 px
-        if blacks >= 9 {
+        // 3 cópias × 2 bordas de 1 px
+        if blacks >= 6 {
             rows += 1;
         }
     }
@@ -219,12 +223,14 @@ fn button_switch_shape_whitens_outside_and_saves_by_kind() {
     let (_d, a) = empty_assets();
     let dir = tempfile::tempdir().unwrap();
     let mut p = Paint::new_project(ProjectKind::Button, Some(dir.path().to_path_buf()), &a);
-    let (cx, cy) = (CANVAS_W as i32 / 2, CANVAS_H as i32 / 2);
     // canto do botão quadrado: fora do redondo
     let r = card_rect(1, 3);
     p.update(&[click(r.0 + 5, r.1 + 5)], 0.0, &a);
     assert!(matches!(p.project(), Some(Project::Button(b)) if b.kind() == Kind::Square));
-    p.update(&stroke(cx + 120, cy - 120, cx + 120, cy - 120), 0.0, &a);
+    // o canto de baixo à direita do quadrado fica longe do círculo
+    let (sx, sy, sw, sh) = Kind::Square.bbox();
+    let (qx, qy) = (sx + sw - 4, sy + sh - 4);
+    p.update(&stroke(qx, qy, qx, qy), 0.0, &a);
     let n = painted(p.canvas()).len();
     assert!(n > 0);
     // abre o painel pelo nicho e volta ao redondo: o canto some; o ovo desfaz
