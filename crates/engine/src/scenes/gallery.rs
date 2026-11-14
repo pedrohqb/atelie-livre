@@ -6,7 +6,7 @@
 
 use crate::assets::{Assets, ImageRef, Program};
 use crate::paint::drawings::shrink;
-use crate::paint::store::{LAST_NAME, load_picture, save_png};
+use crate::paint::store::load_picture;
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::ui::blit_canvas;
@@ -128,7 +128,7 @@ impl Gallery {
             return Vec::new();
         };
         match load_picture(&e.path, &self.pal) {
-            Some(c) => match save_png(&c, &self.pal, &dir.join(LAST_NAME)) {
+            Some(c) => match crate::paint::store::open_as_last(dir, &c, &e.path, &self.pal) {
                 Ok(()) => vec![Effect::ChangeScene(SceneId::Paint)],
                 Err(err) => vec![Effect::Log(format!("galeria: {err}"))],
             },
@@ -228,7 +228,7 @@ impl Scene for Gallery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paint::store::{load_png, save_drawing};
+    use crate::paint::store::{LAST_NAME, load_png, save_drawing};
     use crate::scenes::testutil::empty_assets;
 
     fn click(x: i32, y: i32) -> Input {

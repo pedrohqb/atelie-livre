@@ -233,6 +233,36 @@ pub fn save_objects(
     std::fs::rename(&tmp, &json)
 }
 
+/// Arquivos que acompanham um desenho `<stem>.png` na mesma pasta: os
+/// objetos e o fundo sem os objetos.
+pub fn companions(stem: &str) -> [String; 2] {
+    [objects_name(stem), background_name(stem)]
+}
+
+/// Faz do desenho `src` (já aberto em `flat`) o último desenho da pasta
+/// `dir`: grava `ultimo.png` e copia, de ao lado de `src`, os objetos e o
+/// fundo para `ultimo.*`, para que os adesivos e as palavras continuem
+/// editáveis; se `src` não os tem, apaga os do último desenho anterior.
+pub fn open_as_last(dir: &Path, flat: &Canvas, src: &Path, pal: &[Rgb]) -> io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    save_png(flat, pal, &dir.join(LAST_NAME))?;
+    let stem = src
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    for (from, to) in companions(&stem).into_iter().zip(companions("ultimo")) {
+        let (from, to) = (src.with_file_name(from), dir.join(to));
+        if from.exists() {
+            std::fs::copy(&from, &to)?;
+        } else if let Err(e) = std::fs::remove_file(&to)
+            && e.kind() != io::ErrorKind::NotFound
+        {
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
 /// Abre `<stem>.png`; se `<stem>.objetos.json` existe, bate com o PNG
 /// (impressão digital) e `<stem>.fundo.png` abre, devolve o fundo e os
 /// objetos a remontar; senão o PNG achatado e nenhum objeto.
