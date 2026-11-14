@@ -14,8 +14,9 @@
 //! | Projetos e Ideias (`Floor::Projects`, `Floor::Tricks`) | `writer_floors` | T7 |
 //! | sótão (`Floor::Attic`) | `writer_attic` | T10 |
 //!
-//! Enquanto uma sala não tem os dados do Writer, o arquivo dela devolve a
-//! sala do Fine Artist (com o `ARTIST_KIT`): o prédio funciona inteiro, com
+//! Saguão, Escritório, Projetos e Idéias já têm os dados do Writer
+//! (`docs/telas/creative-writer-salas.md`). Enquanto uma sala não os tem
+//! (hoje, o sótão), o arquivo dela devolve a sala do Fine Artist (com o `ARTIST_KIT`): o prédio funciona inteiro, com
 //! as figuras do FA, e as saídas levam às telas do Writer (`Room` guarda o
 //! programa à parte e passa os ids por `SceneId::in_program`).
 

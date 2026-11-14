@@ -144,9 +144,11 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   os balões souberem o programa, use `EntrySpec::alert_art`.
 - **Adesivos**: `stickers` + `paint::stamp`/`paint::objects` são a camada de
   objetos; a página do Writer pode usar os mesmos `Objects` sobre o texto.
-- **Pasta**: `portfolio::Binder` monta a árvore a partir de
-  `gallery_room::Item`; para documentos do Writer, generalize o item (nome,
-  miniatura opcional) e a linha "Ateliê de Pintura".
+- **Pasta**: `portfolio::Binder` monta a árvore de qualquer
+  `BinderItem` (nome, exemplo, autor, grupo, prévia) com um `BinderSpec`
+  (balões, rótulos, sons, caixa da prévia): os quadros do Fine Artist
+  (`gallery_room::Item`, `ARTIST_BINDER`) e os documentos do Writer
+  (`writer_portfolio::DocItem`, `WRITER_BINDER`).
 - **Achar arquivos**: `finder_dialog` já é independente da ferramenta; para
   achar documentos basta outra lista de `Entry` e outro ícone de linha.
 - **Impressão**: `printing::PrintJob` e os balões do McZee independem do que
@@ -225,7 +227,7 @@ guardado para a navegação. Por isso a próxima onda **não precisa mexer em
 | T9 Biblioteca | `writer_library` | `gallery_room` (`GallerySpec`) | `GalleryRoom::for_program` |
 | T10 Sótão | `writer_attic` (`ATTIC`) | `attic` | `attic::draw_in`, `attic::dark_sound_in` |
 | T11/T12 Gags, surpresas, fantasias | `writer_gags` (listas já transcritas do relatório, a conferir) | — | usadas pelos `RoomSpec` |
-| T13 Bolsa e pasta | `writer_portfolio` | `portfolio`/`gallery_room` | `GalleryRoom::portfolio_for_program` |
+| T13 Bolsa e pasta | `writer_portfolio` (`WriterPortfolio`, feita) | `portfolio` (`BinderSpec`, `BinderItem`) | `run.rs` abre a `WriterPortfolio` para `CwScene::Portfolio` |
 
 O `writer_rooms` (o `WRITER_KIT` e o despacho por andar) é comum: só mude
 um campo do kit que for da sua tarefa (por ex. T13: `wand`, `wand_cursor`).
@@ -401,9 +403,23 @@ impl Street {
 
 ### Pendências conhecidas
 
-- As salas, a rua, a Imaginópolis, a história, o elevador, o sótão, a
-  Biblioteca e a pasta do Writer ainda mostram os dados do FA (com a
-  navegação do Writer) até as tarefas acima.
+- O saguão, o Escritório, os Projetos, as Idéias e a pasta do Writer já
+  têm os dados dele (`docs/telas/creative-writer-salas.md`); a rua, a
+  Imaginópolis, a história, o elevador, o sótão e a Biblioteca ainda
+  mostram os dados do FA (com a navegação do Writer) até as tarefas acima.
+- Ganchos das salas para o Writer (todos neutros no Fine Artist):
+  `RoomSpec::lamp` (luminária com fumaça), `object_balloon` (balões dos
+  objetos na boca do McZee), `wand_props` (varinha nos bichos da parede),
+  `CharacterSpec::poses` (poses com posição própria), `Studio::doc`
+  (`DocWall`: o quadro mostra o último documento, `LastWork`; a plaqueta
+  troca o título ou avisa que o documento é de outro), `name_balloon`,
+  `new_label`, `RoomKit::persist` (bolsa e ajuda guardadas por usuário) e
+  `ctrl_o`; `Room::with_users_dir` dá a pasta dos usuários.
+- Preferências do Writer por usuário: `writer::prefs` (`~MAXUSER.INF`:
+  último documento e as quatro molduras da Biblioteca; para um usuário novo,
+  os exemplos do Max).
+- `CwScene::IdeaMachine` e `CwScene::PictureBoard` (Máquina de Idéias e
+  Quadro de Figuras) abrem a área de escrita até as telas existirem.
 - `CwScene::NewDocument` abre o editor com o último documento até o
   Escritório ganhar um construtor de documento em branco (`run.rs`).
 - O cursor padrão (`DEFAULT_CURSOR`) é a mão do `ARTIST.EXE`.

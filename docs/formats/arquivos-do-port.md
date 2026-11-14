@@ -125,3 +125,14 @@ gravado num `.tmp` e renomeado). Correspondem aos arquivos `~MAXUSER.INF`
 Nas listas de figuras só valem nomes `NNN.png` (dígitos), sem caminho. Ao
 gravar, figuras novas ou modificadas recebem o próximo número livre e os
 PNGs que saíram da lista são apagados.
+
+## Creative Writer: preferências e documentos (`<usuarios>/<apelido>/`)
+
+Gravados por `crates/engine/src/writer/prefs.rs`.
+
+| Arquivo | Conteúdo |
+|---|---|
+| `~MAXUSER.INF` | o mesmo formato do original (`maxprefs.md`): `FILR 0` = último documento (quadro do Escritório), `FILR 1..4` = molduras da Biblioteca; `STTB`/`SUDG`/`FNTL` guardados como vieram. Sem o arquivo valem os exemplos do Max (`SAMP18`, `SAMP9`, `SAMP16`, `SAMP5`, `SAMP6`). |
+| `*.MAX` | documentos do usuário; no `FILR` ficam como `USERS\<APELIDO>\ARQUIVO.MAX` (os outros caminhos são relativos à pasta `MSKIDS` dos dados) |
+| `predio-writer.txt` | estado das salas: `bolsa_aberta=0/1` e `ajuda_desligada=0/1` (o original também guarda, em bytes não localizados) |
+

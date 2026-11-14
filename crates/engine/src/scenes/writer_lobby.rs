@@ -4,11 +4,11 @@
 //! `68b7` com cinco zonas (Oficina de Idéias, Oficina de Projetos,
 //! Escritório, setinha da Biblioteca e a faixa de baixo, que leva ao
 //! sótão), mostrador do elevador que só toca `233` (`Action::Sound`), seta
-//! "Biblioteca" (`2fb`), skate "LÁ FORA", portas e botão do elevador (`2d4`
-//! + `311`), luminária "Tchau" com a fumaça, balão de chegada `0bb8[1]`
+//! "Biblioteca" (`2fb`), skate "LÁ FORA", portas e botão do elevador
+//! (`2d4` e `311`), luminária "Tchau" com a fumaça, balão de chegada `0bb8[1]`
 //! com as dicas `[2]`–`[5]`.
 //!
-//! Posições das figuras conferidas com `scratch/locate.py` em
+//! Posições das figuras conferidas com `tools/wine/locate.py` em
 //! `building_18_closed`; corpos dos balões medidos por diferença de
 //! capturas (`building_16_after_door`, `17_lobby_opt1`, `21`–`23`).
 

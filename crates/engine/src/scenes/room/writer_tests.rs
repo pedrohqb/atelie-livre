@@ -494,7 +494,7 @@ type Steps<'a> = &'a [(&'a str, &'a [(i32, i32)])];
 
 /// Com `ATELIE_DATA` e `ATELIE_DUMP`: grava quadros das salas do Writer nos
 /// estados das capturas do original (`cw/shots/building_*`), para as folhas
-/// de comparação (`cw-rooms-tools/sheets.py`).
+/// de comparação (`tools/wine/writer_rooms_sheets.py`).
 #[test]
 fn dump_writer_rooms_for_comparison() {
     let Some(a) = assets() else { return };
