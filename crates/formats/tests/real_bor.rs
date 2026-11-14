@@ -291,3 +291,39 @@ fn backgrounds_match_their_thumbnails() {
     let dinos = m0.background(0).unwrap();
     assert!(render(&m0, dinos, false) > render(&m0, dinos, true) + 0.05);
 }
+
+/// Um documento com fundo guarda `IBGF n`, `PICT n` e `FRAM n` (n ≠ 0) como
+/// objetos; o `FRAM` do fundo não se confunde com as molduras do documento.
+#[test]
+fn document_keeps_background_chunks() {
+    use formats::chnk::OwnedChunk;
+    use formats::max;
+    let mut doc = max::Document::from_text("Fundo");
+    let ibgf = bor::Ibgf {
+        pict: Some(34),
+        landscape: false,
+        dx: 10,
+        dy: 17,
+        fram: Some(1),
+    };
+    let g = [
+        0x27, 0xff, 0xff, 0x28, 6, 0x29, 3, 0x2b, 0xff, 0x2c, 73, 0, 0x2d, 10, 0,
+    ];
+    let mut fram = vec![1, 0, g.len() as u8];
+    fram.extend_from_slice(&g);
+    doc.objects
+        .push(OwnedChunk::single(b"FRAM", 1, b"FRAM", fram));
+    doc.objects.push(OwnedChunk::single(
+        b"IBGF",
+        0,
+        b"IBGF",
+        ibgf.to_bytes().to_vec(),
+    ));
+    let back = max::read(&max::write(&doc)).unwrap();
+    assert!(back.frames.is_empty());
+    let f = back.object(max::ObjRef::new(b"FRAM", 1)).expect("FRAM 1");
+    let frames = bor::read_frames(&f.parts[0].data).unwrap();
+    assert_eq!((frames[0].page, frames[0].x, frames[0].y), (0xffff, 73, 10));
+    let i = back.object(max::ObjRef::new(b"IBGF", 0)).unwrap();
+    assert_eq!(bor::Ibgf::parse(&i.parts[0].data).unwrap(), ibgf);
+}
