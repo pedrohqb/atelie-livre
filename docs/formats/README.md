@@ -15,6 +15,7 @@ leitores sem consultar o código original.
 | [`atag.md`](atag.md) | Roteiros de animação `ATAG` (recursos dos executáveis e adesivos animados) |
 | [`mag.md`](mag.md) | Desenhos salvos do Fine Artist (`.MAG`, `.PTM`): chunks, paleta, miniaturas |
 | [`what.md`](what.md) | Balões de ajuda e dos assistentes (`WHAT` dos executáveis): texto formatado, opções, dicas, glossário |
+| [`workshop.md`](workshop.md) | Oficina de Idéias do Creative Writer (`WORKSHOP.CHK`): frases e gramática da Máquina de Idéias, regra de sorteio, lista e figuras do Quadro de Figuras, figuras-rebus |
 | [`animacao.md`](animacao.md) | Pasta `animacao-…/` gravada pelo Ateliê Livre (desenho animado): PNGs, `animacao.json` e GIF animado |
 
 ## Mapa dos arquivos
@@ -28,6 +29,7 @@ leitores sem consultar o código original.
 | `SHARED/USERS/*/*.MAG`, `*.PTM` (exemplos) e `USERS/*/` (usuários) | `CHNK` (desenhos do Fine Artist) | `mag.md`, `chnk.md` |
 | `SHARED/USERS/*/*.MAX` (exemplos) e `USERS/*/` (usuários) | `CHNK` (documentos do Creative Writer) | `chnk.md` |
 | `SHARED/STUFF/*.ART`, `*.BOR`, `*.ANI`, `*.CHK` | `CHNK` (clip-art, molduras, animações, checks) | `chnk.md` |
+| `SHARED/STUFF/WORKSHOP.CHK` | `CHNK` (Oficina de Idéias do Writer) | `workshop.md` |
 | `SHARED/STUFF/MAG100.SND`, `MAX100.SND` | `CHNK` com sons WAV | `chnk.md`, `sons.md` |
 | `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | não interpretada |
 | `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO) | fora do escopo |

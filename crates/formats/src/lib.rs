@@ -24,6 +24,7 @@ pub mod wave;
 pub mod what;
 pub mod winres;
 pub mod wmf;
+pub mod workshop;
 
 pub use error::{ErrorKind, Format, FormatError, Result};
 pub use palette::Rgb;
