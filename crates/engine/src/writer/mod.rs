@@ -4,6 +4,7 @@
 //! vale a 8×8 reserva), e os adesivos são só referências (rolo e número).
 
 pub mod doc;
+pub mod ideas;
 pub mod layout;
 pub mod store;
 
