@@ -4,7 +4,7 @@
 //! reaberto na próxima vez; cada texto modificado ganha também uma cópia
 //! `texto-AAAAMMDD-HHMMSS.txt`.
 
-use super::doc::{Document, Item, Paragraph, Sticker, Style};
+use super::legacy::doc::{Document, Item, Paragraph, Sticker, Style};
 use crate::paint::store::timestamp;
 use std::io;
 use std::path::Path;
