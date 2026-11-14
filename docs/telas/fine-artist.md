@@ -203,7 +203,7 @@ seção 4. Resumo:
   `1005[6]` ao abrir, em (229, 149); `1005[14]` na lupa, em (216, 224).
   NÃO fecha e reabre o balão Seleciona-adesivos. OK corta o desenho ao que
   foi pintado (o branco ligado à borda fica transparente, o de dentro não),
-  grava `adesivo-AAAAMMDD-HHMMSS.png` na pasta de desenhos e abre a tira do
+  grava `meu-adesivo-AAAAMMDD-HHMMSS.png` na pasta de desenhos e abre a tira do
   rolo do usuário (último rolo da faixa, que só aparece depois do primeiro
   adesivo feito; miniaturas de até 30 px; ícone = último adesivo feito) na casa nova. Ao modificar um adesivo colocado, OK
   troca a imagem do objeto (mesmo centro; a origem passa a `png`).
@@ -218,7 +218,7 @@ seção 4. Resumo:
   apelido do usuário); "Fora de Imaginópolis" pergunta "Isso pode levar
   algum tempo…" e, com "Sim", lista os desenhos de exemplo
   (`SHARED/USERS/*/*.MAG`, com título e autor do `.MAG`). JÁ transforma o
-  desenho em adesivo do usuário (`adesivo-<título>.png`, cortado ao que foi
+  desenho em adesivo do usuário (`meu-adesivo-<título>.png`, cortado ao que foi
   pintado) e o põe na mão. Balão `1005[12]` ao abrir.
 - **Gravar animações do original**: `tools/wine/rec.sh ROLO CASA PASTA` coloca o
   adesivo e grava 10 s com o ffmpeg; `tools/wine/analyze.py` acha as imagens em
@@ -264,7 +264,9 @@ seção 4. Resumo:
 - **Aspirador**: 8 opções (`1557`, `1559`, `1567`, `1561`, `155f`, `155b`,
   `155c`, `1569`); Aspira-tinta, Aspira-cópias e Aspira-cores seguem o
   caminho do mouse (Shift: retângulo) — ver
-  [`pintura-impressao.md`](pintura-impressao.md).
+  [`pintura-impressao.md`](pintura-impressao.md). Remove-sons
+  (`WHAT 1008[3]`): o clique tira o som associado pelo Seleciona-sons ao
+  adesivo ou à palavra (o ovo devolve).
 - **Cores**: 38 caixas na coluna esquerda (índices da `LOGPALETTE` 8).
 - **Padrões**: 38 caixas na coluna direita, padrões 0–37 de `PAT#` 0x80,
   desenhados na cor atual; bit 0 = cor, bit 1 = branco.
@@ -346,9 +348,11 @@ seção 4. Resumo:
   `14cd`/`14d0`, em cima/embaixo `14d1`/`14d4`, Coloca-adesivos
   `14d9`/`14da` (cor/mono). Aumentar e Diminuir agem enquanto o botão fica
   apertado; Empurrar/Trazer repetem ao segurar; Grudar liga dois objetos
-  com uma corrente (clique na corrente desgruda). Coloca-adesivos (o
-  Cavalete de adesivos pelos Transformadores) e Ctrl/Shift ao arrastar
-  ainda não existem.
+  com uma corrente (clique na corrente desgruda). Coloca-adesivos
+  (`WHAT 1006[20]`, `scenes/paint/add_sticker.rs`): o adesivo, a palavra ou
+  o balão clicado, como está na tela, vira um adesivo do usuário
+  (`meu-adesivo-<data>-<id>.png`) no rolo "Meus adesivos" (som `022d`); o
+  quadro não muda. Ctrl/Shift ao arrastar ainda não existem.
 - **Super-ferramentas de desenho** (`1007`; ajuda `WHAT 100a`): faixa única
   em dois grupos. Grupo 1 (k = 0..2): Sem quadriculado `1485`/`1488`,
   Quadriculado pequeno `148d`/`1490`, Quadriculado grande `1489`/`148c`;

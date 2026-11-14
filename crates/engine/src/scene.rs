@@ -160,6 +160,17 @@ pub trait Scene {
     }
 }
 
+/// Quanto um quadro conta, no máximo, no relógio do clique duplo.
+pub const CLICK_FRAME_MAX: f32 = 0.1;
+
+/// Passo do relógio do clique duplo: o `dt` do quadro, limitado a
+/// [`CLICK_FRAME_MAX`]. Num quadro lento (máquina lenta, uma tela pesada
+/// desenhando) os dois cliques chegam em quadros seguidos com um `dt` grande
+/// entre eles, embora a criança tenha clicado depressa.
+pub fn click_time(dt: f32) -> f32 {
+    dt.clamp(0.0, CLICK_FRAME_MAX)
+}
+
 /// Mão apontando (`CURSOR` 0x0001 de `ARTIST.EXE`).
 pub const DEFAULT_CURSOR: CursorRef = CursorRef(Program::Artist, 1);
 

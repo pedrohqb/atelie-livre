@@ -334,7 +334,8 @@ pub struct Flipbook {
     ruler_drag: bool,
     /// Último clique numa figura: espaço e tempo decorrido.
     clicks: DoubleClick<usize>,
-    /// Relógio da cena (s), para o clique duplo.
+    /// Relógio do clique duplo (s): cada quadro conta no máximo
+    /// [`crate::scene::CLICK_FRAME_MAX`].
     clock: f32,
     editing: Option<Editing>,
 }
@@ -780,7 +781,7 @@ impl Flipbook {
                 self.notice = None;
             }
         }
-        self.clock += dt.max(0.0);
+        self.clock += crate::scene::click_time(dt);
         if let Some(e) = self.editing.as_mut() {
             if e.armed {
                 self.finish_edit();
@@ -2070,7 +2071,9 @@ mod tests {
         // dois cliques separados por mais tempo não abrem
         fb.changed = false;
         fb.click(r.0 + 10, r.1 + 10, Some(dir.path()), &a);
-        fb.update(1.0);
+        for _ in 0..10 {
+            fb.update(0.1);
+        }
         assert!(
             fb.click(r.0 + 10, r.1 + 10, Some(dir.path()), &a)
                 .is_empty()

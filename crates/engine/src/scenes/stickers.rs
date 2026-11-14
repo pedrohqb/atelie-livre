@@ -60,8 +60,29 @@ const CLIP_RIGHT_W: i32 = 15;
 /// Cachorrinho (achar figuras) e Cavalete de adesivos ("Fazer o seu").
 pub const DOG: Rect = (410, 60, 35, 38);
 pub const EASEL: Rect = (462, 60, 33, 38);
-/// Prefixo dos adesivos do usuário na pasta de desenhos.
-pub const USER_PREFIX: &str = "adesivo-";
+/// Prefixo dos adesivos do usuário na pasta de desenhos. Não pode ser o
+/// `adesivo-` dos trabalhos do projeto Adesivo (`adesivo-<nome>.png`): eles
+/// são páginas inteiras e entravam no rolo "Meus adesivos".
+pub const USER_PREFIX: &str = crate::paint::drawings::USER_STICKER_PREFIX;
+/// Prefixo antigo dos adesivos do usuário (o mesmo dos trabalhos do projeto
+/// Adesivo); ainda lido, menos os que têm `.projeto.txt` ao lado.
+pub const LEGACY_USER_PREFIX: &str = "adesivo-";
+
+/// `name` (na pasta `dir`) é um adesivo do usuário: `meu-adesivo-*.png`, ou
+/// um `adesivo-*.png` antigo que não é trabalho do projeto Adesivo.
+pub fn is_user_sticker(dir: &Path, name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".png") else {
+        return false;
+    };
+    if stem.ends_with(".fundo") {
+        return false;
+    }
+    if name.starts_with(USER_PREFIX) {
+        return true;
+    }
+    name.starts_with(LEGACY_USER_PREFIX)
+        && !dir.join(crate::scenes::projects::meta_name(stem)).exists()
+}
 /// Lado das miniaturas dos adesivos do usuário na tira.
 const USER_THUMB: u32 = 30;
 
@@ -145,7 +166,7 @@ enum Held {
     User(Rc<Stamp>, usize, String),
 }
 
-/// Adesivo do usuário (`adesivo-*.png` na pasta de desenhos), no último rolo.
+/// Adesivo do usuário (`meu-adesivo-*.png` na pasta de desenhos), no último rolo.
 pub struct UserSticker {
     pub name: String,
     pub stamp: Rc<Stamp>,
@@ -336,7 +357,8 @@ impl Stickers {
         }
     }
 
-    /// Lê os adesivos do usuário (`adesivo-*.png`) da pasta de desenhos.
+    /// Lê os adesivos do usuário (`meu-adesivo-*.png`, e os `adesivo-*.png`
+    /// antigos) da pasta de desenhos.
     pub fn load_user(&mut self, dir: &Path, pal: &[Rgb]) {
         let Ok(rd) = std::fs::read_dir(dir) else {
             return;
@@ -344,7 +366,7 @@ impl Stickers {
         let mut names: Vec<String> = rd
             .filter_map(|e| e.ok())
             .filter_map(|e| e.file_name().into_string().ok())
-            .filter(|n| n.starts_with(USER_PREFIX) && n.ends_with(".png"))
+            .filter(|n| is_user_sticker(dir, n))
             .collect();
         names.sort();
         self.user.clear();

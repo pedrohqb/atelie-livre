@@ -414,11 +414,12 @@ fn gallery_lists_sample_pictures() {
     let Some(d) = data_dir() else { return };
     let a = Assets::open(&d).unwrap();
     assert_eq!(a.data_dir(), d.as_path());
-    // 16 .MAG em SHARED/USERS/MAGGIE, dos quais 11 são desenhos de 594×347
+    // 16 .MAG em SHARED/USERS/MAGGIE: 11 desenhos de 594×347 e 5 botões e
+    // adesivos menores, que abrem no meio de um quadro branco
     assert_eq!(engine::scenes::gallery::list_samples(&d).len(), 16);
     let g = engine::scenes::Gallery::new(None, &a);
-    assert_eq!(g.sample_count(), 11);
-    assert_eq!(g.count(), 11);
+    assert_eq!(g.sample_count(), 16);
+    assert_eq!(g.count(), 16);
     // SAMP6 abre com as cores aproximadas à paleta do programa
     let pal = &a.palettes(Program::Artist).pal256;
     let c =

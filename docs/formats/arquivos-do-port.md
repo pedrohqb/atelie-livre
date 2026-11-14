@@ -15,6 +15,26 @@ PNG pode ter arquivos ao lado, com o mesmo radical (`<stem>`):
 Sem o `.objetos.json` o desenho abre achatado; sem o `.projeto.txt` o projeto
 abre com os valores iniciais.
 
+Abrir um desenho pela Galeria ou pela pasta (`store::open_as_last`) grava
+`ultimo.png` e copia `<stem>.objetos.json` e `<stem>.fundo.png` para
+`ultimo.*` (ou apaga os do último desenho anterior), para que os adesivos e
+as palavras continuem editáveis. Jogar um desenho no lixo da Galeria apaga
+o `.png`, o `.mag` gêmeo, o `.objetos.json`, o `.fundo.png` e o
+`.projeto.txt`.
+
+Adesivos do usuário (Cavalete de adesivos, Cachorrinho, lata que muda um
+adesivo, Coloca-adesivos dos Transformadores): `meu-adesivo-<...>.png`, o
+carimbo cortado ao que foi pintado, com o branco ligado à borda
+transparente. Ficam no rolo "Meus adesivos" e não aparecem na Galeria nem no
+Cachorrinho. Os `adesivo-*.png` de versões anteriores ainda são lidos como
+adesivos do usuário, menos os que têm `.projeto.txt` ao lado: esses são
+trabalhos do projeto Adesivo (`adesivo-<nome>.png`, página inteira).
+
+Os `.MAG` (desenhos de exemplo e os gravados pelo port) abrem pelo tamanho:
+594×347 ocupa o quadro; uma figura menor (os botões e adesivos de exemplo,
+162×162, 216×162, 162×198) fica no meio de um quadro branco; maior é
+recusada.
+
 ## `<stem>.objetos.json`
 
 JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
@@ -24,7 +44,7 @@ JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
 {"quadro": "<impressão digital FNV-1a do PNG achatado, 16 hex>",
 "objetos": [
   {"id": 1, "x": 10, "y": 20, "w": 48, "h": 36, "inv_h": false, "inv_v": false, "giros": 0, "rolo": 0, "casa": 5},
-  {"id": 2, "x": 60, "y": 20, "w": 30, "h": 30, "inv_h": false, "inv_v": false, "giros": 1, "corrente": 1, "png": "adesivo-20261031-120000-2.png"},
+  {"id": 2, "x": 60, "y": 20, "w": 30, "h": 30, "inv_h": false, "inv_v": false, "giros": 1, "corrente": 1, "png": "meu-adesivo-20261031-120000-2.png"},
   {"id": 3, "x": 100, "y": 100, "w": 80, "h": 40, "inv_h": false, "inv_v": false, "giros": 0, "texto": "Oi!", "balao": true, "cor": 1, "forma": "oval-rabicho", "alinha": "centro", "largura": 60, "fonte": "pequena"},
   {"id": 4, "x": 150, "y": 90, "w": 300, "h": 140, "inv_h": false, "inv_v": false, "giros": 0, "palavra_forma": "Ana", "tipo": "Liberation Sans", "molde": "onda", "estilos": "negrito,contorno", "cores": "1,25", "padrao": 0, "sombra": "normal", "tamanho": 128, "giro": 15},
   {"id": 5, "x": 200, "y": 160, "w": 40, "h": 28, "inv_h": false, "inv_v": false, "giros": 0, "dipitidu": 2}

@@ -197,9 +197,6 @@ impl Transformers {
         let k = (0..self.buttons().len()).find(|&k| inside(option_rect(k), x, y))?;
         self.op = self.buttons()[k].op;
         self.pending_link = None;
-        if self.op == Op::AddSticker {
-            return Some(Some("coloca-adesivos: ainda não disponível"));
-        }
         Some(None)
     }
 
@@ -506,7 +503,9 @@ mod tests {
         pick(&mut t, Op::Shrink);
         assert_eq!(t.selected(), Some(5));
         pick(&mut t, Op::AddSticker);
-        assert!(matches!(t.click_strip(25 + 37 * 6 + 5, 70), Some(Some(_))));
+        // Coloca-adesivos age no clique no quadro (paint/add_sticker.rs)
+        assert_eq!(t.click_strip(25 + 37 * 6 + 5, 70), Some(None));
+        assert_eq!(t.op(), Op::AddSticker);
         assert_eq!(t.help_record(), 20);
     }
 

@@ -125,6 +125,24 @@ impl Paint {
         }
     }
 
+    /// Remove-sons do aspirador (`WHAT 1008[3]`): tira o som do adesivo ou
+    /// da palavra sob `(cx, cy)` do quadro; o ovo o devolve. Verdadeiro se
+    /// havia um som para tirar.
+    pub(super) fn vacuum_sound(&mut self, cx: i32, cy: i32) -> bool {
+        let Some(id) = self.sound_target(cx, cy) else {
+            return false;
+        };
+        if !self.objects.get(id).is_some_and(|o| o.sound.is_some()) {
+            return false;
+        }
+        self.history.record_all(&self.canvas, &self.objects);
+        if let Some(o) = self.objects.get_mut(id) {
+            o.sound = None;
+        }
+        self.changed = true;
+        true
+    }
+
     /// Objeto que recebe o som: o de cima com pixel opaco no ponto ou, entre
     /// as letras de uma palavra sem balão, a palavra cujo retângulo o contém.
     fn sound_target(&self, cx: i32, cy: i32) -> Option<u32> {
