@@ -690,8 +690,7 @@ pub fn draw(
     a: &Assets,
     font: Option<&Font>,
     lay: &Laid,
-    ox: i32,
-    oy: i32,
+    (ox, oy): (i32, i32),
     checked: Option<usize>,
     field: &mut dyn FnMut(&mut Frame, usize, Rect),
 ) {

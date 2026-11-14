@@ -655,7 +655,15 @@ impl Balloon {
             draw_tail_box(f, (self.x, self.y, self.box_width(), h), tip);
         }
         let (ox, oy) = self.origin();
-        rich::draw(f, a, font.as_deref(), &lay, ox, oy, None, &mut |_, _, _| {});
+        rich::draw(
+            f,
+            a,
+            font.as_deref(),
+            &lay,
+            (ox, oy),
+            None,
+            &mut |_, _, _| {},
+        );
     }
 }
 

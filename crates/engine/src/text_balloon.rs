@@ -705,8 +705,7 @@ impl TextBalloon {
             a,
             font,
             &lay.laid,
-            self.x + PAD,
-            self.y + PAD,
+            (self.x + PAD, self.y + PAD),
             Some(self.selected),
             &mut |f, k, (bx, by, w, h)| {
                 f.rect(bx, by, w, h, BLACK);

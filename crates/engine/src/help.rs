@@ -160,8 +160,7 @@ impl HelpBalloon {
             a,
             font.as_deref(),
             &lay,
-            bx + PAD,
-            by + PAD,
+            (bx + PAD, by + PAD),
             None,
             &mut |_, _, _| {},
         );
