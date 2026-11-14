@@ -161,6 +161,12 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   original), as figuras-rebus (`Assets::rebus`, `ideas::rebus::draw`) e a
   gravação das entradas, figuras próprias e Caderno (`ideas::store`). As
   cenas (sala, Máquina, Quadro, Caderno) ainda não existem.
+- **Bordas e fundos de página**: `formats::bor` lê os `.BOR` (e as cópias
+  no `.MAX`), `formats::wmf_draw` rasteriza as peças WMF vetoriais e
+  `crate::writer::borders` desenha borda e fundo numa folha
+  (`border_layout`, `render_page`, `PageArt::from_document`, obstáculos do
+  fundo para a diagramação); ver `docs/formats/bor.md`. Os rolos BORDA e
+  FUNDO da Preparação da página ainda não existem.
 
 ## Creative Writer: specs por programa
 

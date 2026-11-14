@@ -134,10 +134,11 @@ sprms acima (Título = negrito + 24 pt + parágrafo centralizado, ✔).
 
 | Código | Arg. | Significado |
 |---|---|---|
-| `0x27` | 2 | página (0 = primeira; ausente = 0) |
-| `0x28` | 1 | tipo: 2 Splot, 3 figura/adesivo, 4 moldura de página (cartões) |
-| `0x29` | 1 | modo de contorno do texto ("Texto flutuante"): 2, 3 (a mapear) |
+| `0x27` | 2 | página (0 = primeira; ausente = 0; `ffff` = todas, nas molduras copiadas de um fundo) |
+| `0x28` | 1 | tipo: 2 Splot, 3 figura/adesivo, 4 moldura de página (cartões), 6 obstáculo de um fundo (`bor.md`) |
+| `0x29` | 1 | modo de contorno do texto ("Texto flutuante"): 2, 3 (a mapear); nos obstáculos dos fundos 1 = texto só à esquerda, 2 = só à direita, 3 = nada ao lado |
 | `0x2a` | 1 | `ff` (sempre) |
+| `0x2b` | 1 | `ff` nas molduras copiadas de um fundo (`FUNDO_SC.MAX`; sentido desconhecido) |
 | `0x2c` / `0x2d` | 2 | x / y em pontos da página |
 | `0x2e` / `0x2f` | 2 | largura / altura atuais |
 | `0x30` / `0x31` | 2 | largura / altura originais (diferem após esticar) |
@@ -151,12 +152,13 @@ sprms acima (Título = negrito + 24 pt + parágrafo centralizado, ✔).
 | `0x3e` / `0x3f` | 2 | largura / altura da página em pontos | 595 × 792 "Alto" ✔; 792 × 595 "Largo" ✔; 542 × 767 nas faixas |
 | `0x40`–`0x43` | 2 | margens (topo, esquerda, base, direita ~) | 36, 54, **72 (padrão)**, 90, 108 = 1,3 / 2 / 2,5 / 3,2 / 3,8 cm ✔ |
 | `0x45` | 2 | espaço entre colunas ~ | 12; 42 nos cartões |
-| `0x47` / `0x48` | 2 | larguras da borda (interna/externa ~) | 33/49 patinhas ✔; 25/37; 17/25 |
+| `0x47` / `0x48` | 2 | borda: espessura + 1 e faixa (1,5 × espessura) + 1 | 33/49 patinhas (32) ✔; 25/37 (24) ✔; 17/25 (16) |
 | `0x49` | 2 | 36 (constante) | |
 | `0x4a` | 2 | colunas − 1 | 2 = três colunas ✔ |
 | `0x4c` | 1 | `ff` em jornal (a mapear) | |
 | `0x4d` | 1 | estilo do nº de página: 1 = "Pág. N" ✔ (2 = "N" ~) | |
 | `0x51`–`0x54` | 2 | retângulo do nº de página (topo, esq., base, dir.) | (580, 364, 595, 428) em "Largo" ✔ |
+| `0x56` | 6 | fundo da página: `IBGF` + número do chunk (que aponta `PICT` e `FRAM`, ver `bor.md`) | `FUNDO_SC.MAX` ✔ |
 | `0x58`, `0x5a` | 6 | borda: `BDR ` + número do chunk (as duas iguais) | ✔ |
 | `0x5b` | 1 | `ff` nas faixas (orientação de faixa ~) | |
 
