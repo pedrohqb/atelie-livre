@@ -24,6 +24,7 @@
 
 pub mod dict;
 pub mod doc;
+pub mod fold_figure;
 pub mod fonts;
 pub mod ideas;
 pub mod layout;
