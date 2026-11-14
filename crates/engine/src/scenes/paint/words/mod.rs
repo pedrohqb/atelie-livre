@@ -25,6 +25,7 @@ use crate::clipart::ClipRoll;
 use crate::help::HelpBalloon;
 use crate::paint::objects::words_stamp;
 use crate::paint::shaped::{self, Inks, ShapedWords};
+use crate::paint::splot_res::SplotRes;
 use crate::paint::stamp::Stamp;
 use crate::paint::store::nearest;
 use crate::paint::{BLACK as INK_BLACK, WHITE as INK_WHITE, words_layout};
@@ -107,6 +108,8 @@ pub struct WordsData {
     inks: Inks,
     color_sets: Vec<Vec<u8>>,
     tails: Option<ClipRoll>,
+    /// Formas, menus, cores e padrões do Splot, do executável.
+    splot: SplotRes,
 }
 
 pub struct WordsTool {
@@ -124,28 +127,15 @@ pub struct WordsTool {
     rotate_help_shown: bool,
 }
 
-/// Cores com mais de uma tinta da lista de cores (alternadas por letra).
-const COMBOS: [&[(u8, u8, u8)]; 7] = [
-    &[(250, 0, 57), (71, 140, 80)],
-    &[(140, 40, 160), (71, 140, 80)],
-    &[(250, 74, 114), (130, 140, 230)],
-    &[(92, 203, 83), (250, 74, 114), (71, 140, 80)],
-    &[(255, 140, 50), (0, 0, 0), (250, 0, 57)],
-    &[(60, 60, 220), (255, 238, 76)],
-    &[(0, 0, 0), (250, 0, 57)],
-];
-
 impl WordsTool {
     pub fn new(assets: &Assets, pal: &[Rgb]) -> WordsTool {
-        let mut color_sets: Vec<Vec<u8>> = COLORS.iter().map(|&c| vec![c]).collect();
-        for combo in COMBOS {
-            color_sets.push(
-                combo
-                    .iter()
-                    .map(|&(r, g, b)| nearest(pal, r, g, b))
-                    .collect(),
-            );
-        }
+        // lista de cores do cavalete: os conjuntos do `CSCH`, na paleta
+        let splot = SplotRes::load(assets);
+        let color_sets: Vec<Vec<u8>> = splot
+            .color_sets
+            .iter()
+            .map(|set| set.iter().map(|c| nearest(pal, c.r, c.g, c.b)).collect())
+            .collect();
         WordsTool {
             easel: None,
             drag: None,
@@ -160,6 +150,7 @@ impl WordsTool {
                 },
                 color_sets,
                 tails: crate::clipart::load_tails(assets),
+                splot,
             },
             roll_item: 0,
             column: None,
@@ -182,18 +173,20 @@ impl WordsTool {
 /// Contexto do Cavalete de palavras com forma, pelos campos da pintura.
 fn shaped_ctx<'a>(
     pal: &'a [Rgb],
-    patterns: &'a [[u8; 8]],
+    _paint_patterns: &'a [[u8; 8]],
     pablo: Option<&'a formats::fnt::Font>,
     ui_font: Option<&'a formats::fnt::Font>,
     data: &'a WordsData,
 ) -> shaped_easel::Ctx<'a> {
+    // os padrões do Splot são os do `PATS`, não os da pintura
     shaped_easel::Ctx {
         pal,
-        patterns,
+        patterns: &data.splot.patterns,
         pablo,
         ui_font,
         inks: data.inks,
         color_sets: &data.color_sets,
+        res: &data.splot,
     }
 }
 

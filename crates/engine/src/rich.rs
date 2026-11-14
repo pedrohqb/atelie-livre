@@ -13,7 +13,7 @@
 //! de cima, à esquerda, da primeira linha).
 
 use crate::Frame;
-use crate::assets::Assets;
+use crate::assets::{Assets, Program};
 use formats::fnt::Font;
 use formats::what::{
     Item, PIC_GLOSSARY, PIC_HELP, PIC_OPTION, PIC_OPTION_PICTURE, PIC_TIP, PIC_TIP_MAX,
@@ -146,6 +146,8 @@ pub struct Laid {
     pub options: Vec<Rect>,
     /// Retângulos das caixas de texto, na ordem.
     pub fields: Vec<Rect>,
+    /// Programa do balão (de que `.PIC` vêm as figuras), o de [`Ctx`].
+    pub program: Program,
 }
 
 impl Laid {
@@ -179,6 +181,9 @@ pub fn inside(r: Rect, x: i32, y: i32) -> bool {
 /// O que a disposição precisa saber além dos itens.
 pub struct Ctx<'a> {
     pub assets: &'a Assets,
+    /// Programa do balão: de que tabela e de que `.PIC` vêm as figuras
+    /// (ver [`crate::help_icons::icon_for`]).
+    pub program: Program,
     pub font: Option<&'a Font>,
     /// Troca o `@`.
     pub name: &'a str,
@@ -267,8 +272,8 @@ fn atom_size(ctx: &Ctx, a: &Atom) -> (i32, i32) {
 }
 
 /// Tamanho de uma figura do `WHAT`, se o port a tem.
-fn picture_size(a: &Assets, id: u16) -> Option<(i32, i32)> {
-    crate::help_icons::size(a, id)
+fn picture_size(ctx: &Ctx, id: u16) -> Option<(i32, i32)> {
+    crate::help_icons::size(ctx.assets, ctx.program, id)
 }
 
 fn push(p: &mut Para, a: Atom, hot: Option<Hot>, opt: Option<usize>, fmt: (u8, bool)) {
@@ -342,8 +347,14 @@ fn paragraphs(items: &[Item], ctx: &Ctx) -> Vec<Para> {
                 let mut w = String::new();
                 for ch in text.chars() {
                     // o original quebra também no espaço não separável
-                    // ("depressa —\u{a0}ninguém")
-                    if ch == ' ' || ch == '\u{a0}' {
+                    // ("depressa —\u{a0}ninguém"); o Writer o leva para o
+                    // começo da linha seguinte (" ninguém")
+                    if ch == '\u{a0}' && ctx.program == Program::Writer {
+                        if !w.is_empty() {
+                            push(p, word(&mut w), link, opt, fmt);
+                        }
+                        w.push(' ');
+                    } else if ch == ' ' || ch == '\u{a0}' {
                         if !w.is_empty() {
                             push(p, word(&mut w), link, opt, fmt);
                         }
@@ -433,7 +444,7 @@ fn paragraphs(items: &[Item], ctx: &Ctx) -> Vec<Para> {
                         } else if id == PIC_HELP {
                             link = None;
                         }
-                        let Some((w, h)) = picture_size(ctx.assets, id) else {
+                        let Some((w, h)) = picture_size(ctx, id) else {
                             p.dropped = true;
                             continue;
                         };
@@ -525,7 +536,10 @@ pub fn layout(items: &[Item], width: i32, ctx: &Ctx) -> Laid {
     while last > 0 && paras[last - 1].atoms.iter().all(|(a, ..)| is_space(a)) {
         last -= 1;
     }
-    let mut out = Laid::default();
+    let mut out = Laid {
+        program: ctx.program,
+        ..Laid::default()
+    };
     let mut y = 0;
     let mut opt_rects: Vec<Option<Rect>> = Vec::new();
     let blank = |p: &Para| p.atoms.iter().all(|(a, ..)| is_space(a));
@@ -711,8 +725,10 @@ pub fn draw(
                 }
             }
             Run::Picture { x, y, id, owner } => {
-                let dim = crate::help_icons::dimmed(*id) && (owner.is_none() || *owner != checked);
-                crate::help_icons::draw_with(f, a, *id, ox + x, oy + y, dim)
+                let p = lay.program;
+                let dim =
+                    crate::help_icons::dimmed(p, *id) && (owner.is_none() || *owner != checked);
+                crate::help_icons::draw_with(f, a, p, *id, ox + x, oy + y, dim)
             }
             Run::Option { x, y, id, option } => {
                 let id = if *id == PIC_OPTION_PICTURE && checked == Some(*option) {
@@ -721,7 +737,7 @@ pub fn draw(
                 } else {
                     *id
                 };
-                draw_option(f, a, id, ox + x, oy + y);
+                draw_option(f, a, lay.program, id, ox + x, oy + y);
             }
             Run::Field { x, y, w, field: k } => field(f, *k, (ox + x, oy + y, *w, FIELD_H)),
         }
@@ -730,15 +746,65 @@ pub fn draw(
 
 /// Bolinha de opção na vaga de 16×15: a preta (`22c`) no meio; a verde
 /// (`22e`, 15×14) e a verde marcada (`22f`) no canto.
-fn draw_option(f: &mut Frame, a: &Assets, id: u16, x: i32, y: i32) {
+fn draw_option(f: &mut Frame, a: &Assets, p: Program, id: u16, x: i32, y: i32) {
+    use crate::help_icons::{draw, size};
     match id {
-        0x22f => crate::text_balloon::blit_pic(f, a, 0x040d, x, y, false),
-        PIC_OPTION_PICTURE => crate::help_icons::draw(f, a, id, x, y),
-        _ => match crate::help_icons::size(a, id) {
-            Some((w, h)) => {
-                crate::help_icons::draw(f, a, id, x + (OPTION_W - w) / 2, y + (OPTION_H - h) / 2)
-            }
+        0x22f => crate::text_balloon::blit_pic_in(f, a, p, 0x040d, x, y, false),
+        PIC_OPTION_PICTURE => draw(f, a, p, id, x, y),
+        _ => match size(a, p, id) {
+            Some((w, h)) => draw(f, a, p, id, x + (OPTION_W - w) / 2, y + (OPTION_H - h) / 2),
             None => crate::balloon::draw_bullet(f, x + 3, y + 2),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scenes::testutil::empty_assets;
+
+    fn text(t: &str) -> Item {
+        Item::Text {
+            text: t.into(),
+            bold: false,
+            color: 0xf,
+            indent: 0,
+            key: false,
+            signature: false,
+        }
+    }
+
+    /// Primeiro texto de cada linha (sem fonte: 8 px por caractere).
+    fn line_starts(program: Program) -> Vec<String> {
+        let (_d, a) = empty_assets();
+        let glossary = |_: usize| None;
+        let ctx = Ctx {
+            assets: &a,
+            program,
+            font: None,
+            name: "",
+            glossary: &glossary,
+            own: None,
+        };
+        // "aaaa —" cabe em 64 px, "aaaa — bbbb" não
+        let lay = layout(&[text("aaaa —\u{a0}bbbb")], 64, &ctx);
+        let mut starts = Vec::new();
+        let mut last_y = None;
+        for r in &lay.runs {
+            if let Run::Text { y, text, .. } = r
+                && last_y != Some(*y)
+            {
+                starts.push(text.clone());
+                last_y = Some(*y);
+            }
+        }
+        starts
+    }
+
+    #[test]
+    fn non_breaking_space_breaks_and_the_writer_keeps_it() {
+        // no Fine Artist o espaço some na quebra; no Writer ele abre a linha
+        assert_eq!(line_starts(Program::Artist), ["aaaa", "bbbb"]);
+        assert_eq!(line_starts(Program::Writer), ["aaaa", " bbbb"]);
     }
 }

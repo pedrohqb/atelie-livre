@@ -20,36 +20,41 @@ use super::text::text_pixels;
 use super::ttf::{self, FontFace};
 use ab_glyph::{Font as _, FontVec, PxScale, ScaleFont as _, point};
 use formats::fnt::Font;
-use std::f32::consts::PI;
+use formats::scrd::{self, Scrd};
 
-/// Forma das palavras, na ordem da lista do botão FORMA.
+/// Forma das palavras, na ordem da lista do botão FORMA: o retângulo e as
+/// 14 formas `SCRD` do executável, por id (`docs/formats/scrd.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WordShape {
     /// Retângulo: sem deformação.
     #[default]
     Plain,
-    /// Em cima reto, embaixo um arco que sobe no meio.
+    /// Em cima reto, embaixo um arco que sobe no meio (`SCRD 1`).
     Arch,
     Wave,
-    /// Mais alto no meio (hexágono).
+    /// Mais alto no meio, com os lados retos (`SCRD 3`).
     Inflate,
-    /// Cresce para a direita.
+    /// Cresce para a direita, em perspectiva (`SCRD 4`).
     GrowRight,
-    /// Encolhe para a direita.
+    /// Encolhe para a direita (`SCRD 5`).
     ShrinkRight,
     Zigzag,
-    /// Ponta para cima: as letras do meio são as mais altas.
-    TriangleUp,
-    /// Ponta para baixo.
-    TriangleDown,
-    /// Letras sobre um arco (meia-lua para cima).
-    ArcUp,
-    /// Letras em volta de um círculo.
-    Circle,
+    /// Ponta para cima: as letras do meio são as mais altas (`SCRD 7`).
+    Triangle,
+    Arrow,
+    /// Letras sobre um arco (`SCRD 9`).
+    Rainbow,
+    /// Letras num S deitado (`SCRD 10`).
+    SCurve,
+    Heart,
+    Car,
+    Fish,
+    /// Cabeça de perfil (`SCRD 14`).
+    Head,
 }
 
 impl WordShape {
-    pub const ALL: [WordShape; 11] = [
+    pub const ALL: [WordShape; 15] = [
         WordShape::Plain,
         WordShape::Arch,
         WordShape::Wave,
@@ -57,11 +62,21 @@ impl WordShape {
         WordShape::GrowRight,
         WordShape::ShrinkRight,
         WordShape::Zigzag,
-        WordShape::TriangleUp,
-        WordShape::TriangleDown,
-        WordShape::ArcUp,
-        WordShape::Circle,
+        WordShape::Triangle,
+        WordShape::Arrow,
+        WordShape::Rainbow,
+        WordShape::SCurve,
+        WordShape::Heart,
+        WordShape::Car,
+        WordShape::Fish,
+        WordShape::Head,
     ];
+
+    /// Id do `SCRD` com as curvas (`None` = retângulo).
+    pub fn scrd_id(self) -> Option<u16> {
+        let k = WordShape::ALL.iter().position(|s| *s == self)?;
+        (k > 0).then_some(k as u16)
+    }
 
     /// Nome gravado no `*.objetos.json`.
     pub fn name(self) -> &'static str {
@@ -73,47 +88,24 @@ impl WordShape {
             WordShape::GrowRight => "cresce",
             WordShape::ShrinkRight => "encolhe",
             WordShape::Zigzag => "zigue-zague",
-            WordShape::TriangleUp => "triangulo",
-            WordShape::TriangleDown => "triangulo-baixo",
-            WordShape::ArcUp => "arco",
-            WordShape::Circle => "circulo",
+            WordShape::Triangle => "triangulo",
+            WordShape::Arrow => "seta",
+            WordShape::Rainbow => "arco-iris",
+            WordShape::SCurve => "esse",
+            WordShape::Heart => "coracao",
+            WordShape::Car => "carro",
+            WordShape::Fish => "peixe",
+            WordShape::Head => "cabeca",
         }
     }
 
+    /// Forma pelo nome gravado; aceita os nomes das formas aproximadas de
+    /// antes (`triangulo-baixo`, `arco`, `circulo`).
     pub fn from_name(s: &str) -> Option<WordShape> {
-        WordShape::ALL.into_iter().find(|w| w.name() == s)
-    }
-
-    /// Altura da forma em relação à da linha de texto (formas de envelope).
-    fn stretch(self) -> f32 {
-        match self {
-            WordShape::Plain => 1.0,
-            WordShape::Wave => 1.5,
-            WordShape::TriangleUp | WordShape::TriangleDown => 1.8,
-            _ => 1.6,
-        }
-    }
-
-    /// Curvas de cima e de baixo em `u` ∈ [0, 1] (da esquerda para a
-    /// direita), como frações da altura da forma.
-    pub fn envelope(self, u: f32) -> (f32, f32) {
-        let mid = (2.0 * u - 1.0).abs();
-        match self {
-            WordShape::Plain | WordShape::ArcUp | WordShape::Circle => (0.0, 1.0),
-            WordShape::Arch => (0.0, 1.0 - 0.4 * (PI * u).sin()),
-            WordShape::Wave => {
-                let t = 0.165 * (1.0 - (2.0 * PI * u).sin());
-                (t, t + 0.67)
-            }
-            WordShape::Inflate => (0.3 * mid, 1.0 - 0.3 * mid),
-            WordShape::GrowRight => (0.3 * (1.0 - u), 1.0 - 0.3 * (1.0 - u)),
-            WordShape::ShrinkRight => (0.3 * u, 1.0 - 0.3 * u),
-            WordShape::Zigzag => {
-                let z = ((u * 2.5).fract() * 2.0 - 1.0).abs();
-                (0.375 * z, 0.375 * z + 0.625)
-            }
-            WordShape::TriangleUp => (0.55 * mid, 1.0),
-            WordShape::TriangleDown => (0.0, 1.0 - 0.55 * mid),
+        match s {
+            "triangulo-baixo" => Some(WordShape::Triangle),
+            "arco" | "circulo" => Some(WordShape::Rainbow),
+            _ => WordShape::ALL.into_iter().find(|w| w.name() == s),
         }
     }
 }
@@ -201,6 +193,12 @@ pub struct ShapedWords {
     pub outline: bool,
     pub caps: bool,
     pub vertical: bool,
+    /// "Preencher": o texto ocupa a forma toda, sem a folga da linha.
+    pub fill: bool,
+    /// "Em cima/embaixo": a forma espelhada na vertical (as letras de pé).
+    pub flip_v: bool,
+    /// "Esquerda/direita": a forma espelhada na horizontal.
+    pub flip_h: bool,
     /// Índices da paleta; mais de um = as letras alternam as cores.
     pub colors: Vec<u8>,
     /// Padrão da pintura (índice na coluna de padrões; 0 = cheio).
@@ -225,6 +223,9 @@ impl ShapedWords {
             outline: false,
             caps: false,
             vertical: false,
+            fill: false,
+            flip_v: false,
+            flip_h: false,
             colors: vec![color],
             pattern: 0,
             shadow: Shadow::None,
@@ -251,6 +252,9 @@ impl ShapedWords {
             (self.outline, "contorno"),
             (self.caps, "maiusculas"),
             (self.vertical, "vertical"),
+            (self.fill, "preencher"),
+            (self.flip_v, "em-cima-embaixo"),
+            (self.flip_h, "esquerda-direita"),
         ] {
             if on {
                 v.push(name);
@@ -266,6 +270,40 @@ impl ShapedWords {
         self.outline = has("contorno");
         self.caps = has("maiusculas");
         self.vertical = has("vertical");
+        self.fill = has("preencher");
+        self.flip_v = has("em-cima-embaixo");
+        self.flip_h = has("esquerda-direita");
+    }
+
+    /// Item `k` do botão AA (`TMEN 1`): 0 apaga todos os estilos, os outros
+    /// ligam ou desligam um.
+    pub fn toggle_style(&mut self, k: usize) {
+        match k {
+            0 => self.set_styles(""),
+            1 => self.bold = !self.bold,
+            2 => self.italic = !self.italic,
+            3 => self.outline = !self.outline,
+            4 => self.caps = !self.caps,
+            5 => self.vertical = !self.vertical,
+            6 => self.fill = !self.fill,
+            7 => self.flip_v = !self.flip_v,
+            _ => self.flip_h = !self.flip_h,
+        }
+    }
+
+    /// Estilo `k` do botão AA está ligado? (0 = nenhum ligado.)
+    pub fn style_on(&self, k: usize) -> bool {
+        match k {
+            0 => self.styles().is_empty(),
+            1 => self.bold,
+            2 => self.italic,
+            3 => self.outline,
+            4 => self.caps,
+            5 => self.vertical,
+            6 => self.fill,
+            7 => self.flip_v,
+            _ => self.flip_h,
+        }
     }
 
     /// Um passo de tamanho para cima (`+`) ou para baixo (`−`); falso se já está no fim.
@@ -545,68 +583,201 @@ fn dilate(m: &Mask, r: i32) -> Mask {
     out
 }
 
-/// Entorta a máscara pela forma.
-fn warp(m: &Mask, shape: WordShape) -> Mask {
-    match shape {
-        WordShape::Plain => m.clone(),
-        WordShape::ArcUp | WordShape::Circle => polar(m, shape == WordShape::Circle),
-        _ => {
-            let (w, h) = (m.w as f32, m.h as f32);
-            let oh = (h * shape.stretch()).ceil() as i32;
-            let mut out = Mask::new(m.w, oh);
-            for x in 0..m.w {
-                let u = (x as f32 + 0.5) / w;
-                let (t, b) = shape.envelope(u);
-                let (t, b) = (t * oh as f32, b * oh as f32);
-                if b - t < 1.0 {
-                    continue;
-                }
-                for y in t.floor() as i32..b.ceil() as i32 {
-                    let v = (y as f32 + 0.5 - t) / (b - t);
-                    if !(0.0..=1.0).contains(&v) {
-                        continue;
-                    }
-                    let (a, l) = m.sample(x as f32 + 0.5, v * h);
-                    out.put(x, y, a.round() as u8, l);
-                }
+/// Recorta a máscara à tinta: em cima e embaixo sempre que há forma (o
+/// alto das letras encosta na curva de cima, como no original) e, com
+/// "Preencher" (`sides`), também dos lados.
+fn crop_ink(m: &Mask, sides: bool) -> Mask {
+    let on = |x: i32, y: i32| m.a[(y * m.w + x) as usize] > 0;
+    let rows: Vec<i32> = (0..m.h).filter(|&y| (0..m.w).any(|x| on(x, y))).collect();
+    let cols: Vec<i32> = if sides {
+        (0..m.w).filter(|&x| (0..m.h).any(|y| on(x, y))).collect()
+    } else {
+        vec![0, m.w - 1]
+    };
+    let (Some(&y0), Some(&y1), Some(&x0), Some(&x1)) =
+        (rows.first(), rows.last(), cols.first(), cols.last())
+    else {
+        return m.clone();
+    };
+    let mut out = Mask::new(x1 - x0 + 1, y1 - y0 + 1);
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let i = (y * m.w + x) as usize;
+            out.put(x - x0, y - y0, m.a[i], m.letter[i]);
+        }
+    }
+    out
+}
+
+/// Lado máximo da imagem entortada, em pixels.
+const MAX_SIDE: f32 = 3000.0;
+
+type Curve = Vec<(f32, f32)>;
+
+/// Curvas de uma forma em pixels da saída, já espelhadas, e o tamanho da
+/// saída: a largura do texto (`tw`) vale `s.width` unidades e a altura das
+/// letras (`th`), `s.height` (escalas diferentes em x e y). Os contornos
+/// fechados (coração, carro, peixe, cabeça: `c1 = 0` e a curva de baixo é
+/// o caminho de volta) guardam a proporção da forma, como no original.
+fn curves(
+    s: &Scrd,
+    tw: f32,
+    th: f32,
+    flip_h: bool,
+    flip_v: bool,
+) -> (Curve, Option<Curve>, Curve, i32, i32) {
+    let conv =
+        |c: &[scrd::Point]| -> Curve { c.iter().map(|&(x, y)| (x as f32, y as f32)).collect() };
+    let (mut top, mut mid, mut bot) = (conv(s.top()), s.middle().map(conv), conv(s.bottom()));
+    if flip_v {
+        std::mem::swap(&mut top, &mut bot);
+    }
+    for c in [&mut top, &mut bot].into_iter().chain(mid.as_mut()) {
+        if flip_h {
+            // o texto continua da esquerda para a direita
+            c.reverse();
+        }
+        for p in c.iter_mut() {
+            if flip_h {
+                p.0 = -p.0;
             }
-            out
+            if flip_v {
+                p.1 = -p.1;
+            }
+        }
+    }
+    let all = || top.iter().chain(&bot).chain(mid.iter().flatten());
+    let x0 = all().map(|p| p.0).fold(f32::MAX, f32::min);
+    let y0 = all().map(|p| p.1).fold(f32::MAX, f32::min);
+    let x1 = all().map(|p| p.0).fold(f32::MIN, f32::max);
+    let y1 = all().map(|p| p.1).fold(f32::MIN, f32::max);
+    let [_, c1, _, c3, c4] = s.fields;
+    let closed = c1 == 0 && c3 == c4;
+    let sx = tw / s.width as f32;
+    let (mut sx, mut sy) = (sx, if closed { sx } else { th / s.height as f32 });
+    let big = ((x1 - x0) * sx).max((y1 - y0) * sy);
+    if big > MAX_SIDE {
+        sx *= MAX_SIDE / big;
+        sy *= MAX_SIDE / big;
+    }
+    let to_px = |c: &mut Curve| {
+        for p in c.iter_mut() {
+            *p = ((p.0 - x0) * sx + 1.0, (p.1 - y0) * sy + 1.0);
+        }
+    };
+    to_px(&mut top);
+    to_px(&mut bot);
+    if let Some(m) = mid.as_mut() {
+        to_px(m);
+    }
+    let w = ((x1 - x0) * sx).ceil() as i32 + 2;
+    let h = ((y1 - y0) * sy).ceil() as i32 + 2;
+    (top, mid, bot, w, h)
+}
+
+/// Ponto na posição fracionária `t` (em índices) de uma curva.
+fn at(c: &[(f32, f32)], t: f32) -> (f32, f32) {
+    let k = (t.floor() as usize).min(c.len() - 2);
+    let f = t - k as f32;
+    let (a, b) = (c[k], c[k + 1]);
+    (a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f)
+}
+
+/// Pinta na saída o triângulo `p` (pixels) com coordenadas de texto `uv`
+/// (frações da máscara), amostrando a máscara.
+fn triangle(out: &mut Mask, m: &Mask, p: [(f32, f32); 3], uv: [(f32, f32); 3]) {
+    let edge = |a: (f32, f32), b: (f32, f32), c: (f32, f32)| {
+        (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+    };
+    let area = edge(p[0], p[1], p[2]);
+    if area.abs() < 1e-4 {
+        return;
+    }
+    let xa = p
+        .iter()
+        .map(|q| q.0)
+        .fold(f32::MAX, f32::min)
+        .floor()
+        .max(0.0) as i32;
+    let ya = p
+        .iter()
+        .map(|q| q.1)
+        .fold(f32::MAX, f32::min)
+        .floor()
+        .max(0.0) as i32;
+    let xb = (p.iter().map(|q| q.0).fold(f32::MIN, f32::max).ceil() as i32).min(out.w - 1);
+    let yb = (p.iter().map(|q| q.1).fold(f32::MIN, f32::max).ceil() as i32).min(out.h - 1);
+    const EPS: f32 = -1e-3;
+    for y in ya..=yb {
+        for x in xa..=xb {
+            let c = (x as f32 + 0.5, y as f32 + 0.5);
+            let w0 = edge(p[1], p[2], c) / area;
+            let w1 = edge(p[2], p[0], c) / area;
+            let w2 = 1.0 - w0 - w1;
+            if w0 < EPS || w1 < EPS || w2 < EPS {
+                continue;
+            }
+            let u = w0 * uv[0].0 + w1 * uv[1].0 + w2 * uv[2].0;
+            let v = w0 * uv[0].1 + w1 * uv[1].1 + w2 * uv[2].1;
+            let (a, l) = m.sample(u * m.w as f32, v * m.h as f32);
+            out.put(x, y, a.round() as u8, l);
         }
     }
 }
 
-/// Enrola a linha num arco (metade de cima) ou num círculo inteiro, com o
-/// pé das letras para o centro.
-fn polar(m: &Mask, full: bool) -> Mask {
-    let (w, h) = (m.w as f32, m.h as f32);
-    let turn = if full { 2.0 * PI } else { PI };
-    let r_mid = (w / turn).max(if full { h * 0.8 } else { h });
-    let span = (w / r_mid).min(turn);
-    let r_out = r_mid + h / 2.0;
-    let side = (2.0 * r_out).ceil() as i32 + 2;
-    let oh = if full { side } else { r_out.ceil() as i32 + 2 };
-    let (cx, cy) = (
-        side as f32 / 2.0,
-        if full { side as f32 / 2.0 } else { r_out + 1.0 },
-    );
-    let mut out = Mask::new(side, oh);
-    for y in 0..oh {
-        for x in 0..side {
-            let dx = x as f32 + 0.5 - cx;
-            let dy = cy - (y as f32 + 0.5);
-            let r = (dx * dx + dy * dy).sqrt();
-            let v = (r_out - r) / h;
-            if !(0.0..=1.0).contains(&v) {
-                continue;
+/// Entorta a máscara pela forma `s`: a fração `u` da linha vai para o ponto
+/// `u·(c0−1)` das curvas (pelo índice, não pela posição x) e a altura
+/// da letra, na reta do ponto de cima ao de baixo, passando pelo do meio.
+fn warp(m: &Mask, s: &Scrd, flip_h: bool, flip_v: bool) -> Mask {
+    let (top, mid, bot, w, h) = curves(s, m.w as f32, m.h as f32, flip_h, flip_v);
+    let mut out = Mask::new(w, h);
+    let last = (top.len() - 1) as f32;
+    // mais fatias que pontos, para a amostragem seguir as retas entre eles
+    let n = ((w + h) as usize).clamp(top.len() - 1, 4000);
+    let bands: Vec<(&Curve, &Curve, f32, f32)> = match &mid {
+        Some(mc) => vec![(&top, mc, 0.0, 0.5), (mc, &bot, 0.5, 1.0)],
+        None => vec![(&top, &bot, 0.0, 1.0)],
+    };
+    for k in 0..n {
+        let (u0, u1) = (k as f32 / n as f32, (k + 1) as f32 / n as f32);
+        for &(a, b, va, vb) in &bands {
+            let (a0, a1) = (at(a, u0 * last), at(a, u1 * last));
+            let (b0, b1) = (at(b, u0 * last), at(b, u1 * last));
+            triangle(&mut out, m, [a0, a1, b1], [(u0, va), (u1, va), (u1, vb)]);
+            triangle(&mut out, m, [a0, b1, b0], [(u0, va), (u1, vb), (u0, vb)]);
+        }
+    }
+    out
+}
+
+/// Silhueta de uma forma para a lista FORMA, esticada em `w`×`h` (`true` =
+/// preto). As metades (`SCRD` 4 e 5) ocupam a metade esquerda/direita, como
+/// no original; o retângulo e as formas sem dados, a casa toda.
+pub fn shape_icon(s: Option<&Scrd>, w: i32, h: i32) -> Vec<bool> {
+    let (w, h) = (w.max(1), h.max(1));
+    let Some(s) = s else {
+        return vec![true; (w * h) as usize];
+    };
+    let full = Mask {
+        w: 64,
+        h: 32,
+        a: vec![255; 64 * 32],
+        letter: vec![0; 64 * 32],
+    };
+    let m = crop_ink(&warp(&full, s, false, false), true);
+    let (x0, iw) = match s.kind {
+        2 => (0, w / 2),
+        1 => (w - w / 2, w / 2),
+        _ => (0, w),
+    };
+    let mut out = vec![false; (w * h) as usize];
+    for y in 0..h {
+        for x in 0..iw.max(1) {
+            let fx = (x as f32 + 0.5) * m.w as f32 / iw.max(1) as f32;
+            let fy = (y as f32 + 0.5) * m.h as f32 / h as f32;
+            if m.get(fx as i32, fy as i32) >= 128 {
+                out[(y * w + x0 + x) as usize] = true;
             }
-            // ângulo no sentido horário a partir do alto; o texto fica centrado em cima
-            let phi = dx.atan2(dy);
-            let u = (phi + span / 2.0) / span;
-            if !(0.0..=1.0).contains(&u) {
-                continue;
-            }
-            let (a, l) = m.sample(u * w, v * h);
-            out.put(x, y, a.round() as u8, l);
         }
     }
     out
@@ -717,9 +888,10 @@ fn copies(w: &ShapedWords, mw: f32, mh: f32, inks: &Inks) -> Vec<Layer> {
             }
         }
         Shadow::SpinCircle => {
+            // 17 cópias de 20° em 20°, como as matrizes do `SSHD`
             let p = (-0.4 * mh, mh / 2.0);
-            for k in 1..12 {
-                v.push(rot_about(30.0 * k as f32, p, Paint::Outline(inks.black)));
+            for k in 1..18 {
+                v.push(rot_about(20.0 * k as f32, p, Paint::Outline(inks.black)));
             }
         }
         Shadow::Converge => {
@@ -799,8 +971,9 @@ fn near_edge(cov: &[Option<u16>], w: i32, h: i32, x: i32, y: i32, r: i32) -> boo
     false
 }
 
-/// A imagem da palavra com forma, pronta para virar objeto.
-pub fn render(w: &ShapedWords, face: Face, inks: &Inks) -> Stamp {
+/// A imagem da palavra com forma, pronta para virar objeto. `shape` são
+/// as curvas do `SCRD` de `w.shape` (`None` = retângulo).
+pub fn render(w: &ShapedWords, face: Face, inks: &Inks, shape: Option<&Scrd>) -> Stamp {
     let mut m = text_mask(face, w);
     if w.italic {
         m = shear(&m);
@@ -808,7 +981,12 @@ pub fn render(w: &ShapedWords, face: Face, inks: &Inks) -> Stamp {
     if w.bold {
         m = dilate(&m, (w.size as i32 / 24).max(1));
     }
-    let m = warp(&m, w.shape);
+    let m = match shape {
+        Some(s) if w.shape != WordShape::Plain => {
+            warp(&crop_ink(&m, w.fill), s, w.flip_h, w.flip_v)
+        }
+        _ => m,
+    };
     let cs = copies(w, m.w as f32, m.h as f32, inks);
     let boxes: Vec<_> = cs.iter().map(|c| bbox(&m, c)).collect();
     let x0 = boxes.iter().map(|b| b.0).min().unwrap_or(0);
@@ -920,7 +1098,51 @@ mod tests {
     }
 
     fn plain(w: &ShapedWords) -> Stamp {
-        render(w, Face::Bitmap(None), &INKS)
+        render(w, Face::Bitmap(None), &INKS, None)
+    }
+
+    /// Forma de duas curvas com `n` pontos por curva, de `f(u) -> (cima, baixo)`
+    /// com u em 0..1 e x = `xs(u)` (caixa 8000 × 2000, como o arco).
+    fn scrd_of(n: usize, xs: impl Fn(f32) -> f32, f: impl Fn(f32) -> (f32, f32)) -> Scrd {
+        let mut top = Vec::new();
+        let mut bot = Vec::new();
+        for k in 0..n {
+            let u = k as f32 / (n - 1) as f32;
+            let x = xs(u) as i16;
+            let (t, b) = f(u);
+            top.push((x, t as i16));
+            bot.push((x, b as i16));
+        }
+        let mut points = top;
+        points.extend(bot);
+        Scrd {
+            kind: 3,
+            flag: 1,
+            width: 8000,
+            height: 2000,
+            fields: [n as u16, 0, 0, n as u16, n as u16],
+            points,
+        }
+    }
+
+    fn uniform(u: f32) -> f32 {
+        -4000.0 + 8000.0 * u
+    }
+
+    /// Como o `SCRD 1`: cima reta, baixo em arco (4000 nas pontas, 0 no meio).
+    fn arch() -> Scrd {
+        scrd_of(41, uniform, |u| (-2000.0, 4000.0 * (2.0 * u - 1.0).powi(2)))
+    }
+
+    fn shaped(w: &ShapedWords, s: &Scrd) -> Stamp {
+        render(w, Face::Bitmap(None), &INKS, Some(s))
+    }
+
+    /// Colunas com tinta na linha `y`.
+    fn row_ink(s: &Stamp, y: u32) -> Vec<u32> {
+        (0..s.w)
+            .filter(|&x| s.px[(y * s.w + x) as usize].is_some())
+            .collect()
     }
 
     #[test]
@@ -940,39 +1162,157 @@ mod tests {
     }
 
     #[test]
-    fn shapes_change_the_image_and_stay_filled() {
-        let base = plain(&words("Palavras"));
-        for shape in WordShape::ALL {
-            let s = plain(&ShapedWords {
-                shape,
-                ..words("Palavras")
-            });
-            assert!(count(&s, 1) > 200, "{shape:?}");
-            if shape != WordShape::Plain {
-                assert_ne!((s.w, s.h, &s.px), (base.w, base.h, &base.px), "{shape:?}");
-            }
+    fn shape_names_and_scrd_ids() {
+        for (k, shape) in WordShape::ALL.into_iter().enumerate() {
             assert_eq!(WordShape::from_name(shape.name()), Some(shape));
+            assert_eq!(shape.scrd_id(), (k > 0).then_some(k as u16));
         }
-        // envelopes: o triângulo é mais baixo nas pontas que no meio
-        let (t0, _) = WordShape::TriangleUp.envelope(0.0);
-        let (tm, _) = WordShape::TriangleUp.envelope(0.5);
-        assert!(t0 > tm);
-        // o círculo é (quase) quadrado; o arco, mais largo que alto
-        let c = plain(&ShapedWords {
-            shape: WordShape::Circle,
-            ..words("Palavras longas aqui")
-        });
-        assert!(
-            (c.w as i32 - c.h as i32).abs() < c.w as i32 / 4,
-            "{}x{}",
-            c.w,
-            c.h
+        assert_eq!(WordShape::Head.scrd_id(), Some(14));
+        // nomes das formas aproximadas de antes
+        assert_eq!(WordShape::from_name("circulo"), Some(WordShape::Rainbow));
+        assert_eq!(
+            WordShape::from_name("triangulo-baixo"),
+            Some(WordShape::Triangle)
         );
-        let a = plain(&ShapedWords {
-            shape: WordShape::ArcUp,
-            ..words("Palavras longas")
-        });
-        assert!(a.w > a.h, "{}x{}", a.w, a.h);
+        assert_eq!(WordShape::from_name("xyz"), None);
+    }
+
+    #[test]
+    fn arch_keeps_text_width_and_triples_height_at_the_ends() {
+        let w = ShapedWords {
+            shape: WordShape::Arch,
+            ..words("Palavras")
+        };
+        let flat = plain(&words("Palavras"));
+        let s = shaped(&w, &arch());
+        assert!(count(&s, 1) > 200);
+        // largura do texto = largura da caixa (8000); altura: linha = 2000 de 6000
+        assert!(
+            (s.w as i32 - flat.w as i32).abs() <= 6,
+            "{} vs {}",
+            s.w,
+            flat.w
+        );
+        assert!(s.h > flat.h * 2, "{} vs {}", s.h, flat.h);
+        // embaixo só há tinta nas pontas; em cima, a linha toda
+        let bottom = row_ink(&s, s.h - 1);
+        assert!(
+            bottom.iter().all(|&x| x < s.w / 4 || x > s.w * 3 / 4),
+            "{bottom:?}"
+        );
+        // sem forma, a mesma imagem que o retângulo
+        let none = render(&w, Face::Bitmap(None), &INKS, None);
+        assert_eq!((none.w, none.h, &none.px), (flat.w, flat.h, &flat.px));
+    }
+
+    #[test]
+    fn text_is_spread_by_point_index() {
+        // mesma forma reta, mas pontos juntos à esquerda (x = u²): o começo
+        // do texto fica espremido e o fim, esticado (como o SCRD 4)
+        let even = scrd_of(41, uniform, |_| (-1000.0, 1000.0));
+        let dense = scrd_of(41, |u| -4000.0 + 8000.0 * u * u, |_| (-1000.0, 1000.0));
+        let w = ShapedWords {
+            shape: WordShape::GrowRight,
+            ..words("IIIIIIII")
+        };
+        // largura das hastes (trechos de tinta) na linha do meio
+        let runs = |s: &Stamp| {
+            let xs = row_ink(s, s.h / 2);
+            let mut v: Vec<u32> = Vec::new();
+            for (k, &x) in xs.iter().enumerate() {
+                if k > 0 && xs[k - 1] + 1 == x {
+                    *v.last_mut().unwrap() += 1;
+                } else {
+                    v.push(1);
+                }
+            }
+            v
+        };
+        let a = runs(&shaped(&w, &even));
+        let b = runs(&shaped(&w, &dense));
+        assert!(
+            a.first().unwrap().abs_diff(*a.last().unwrap()) <= 2,
+            "{a:?}"
+        );
+        assert!(b.first().unwrap() * 3 < *b.last().unwrap(), "{b:?}");
+    }
+
+    #[test]
+    fn flips_mirror_the_shape_not_the_letters() {
+        let w = ShapedWords {
+            shape: WordShape::Arch,
+            ..words("Palavras")
+        };
+        let base = shaped(&w, &arch());
+        let up = shaped(
+            &ShapedWords {
+                flip_v: true,
+                ..w.clone()
+            },
+            &arch(),
+        );
+        assert_eq!(up.w, base.w);
+        // virada: o arco fica em cima (topo só nas pontas) e embaixo, reto
+        let top = row_ink(&up, 0);
+        assert!(
+            top.iter().all(|&x| x < up.w / 4 || x > up.w * 3 / 4),
+            "{top:?}"
+        );
+        assert_ne!(up.px, base.px);
+        // esquerda/direita num arco simétrico: mesma silhueta, letras de pé
+        let lr = shaped(
+            &ShapedWords {
+                flip_h: true,
+                ..w.clone()
+            },
+            &arch(),
+        );
+        assert_eq!((lr.w, lr.h), (base.w, base.h));
+        let mut st = words("x");
+        st.set_styles("preencher,em-cima-embaixo,esquerda-direita");
+        assert!(st.fill && st.flip_v && st.flip_h && !st.bold);
+        assert_eq!(st.styles(), "preencher,em-cima-embaixo,esquerda-direita");
+        for k in 0..9 {
+            let mut t = words("x");
+            t.toggle_style(k);
+            assert!(t.style_on(k), "{k}");
+            if k > 0 {
+                t.toggle_style(k);
+                assert!(t.style_on(0));
+            }
+        }
+    }
+
+    #[test]
+    fn crop_keeps_sides_unless_fill() {
+        // tinta só em (3..5, 2..4) numa máscara de 10×8
+        let mut m = Mask::new(10, 8);
+        for y in 2..4 {
+            for x in 3..5 {
+                m.put(x, y, 255, 0);
+            }
+        }
+        // com forma: sempre sem a folga de cima e de baixo
+        let rows = crop_ink(&m, false);
+        assert_eq!((rows.w, rows.h), (10, 2));
+        // "Preencher": também sem a dos lados
+        let all = crop_ink(&m, true);
+        assert_eq!((all.w, all.h), (2, 2));
+        assert!(all.a.iter().all(|&v| v == 255));
+        // máscara vazia fica como está
+        assert_eq!(crop_ink(&Mask::new(4, 4), true).w, 4);
+    }
+
+    #[test]
+    fn icons_fill_the_cell_and_halves_use_one_side() {
+        assert!(shape_icon(None, 10, 5).iter().all(|&b| b));
+        let a = shape_icon(Some(&arch()), 40, 20);
+        // arco embaixo: canto de baixo cheio, meio de baixo vazio, alto cheio
+        assert!(a[19 * 40] && !a[19 * 40 + 20] && a[20]);
+        let mut half = scrd_of(11, |u| -8000.0 + 8000.0 * u, |_| (-4000.0, 4000.0));
+        half.kind = 2;
+        let h = shape_icon(Some(&half), 40, 20);
+        assert!(h[10 * 40 + 5] && !h[10 * 40 + 35]);
     }
 
     #[test]
@@ -1025,7 +1365,7 @@ mod tests {
             pattern: [0xaa; 8],
             ..INKS
         };
-        let p = render(&words("MM"), Face::Bitmap(None), &inks);
+        let p = render(&words("MM"), Face::Bitmap(None), &inks, None);
         assert!(count(&p, 0) > 0 && count(&p, 1) > 0);
     }
 
@@ -1103,6 +1443,7 @@ mod tests {
             },
             Face::Outline(&font),
             &INKS,
+            None,
         );
         assert!(s.h >= 30 && s.h <= 60, "{}", s.h);
         assert!(s.w > s.h, "{}x{}", s.w, s.h);

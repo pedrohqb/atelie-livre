@@ -2,7 +2,7 @@
 //! um mini-quadro com moldura laranja sobre o quadro, barra própria embaixo
 //! (pincel, lata, ovo, aspirador, lupa, NÃO, OK) e a faixa de cima trocada
 //! pelas opções do pincel. O resultado vira um adesivo do usuário
-//! (`adesivo-<data>.png` na pasta de desenhos), no último rolo da faixa.
+//! (`meu-adesivo-<data>.png` na pasta de desenhos), no último rolo da faixa.
 //! Clicar num adesivo colocado (sem arrastar) o traz para cá para modificar.
 //! Geometria medida no original (varredura `paint-stickers`, `easel_*.png`).
 //!

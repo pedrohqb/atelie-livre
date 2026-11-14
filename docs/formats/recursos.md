@@ -30,13 +30,20 @@ numérico"). Ex.: o `STR#` gravado como 0x8206 é o id 0x206.
 | SWND / DSPC / BTNW | 36 / 27 / 37 | — |
 | TMEN | 3 | 2 |
 | CSCH, SSHD, TDRL, SMNM, ACUR | sim | sim (exceto ACUR) |
+| MENU / ACCELERATOR / DIALOG | 1 / — / 5 | 1 / 1 / 5 |
+| STRING / VERSION | 2 / 1 | 1 / 1 |
 
 `ARTIST.SND`: 131 recursos `SND` e um `SNDRANGE`. `WRITER.SND`: 122 `SND` e um
 `SNDRANGE`. Ver `sons.md`.
 
-Os `ATAG` são roteiros de animação (ver `atag.md`). Os tipos `WHAT`, `SCRD`,
-`SWND`, `DSPC`, `BTNW`, `TMEN`, `CSCH`, `SSHD`, `TDRL`, `SMNM`, `PATS` e
-`ACUR` ainda não foram interpretados; a ferramenta os extrai em forma bruta.
+Os `ATAG` são roteiros de animação (ver `atag.md`; os do Writer em
+`writer-atag.md`) e os `WHAT` são os balões (ver `what.md`). O catálogo
+completo dos recursos do `WRITER.EXE` — inclusive `TMEN`, `CSCH`, `SSHD`,
+`PATS`, `SMNM`, `SCRD`, `MENU`, `ACCELERATOR`, `DIALOG` e os `STR#` com
+textos usados pelos documentos — está em `writer-exe-recursos.md`; `SCRD`,
+`CSCH`, `SSHD`, `PATS` e `SMNM` são idênticos nos dois executáveis, e os 2
+`TMEN` do Writer são iguais aos do Fine Artist. `SWND`, `DSPC`, `BTNW`, `TDRL` e `ACUR` ainda não foram
+interpretados; a ferramenta os extrai em forma bruta.
 
 ## LOGPALETTE
 

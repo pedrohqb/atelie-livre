@@ -248,6 +248,17 @@ fn pad_to_block(v: &mut Vec<u8>) {
 /// de 512. Nomes são gravados em Windows-1252 (caracteres sem equivalente
 /// viram `?`), cortados em 255 bytes.
 pub fn write(creator: Tag, chunks: &[OwnedChunk]) -> Vec<u8> {
+    write_aligned(creator, chunks, |_| false)
+}
+
+/// Como [`write`], mas as partes dos chunks para os quais `aligned` devolve
+/// `true` começam num offset múltiplo de 512 (o intervalo é completado com
+/// zeros), como o texto e as páginas FKP dos documentos `.MAX`.
+pub fn write_aligned(
+    creator: Tag,
+    chunks: &[OwnedChunk],
+    aligned: impl Fn(&OwnedChunk) -> bool,
+) -> Vec<u8> {
     let mut file = vec![0u8; BLOCK];
     // dados
     let mut records: Vec<Vec<u8>> = Vec::with_capacity(chunks.len());
@@ -258,7 +269,11 @@ pub fn write(creator: Tag, chunks: &[OwnedChunk]) -> Vec<u8> {
         r.extend_from_slice(&c.id.to_le_bytes());
         r.extend_from_slice(&(c.parts.len() as u16).to_le_bytes());
         r.extend_from_slice(&c.flags.to_le_bytes());
+        let align = aligned(c);
         for p in &c.parts {
+            if align {
+                pad_to_block(&mut file);
+            }
             r.extend_from_slice(&p.tag.0);
             r.extend_from_slice(&(file.len() as u32).to_le_bytes());
             r.extend_from_slice(&(p.data.len() as u32).to_le_bytes());
@@ -587,6 +602,23 @@ mod tests {
         let f = parse(&w).unwrap();
         assert_eq!(f.chunks[0].name.as_deref(), Some("Bolaço ?"));
         assert_eq!(f.creator, Tag(*b"ICCC"));
+    }
+
+    #[test]
+    fn write_aligned_puts_parts_on_block_boundaries() {
+        let chunks = [
+            OwnedChunk::single(b"TEXT", 0, b"TEXT", vec![1; 5]),
+            OwnedChunk::single(b"FDPP", 0, b"FDPP", vec![2; 512]),
+            OwnedChunk::single(b"DOP ", 0, b"DOP ", vec![3; 7]),
+        ];
+        let w = write_aligned(Tag(*b"INK "), &chunks, |c| c.tag.0 != *b"DOP ");
+        let f = parse(&w).unwrap();
+        let offs: Vec<usize> = f.chunks.iter().map(|c| c.parts[0].offset).collect();
+        assert_eq!(offs, [0x200, 0x400, 0x600]);
+        assert!(w[0x205..0x400].iter().all(|&b| b == 0));
+        assert_eq!(owned(&f), chunks);
+        // fim lógico logo após a última parte
+        assert_eq!(u32::from_le_bytes(w[20..24].try_into().unwrap()), 0x607);
     }
 
     #[test]

@@ -233,6 +233,8 @@ impl Paint {
                     b.options.clear();
                 }
             }
+            // o Caderno de Idéias só existe no menu do Creative Writer
+            menu::Item::Notebook => {}
             menu::Item::Story => {
                 fx.push(sfx::play(SND_MCZEE_SCREEN));
                 fx.push(Effect::Push(SceneId::BookStory));

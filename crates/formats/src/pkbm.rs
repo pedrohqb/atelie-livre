@@ -184,6 +184,18 @@ pub fn encode(bitmap: &Bitmap) -> Vec<u8> {
 
 /// Como [`encode`], escolhendo os bytes 20/21 do cabeçalho.
 pub fn encode_with(bitmap: &Bitmap, unknown: UnknownBytes) -> Vec<u8> {
+    encode_impl(bitmap, unknown, false)
+}
+
+/// Como [`encode_with`], mas com o PackBits recomeçado a cada linha (nenhuma
+/// repetição atravessa o fim da linha), como as miniaturas dos documentos
+/// `.MAX`: o Creative Writer não mostra direito a prévia de um fluxo
+/// contínuo. O resultado também é um fluxo válido para [`decode`].
+pub fn encode_rows(bitmap: &Bitmap, unknown: UnknownBytes) -> Vec<u8> {
+    encode_impl(bitmap, unknown, true)
+}
+
+fn encode_impl(bitmap: &Bitmap, unknown: UnknownBytes, per_row: bool) -> Vec<u8> {
     let depth = bitmap.depth as usize;
     let (w, h) = (bitmap.width as usize, bitmap.height as usize);
     let row_bytes = (w * depth).div_ceil(8).next_multiple_of(2);
@@ -197,7 +209,11 @@ pub fn encode_with(bitmap: &Bitmap, unknown: UnknownBytes) -> Vec<u8> {
             row[bit / 8] |= v << shift;
         }
     }
-    let stream = pack_bits(&raw);
+    let stream = if per_row {
+        raw.chunks(row_bytes.max(1)).flat_map(pack_bits).collect()
+    } else {
+        pack_bits(&raw)
+    };
     let palette = bitmap.palette.as_deref().unwrap_or(&[]);
     let pal_count = palette.len().min(u16::MAX as usize);
     let data_offset = HEADER_LEN + 6 * pal_count;
@@ -500,6 +516,21 @@ mod tests {
             pixels,
             palette,
         }
+    }
+
+    #[test]
+    fn encode_rows_packs_each_row_apart() {
+        let b = pattern(108, 144, 4, Some(vec![Rgb { r: 1, g: 2, b: 3 }; 16]));
+        let blank = Bitmap {
+            pixels: vec![0; 108 * 144],
+            ..b.clone()
+        };
+        let e = encode_rows(&blank, (0, 0));
+        // 54 bytes por linha: uma repetição de 2 bytes por linha
+        assert_eq!(e.len(), 42 + 6 * 16 + 2 * 144);
+        assert_eq!(decode(&e).unwrap(), blank);
+        assert_eq!(decode(&encode_rows(&b, (0, 0))).unwrap(), b);
+        assert!(encode(&blank).len() < e.len());
     }
 
     #[test]

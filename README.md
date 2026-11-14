@@ -72,7 +72,7 @@ que você já possui.
   apaga, interruptor que esconde) e Aproximar/Afastar do PF deslizam um
   objeto em perspectiva. Clique no **McZee** (ou escolha uma ferramenta ou
   opção) para ler o balão de ajuda do original, com as ligações clicáveis.
-  Faltam: Coloca-adesivos (cavalete), Ctrl/Shift ao arrastar e o cavalete
+  Faltam: Ctrl/Shift ao arrastar e o cavalete
   de adesivos/palavras do clique em Mover-modificar.
 - Ao abrir, o Ateliê Livre pergunta qual programa usar (ou `--program
   artist|writer`, ou `program = "artist"|"writer"|"ask"` no config).

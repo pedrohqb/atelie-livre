@@ -206,15 +206,153 @@ pub fn icon(what_id: u16) -> Option<Icon> {
     })
 }
 
-fn pic(id: u16) -> ImageRef {
-    ImageRef::Pic(Program::Artist, id)
+/// Ícone do `WRITER.PIC` para a figura `what_id` de um balão do Creative
+/// Writer. O `WRITER.EXE` tem a mesma tabela `0x200 + k` do `ARTIST.EXE`
+/// (as ligações, opções e bichos — ver [`shared`] — têm o mesmo id e a mesma
+/// imagem nos dois `.PIC`) e uma própria, `0x800 + k`, com a mesma regra; as
+/// de `a = 0` apontam para a tabela dos botões do Writer (`200` Palavra,
+/// `225` Seleciona-adesivos, `83d` seta ▲…) e foram identificadas pelo texto
+/// ao lado de cada uma nos blocos `0fa0`–`0faa` (ver
+/// `docs/telas/creative-writer.md`). Sem entrada (nem em [`shared`]), a
+/// figura não é desenhada.
+pub fn writer_icon(what_id: u16) -> Option<Icon> {
+    use Icon::*;
+    Some(match what_id {
+        // barra de ferramentas (figura inativa e máscara)
+        0x200 => Masked(0x020d, 0x020f),
+        0x225 => Masked(0x01ff, 0x0201),
+        0x226 => Masked(0x0205, 0x0207),
+        0x800 => Masked(0x0495, 0x0801),
+        0x841 => Masked(0x091f, 0x0921),
+        0x227 => Masked(0x0211, 0x0213),
+        0x853 => Masked(0x08e7, 0x08e9),
+        // Re-movedores como ficam quando escolhidos
+        0x812 => Masked(0x08eb, 0x08ed),
+        0x22f => Masked(0x0219, 0x0223),
+        0x801 => Masked(0x0803, 0x0805),
+        0x202 => Masked(0x0225, 0x0227),
+        // faixa da Palavra
+        0x211 => Masked(0x0275, 0x0277),
+        0x802 => Opaque(0x0811),
+        0x213 => Opaque(0x027b),
+        0x212 => Opaque(0x0279),
+        0x842 => Opaque(0x0bc3),
+        0x805 => Masked(0x080b, 0x080d),
+        0x806 => Masked(0x0831, 0x0833),
+        0x20e => Masked(0x0269, 0x026b),
+        0x22b => Masked(0x0229, 0x022b),
+        0x807 => Opaque(0x0863),
+        0x808 => Opaque(0x080f),
+        0x809 => Opaque(0x087d),
+        0x803 => Opaque(0x0815),
+        0x844 => Opaque(0x08d5),
+        0x804 => Opaque(0x0817),
+        // Re-movedores
+        0x818 => Masked(0x0839, 0x083b),
+        0x819 => Masked(0x083d, 0x083f),
+        0x81a => Masked(0x0841, 0x0843),
+        0x81c => Masked(0x0849, 0x084b),
+        0x81e => Masked(0x0851, 0x0853),
+        0x81b => Masked(0x0845, 0x0847),
+        // Preparação da página (rolo de bordas)
+        0x80b => Masked(0x0821, 0x0823),
+        0x80c => Masked(0x0825, 0x0827),
+        0x811 => Opaque(0x086b),
+        0x814 => Opaque(0x08c3),
+        0x810 => Opaque(0x0869),
+        0x813 => Opaque(0x0875),
+        // Transformadores
+        0x843 => Masked(0x0923, 0x0929),
+        0x82e => Masked(0x0857, 0x0859),
+        0x82f => Masked(0x085b, 0x085d),
+        0x830 => Masked(0x085f, 0x0861),
+        0x82c => Masked(0x0807, 0x0809),
+        0x82b => Opaque(0x0865),
+        0x82d => Masked(0x08c7, 0x08cb),
+        // Corretor: lápis do Iluminador
+        0x822 => Masked(0x0295, 0x0297),
+        // Visor de páginas (e o bichinho da régua)
+        0x836 => Opaque(0x08a9),
+        0x837 => Opaque(0x08ad),
+        0x838 => Masked(0x0891, 0x0893),
+        0x839 => Masked(0x0895, 0x0897),
+        0x832 => Masked(0x0899, 0x089b),
+        0x833 => Opaque(0x089d),
+        0x834 => Opaque(0x08a1),
+        0x835 => Opaque(0x08a5),
+        0x85b => Masked(0x092b, 0x092d),
+        // Adesivos e Sons: Cavalete, setas dos rolos, Cachorrinho, volume,
+        // Gravador
+        0x80a => Masked(0x0881, 0x0883),
+        0x851 => Masked(0x08d9, 0x08dd),
+        0x20c => Masked(0x025d, 0x0263),
+        0x201 => Masked(0x02d3, 0x02d5),
+        0x209 => Masked(0x0255, 0x0257),
+        0x20a => Masked(0x0259, 0x025b),
+        0x20d => Masked(0x0265, 0x0267),
+        // Imprimir: depressa e fazer escolhas
+        0x83a => Masked(0x02ef, 0x02f1),
+        0x83b => Masked(0x02f3, 0x02f5),
+        // barra de baixo: setas e "todas as páginas"
+        0x83d => Masked(0x02db, 0x02dd),
+        0x83e => Masked(0x02df, 0x02e1),
+        0x83f => Masked(0x0819, 0x081b),
+        0x840 => Masked(0x0871, 0x0873),
+        0x85a => Masked(0x0c37, 0x0c39),
+        // menu do McZee: pasta, McZee (Bolsa Mágica), Varinha, Caderno
+        0x223 => Masked(0x044f, 0x0451),
+        0x229 => Masked(0x0235, 0x0237),
+        0x228 => Masked(0x0457, 0x0459),
+        0x846 => Masked(0x0c01, 0x0c03),
+        // cabeçalho "EPA!" do Rex (no ARTIST.PIC é a 0x2a9)
+        0x230 => Masked(0x02cf, 0x02d1),
+        // mão do Caderno de Idéias e figuras grandes das dicas (Máquina de
+        // Idéias, Quadro de Figuras, pasta)
+        0x85e => Keyed(0x0c49),
+        0x85f => Masked(0x0c3b, 0x0c3d),
+        0x860 => Masked(0x0c3f, 0x0c41),
+        0x86e => Masked(0x0c61, 0x0c63),
+        _ => return None,
+    })
 }
 
-/// Tamanho da figura `what_id` (`None` se o `.PIC` não a tem).
-pub fn size(a: &Assets, what_id: u16) -> Option<(i32, i32)> {
-    let id = icon(what_id).map_or(what_id, Icon::pic);
-    a.has_image(&pic(id)).then(|| {
-        let img = a.image(&pic(id));
+/// Figuras comuns aos dois programas: ligações (gema, chave, Max, Maggie,
+/// "Precisa de ajuda?"), opções e bichos do cadastro — mesma entrada nas
+/// duas tabelas e mesma imagem nos dois `.PIC`.
+fn shared(what_id: u16) -> bool {
+    matches!(what_id, 0x21b..=0x21e | 0x222 | 0x22c..=0x22e | 0x237..=0x242)
+}
+
+/// Ícone da figura `what_id` dos balões do programa `p`.
+pub fn icon_for(p: Program, what_id: u16) -> Option<Icon> {
+    match p {
+        Program::Writer => {
+            writer_icon(what_id).or_else(|| if shared(what_id) { icon(what_id) } else { None })
+        }
+        _ => icon(what_id),
+    }
+}
+
+fn pic(p: Program, id: u16) -> ImageRef {
+    ImageRef::Pic(p, id)
+}
+
+/// A figura que se desenha para `what_id`: no Fine Artist, sem entrada no
+/// mapa, a de mesmo id do `.PIC`; no Writer, nenhuma.
+fn shown(p: Program, what_id: u16) -> Option<Icon> {
+    match (icon_for(p, what_id), p) {
+        (Some(i), _) => Some(i),
+        (None, Program::Writer) => None,
+        (None, _) => Some(Icon::Opaque(what_id)),
+    }
+}
+
+/// Tamanho da figura `what_id` dos balões do programa `p` (`None` se o
+/// `.PIC` não a tem ou, no Writer, se ela não tem entrada no mapa).
+pub fn size(a: &Assets, p: Program, what_id: u16) -> Option<(i32, i32)> {
+    let id = shown(p, what_id)?.pic();
+    a.has_image(&pic(p, id)).then(|| {
+        let img = a.image(&pic(p, id));
         (img.width as i32, img.height as i32)
     })
 }
@@ -223,40 +361,45 @@ pub fn size(a: &Assets, what_id: u16) -> Option<(i32, i32)> {
 const DIM: [u8; 3] = [100, 100, 100];
 
 /// Figuras que o original desenha "apagadas" (um pixel sim, outro não — os
-/// de x + y par, contados do canto da figura — vira cinza dentro dela): as que não têm som de
-/// clique na tabela (terceira palavra `ffff`), como os ícones das
-/// ferramentas e os bichos não escolhidos; gemas, chaves, bolinhas e o
-/// "EPA!" ficam inteiros (a bolinha verde já é pontilhada na figura).
-pub fn dimmed(what_id: u16) -> bool {
-    match what_id {
-        0x1047 | 0x1048 => false,
-        0x1000..=0x10ff => true,
-        0x201 | 0x223 | 0x228 | 0x229 | 0x22d | 0x237..=0x242 | 0x247 => true,
+/// de x + y par, contados do canto da figura — vira cinza dentro dela).
+/// No Fine Artist, as que não têm som de clique na tabela (terceira palavra
+/// `ffff`), como os ícones das ferramentas e os bichos não escolhidos;
+/// gemas, chaves, bolinhas e o "EPA!" ficam inteiros (a bolinha verde já é
+/// pontilhada na figura). No Writer, conferido nas capturas do Escritório,
+/// todas saem apagadas — até as setas da barra de baixo e os botões do
+/// Imprimir, que têm som —, menos as ligações, as opções e o "EPA!".
+pub fn dimmed(p: Program, what_id: u16) -> bool {
+    match (p, what_id) {
+        (Program::Writer, 0x230) => false,
+        (Program::Writer, id) if shared(id) => dimmed(Program::Artist, id),
+        (Program::Writer, id) => writer_icon(id).is_some(),
+        (_, 0x1047 | 0x1048) => false,
+        (_, 0x1000..=0x10ff) => true,
+        (_, 0x201 | 0x223 | 0x228 | 0x229 | 0x22d | 0x237..=0x242 | 0x247) => true,
         _ => false,
     }
 }
 
-/// Desenha o ícone da figura `what_id` em `(x, y)`; sem entrada no mapa, a
-/// figura de mesmo id do `ARTIST.PIC`. Apagado se [`dimmed`].
-pub fn draw(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32) {
-    draw_with(f, a, what_id, x, y, dimmed(what_id));
+/// Desenha o ícone da figura `what_id` dos balões do programa `p` em
+/// `(x, y)` (sem entrada no mapa, veja [`size`]). Apagado se [`dimmed`].
+pub fn draw(f: &mut Frame, a: &Assets, p: Program, what_id: u16, x: i32, y: i32) {
+    draw_with(f, a, p, what_id, x, y, dimmed(p, what_id));
 }
 
 /// Como [`draw`], escolhendo se a figura sai apagada (a escolhida de uma
 /// grade não sai).
-pub fn draw_with(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32, dim: bool) {
-    draw_plain(f, a, what_id, x, y);
-    if !dim {
+pub fn draw_with(f: &mut Frame, a: &Assets, p: Program, what_id: u16, x: i32, y: i32, dim: bool) {
+    let Some(ic) = shown(p, what_id) else {
+        return;
+    };
+    draw_plain(f, a, p, ic, x, y);
+    if !dim || !a.has_image(&pic(p, ic.pic())) {
         return;
     }
     // a parte opaca da figura: a máscara, o que não é branco ou tudo
-    let ic = icon(what_id).unwrap_or(Icon::Opaque(what_id));
-    if !a.has_image(&pic(ic.pic())) {
-        return;
-    }
-    let img = a.image(&pic(ic.pic()));
+    let img = a.image(&pic(p, ic.pic()));
     let mask = match ic {
-        Icon::Masked(_, m) if a.has_image(&pic(m)) => Some(a.image(&pic(m))),
+        Icon::Masked(_, m) if a.has_image(&pic(p, m)) => Some(a.image(&pic(p, m))),
         _ => None,
     };
     for dy in 0..img.height as i32 {
@@ -277,22 +420,17 @@ pub fn draw_with(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32, dim: b
     }
 }
 
-fn draw_plain(f: &mut Frame, a: &Assets, what_id: u16, x: i32, y: i32) {
-    match icon(what_id) {
-        Some(Icon::Masked(p, m)) if a.has_image(&pic(p)) && a.has_image(&pic(m)) => {
-            crate::anim::blit_masked(f, &a.image(&pic(p)), &a.image(&pic(m)), x, y);
+fn draw_plain(f: &mut Frame, a: &Assets, p: Program, ic: Icon, x: i32, y: i32) {
+    match ic {
+        Icon::Masked(c, m) if a.has_image(&pic(p, c)) && a.has_image(&pic(p, m)) => {
+            crate::anim::blit_masked(f, &a.image(&pic(p, c)), &a.image(&pic(p, m)), x, y);
         }
-        Some(Icon::Masked(p, _)) | Some(Icon::Keyed(p)) => {
-            crate::text_balloon::blit_pic(f, a, p, x, y, false)
+        Icon::Masked(c, _) | Icon::Keyed(c) => {
+            crate::text_balloon::blit_pic_in(f, a, p, c, x, y, false)
         }
-        Some(Icon::Opaque(p)) => {
-            if a.has_image(&pic(p)) {
-                f.blit(&a.image(&pic(p)), x, y);
-            }
-        }
-        None => {
-            if a.has_image(&pic(what_id)) {
-                f.blit(&a.image(&pic(what_id)), x, y);
+        Icon::Opaque(c) => {
+            if a.has_image(&pic(p, c)) {
+                f.blit(&a.image(&pic(p, c)), x, y);
             }
         }
     }
@@ -347,7 +485,79 @@ mod tests {
         assert!(missing.is_empty(), "sem mapa: {missing:x?}");
         // e as figuras existem no .PIC
         for id in [0x1000, 0x1070, 0x10b2, 0x21b, 0x230, 0x24a] {
-            assert!(size(&a, id).is_some(), "{id:x}");
+            assert!(size(&a, Program::Artist, id).is_some(), "{id:x}");
         }
+    }
+
+    #[test]
+    fn writer_icons_follow_the_writer_table() {
+        // conferidos na tabela 0x800 + k do WRITER.EXE: Cavalete, rolo de
+        // bordas, Re-movedores escolhido, setas dos rolos
+        assert_eq!(writer_icon(0x80a), Some(Icon::Masked(0x0881, 0x0883)));
+        assert_eq!(writer_icon(0x80c), Some(Icon::Masked(0x0825, 0x0827)));
+        assert_eq!(writer_icon(0x812), Some(Icon::Masked(0x08eb, 0x08ed)));
+        assert_eq!(writer_icon(0x851), Some(Icon::Masked(0x08d9, 0x08dd)));
+        assert_eq!(writer_icon(0x200), Some(Icon::Masked(0x020d, 0x020f)));
+        assert_eq!(writer_icon(0x805).map(Icon::pic), Some(0x080b));
+        // "EPA!" e volume: mesma entrada, outra imagem no WRITER.PIC
+        assert_eq!(writer_icon(0x230), Some(Icon::Masked(0x02cf, 0x02d1)));
+        assert_eq!(writer_icon(0x209), Some(Icon::Masked(0x0255, 0x0257)));
+        // máscaras sempre adiante da figura (cor, preto e branco, máscara)
+        for id in 0x200..0x900 {
+            if let Some(Icon::Masked(p, m)) = writer_icon(id) {
+                assert!(m >= p + 2, "{id:x}");
+            }
+        }
+    }
+
+    #[test]
+    fn writer_shares_links_and_options_but_not_artist_tools() {
+        for id in [0x21b, 0x21c, 0x21e, 0x222, 0x22c, 0x22e, 0x237] {
+            assert_eq!(icon_for(Program::Writer, id), icon(id), "{id:x}");
+        }
+        assert_eq!(icon_for(Program::Writer, 0x1000), None);
+        assert_eq!(icon_for(Program::Writer, 0x227), writer_icon(0x227));
+        assert_eq!(icon_for(Program::Artist, 0x1039), icon(0x1039));
+        assert_eq!(icon_for(Program::Artist, 0x230), icon(0x230));
+    }
+
+    #[test]
+    fn writer_dims_everything_but_links_options_and_epa() {
+        let w = Program::Writer;
+        for id in [0x200, 0x225, 0x20d, 0x80a, 0x83a, 0x83d, 0x85a, 0x223] {
+            assert!(dimmed(w, id), "{id:x}");
+        }
+        for id in [0x21b, 0x21c, 0x21e, 0x22c, 0x22e, 0x230, 0x1000] {
+            assert!(!dimmed(w, id), "{id:x}");
+        }
+        // o Fine Artist continua como era
+        assert!(dimmed(Program::Artist, 0x1000));
+        assert!(!dimmed(Program::Artist, 0x1047));
+        assert!(!dimmed(Program::Artist, 0x21b));
+        assert!(dimmed(Program::Artist, 0x223));
+    }
+
+    #[test]
+    fn every_figure_used_in_the_writer_what_blocks_is_mapped() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        let mut missing = std::collections::BTreeSet::new();
+        for block in a.exe_resource_ids(Program::Writer, "WHAT") {
+            for r in a.dialogs(Program::Writer, block) {
+                for i in &r.items {
+                    if let formats::what::Item::Picture { id, .. } = i
+                        && *id != formats::what::PIC_GLOSSARY
+                        && *id != crate::rich::PIC_FIELD
+                        && size(&a, Program::Writer, *id).is_none()
+                    {
+                        missing.insert(*id);
+                    }
+                }
+            }
+        }
+        // 826: botão "TROCAR" do Corretor, na tabela de botões do Writer
+        // (ainda não lida)
+        assert_eq!(missing, [0x826].into(), "sem mapa: {missing:x?}");
     }
 }

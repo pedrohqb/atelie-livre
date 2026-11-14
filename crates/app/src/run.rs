@@ -23,6 +23,8 @@ use sdl3::sys::render::SDL_RendererLogicalPresentation;
 use std::time::{Duration, Instant};
 
 const FRAME_TIME: Duration = Duration::from_micros(16_667);
+/// Quadro lento no rastro (`ATELIE_TRACE`): três quadros de 60 Hz.
+const SLOW_FRAME: Duration = Duration::from_millis(50);
 
 fn fail(msg: &str) -> i32 {
     eprintln!("atelie-livre: {msg}");
@@ -472,6 +474,11 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         let _ = canvas.copy(&texture, None, None);
         canvas.present();
 
+        // quadro que passou do limite (atualizar + desenhar), para o teste de jogo
+        let spent = start.elapsed();
+        if trace && spent > SLOW_FRAME {
+            println!("TRACE quadro-lento {} ms", spent.as_millis());
+        }
         frames += 1;
         if args.frames.is_some_and(|n| frames >= n) {
             break;

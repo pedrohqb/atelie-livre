@@ -14,6 +14,12 @@ leitores sem consultar o código original.
 | [`chnk.md`](chnk.md) | Arquivos `CHNK`: documentos salvos e bibliotecas |
 | [`atag.md`](atag.md) | Roteiros de animação `ATAG` (recursos dos executáveis e adesivos animados) |
 | [`mag.md`](mag.md) | Desenhos salvos do Fine Artist (`.MAG`, `.PTM`): chunks, paleta, miniaturas |
+| [`max.md`](max.md) | Documentos do Creative Writer (`.MAX`): texto, sprms de caractere/parágrafo/moldura/documento, páginas FKP, PLC, fontes, molduras, objetos, senha do Agente secreto, miniatura |
+| [`writer-exe-recursos.md`](writer-exe-recursos.md) | Catálogo dos recursos do `WRITER.EXE`: `STR#`, `STRING`, `MENU`, `ACCELERATOR`, `DIALOG`, `TMEN`, `CSCH`, `SSHD`, `PATS`, `SMNM`, `TDRL`, bitmaps, cursores, mapa dos blocos `WHAT` |
+| [`writer-atag.md`](writer-atag.md) | Os 155 `ATAG` do `WRITER.EXE`: travessias, gags, chapéus e poses do McZee, interface |
+| [`writer-pic-snd.md`](writer-pic-snd.md) | `WRITER.PIC` por faixa de ids e tela, `WRITER.SND` (122 sons, 99 iguais aos do `ARTIST.SND`) e bibliotecas de `SHARED/STUFF` usadas pelo Writer |
+| [`fontes.md`](fontes.md) | Fontes do Creative Writer: Pablo Graphos, as 5 TrueType do produto, os 7 tamanhos e o nome gravado no `FONT` |
+| [`pictimp.md`](pictimp.md) | `PICTIMP.FLT` (filtro de figuras do Mac, `QD2GDI`) e os tipos de arquivo que o Writer importa |
 | [`what.md`](what.md) | Balões de ajuda e dos assistentes (`WHAT` dos executáveis): texto formatado, opções, dicas, glossário |
 | [`winres-ui.md`](winres-ui.md) | Menus, atalhos e caixas de diálogo (`MENU`, `ACCELERATOR`, `DIALOG`) dos executáveis |
 | [`maxprefs.md`](maxprefs.md) | Preferências do usuário (`~MAXUSER.INF`, `~MAGUSER.INF`): parede da Biblioteca, cache de fontes, entradas da Máquina de Idéias |
@@ -26,19 +32,19 @@ leitores sem consultar o código original.
 
 | Arquivo | Formato | Ver |
 |---|---|---|
-| `ARTIST.EXE`, `WRITER.EXE` | executável NE (Win16) | `recursos.md` |
-| `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` | `glob.md`, `pkbm.md` |
-| `ARTIST/ARTIST.SND`, `WRITER/WRITER.SND` | DLL NE com sons WAV | `sons.md` |
+| `ARTIST.EXE`, `WRITER.EXE` | executável NE (Win16) | `recursos.md`; `writer-exe-recursos.md`, `writer-atag.md` |
+| `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` | `glob.md`, `pkbm.md`, `writer-pic-snd.md` |
+| `ARTIST/ARTIST.SND`, `WRITER/WRITER.SND` | DLL NE com sons WAV | `sons.md`, `writer-pic-snd.md` |
 | `SHARED/MSKIDS.INF` | `CHNK` (usuários) | `chnk.md` |
 | `SHARED/USERS/*/*.MAG`, `*.PTM` (exemplos) e `USERS/*/` (usuários) | `CHNK` (desenhos do Fine Artist) | `mag.md`, `chnk.md` |
-| `SHARED/USERS/*/*.MAX` (exemplos) e `USERS/*/` (usuários) | `CHNK` (documentos do Creative Writer) | `chnk.md` |
+| `SHARED/USERS/*/*.MAX` (exemplos) e `USERS/*/` (usuários) | `CHNK` (documentos do Creative Writer) | `max.md`, `chnk.md` |
 | `USERS/*/~MAXUSER.INF`, `~MAGUSER.INF` | `CHNK` (preferências do usuário) | `maxprefs.md` |
 | `SHARED/STUFF/*.ART`, `*.BOR`, `*.ANI`, `*.CHK` | `CHNK` (clip-art, molduras, animações, checks) | `chnk.md` |
 | `SHARED/STUFF/WORKSHOP.CHK` | `CHNK` (Oficina de Idéias do Writer) | `workshop.md` |
 | `SHARED/STUFF/MAG100.SND`, `MAX100.SND` | `CHNK` com sons WAV | `chnk.md`, `sons.md` |
-| `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | não interpretada |
+| `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | `fontes.md` |
 | `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO) | fora do escopo |
-| `WRITER/PICTIMP.FLT` | filtro de importação de imagens (DLL NE) | fora do escopo |
+| `WRITER/PICTIMP.FLT` | filtro de importação de figuras do Mac (DLL NE) | `pictimp.md` (só o necessário; o filtro não é usado pelo port) |
 
 Os arquivos que o próprio Ateliê Livre grava ao lado dos desenhos
 (`*.objetos.json`, `*.fundo.png`, `*.projeto.txt`) estão em
@@ -46,8 +52,11 @@ Os arquivos que o próprio Ateliê Livre grava ao lado dos desenhos
 
 ## Ainda não interpretado
 
-Os recursos de comportamento dos executáveis (`WHAT`, `SCRD`, `SWND`,
-`DSPC`, `BTNW`, `TMEN`, `CSCH`, `SSHD`, `TDRL`, `SMNM`, `PATS`, `ACUR`), o
-conteúdo dos chunks de objetos soltos dos documentos (`SOBJ`, `COBJ`,
-`SPLE`, `CMBD`, `TEXT`, `FONT`, `FRAM`, ...) e os metarquivos `META` do clip-art. A ferramenta `atelie-tools
-extract` os extrai em forma bruta, com hexdump, para a próxima etapa.
+Os recursos de comportamento `SWND`, `DSPC`, `BTNW` e `ACUR` do
+`ARTIST.EXE` e o `TDRL`; o conteúdo dos chunks de objetos soltos dos
+desenhos do Fine Artist (`SOBJ`, `COBJ`, `CMBD`); nos documentos do Creative
+Writer, o cabeçalho do Splot (`SPLE`, parcial em `max.md`), alguns campos do
+`DOP`/`FRAM`/`ADD ` marcados "a mapear" em `max.md` e a ligação entre as
+âncoras de figuras na linha e os `PICT`; a lista de palavras e os sinônimos
+dos dicionários (`SPELL.DCT`, `THES.DCT`). A ferramenta `atelie-tools
+extract` extrai os recursos em forma bruta, com hexdump.

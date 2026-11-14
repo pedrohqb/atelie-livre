@@ -5,6 +5,7 @@ mod extract;
 mod html;
 mod info;
 mod mag;
+mod max2txt;
 mod what;
 
 mod report;
@@ -39,6 +40,15 @@ enum Command {
     },
     /// Converte um desenho .MAG do Fine Artist em PNG.
     Mag2png { input: PathBuf, output: PathBuf },
+    /// Mostra o texto, os estilos e os objetos de um documento .MAX do Creative Writer.
+    Max2txt {
+        input: PathBuf,
+        /// Arquivo de saída (padrão: saída padrão).
+        output: Option<PathBuf>,
+        /// Só o texto, sem estilos (como "Salvar Como Texto").
+        #[arg(long)]
+        texto: bool,
+    },
     /// Converte um PNG (de preferência 594×347) em desenho .MAG.
     Png2mag {
         input: PathBuf,
@@ -111,6 +121,11 @@ fn main() -> ExitCode {
         },
         Command::What { exe, block } => simple(what::run(&exe, block.as_deref())),
         Command::Mag2png { input, output } => simple(mag::mag2png(&input, &output)),
+        Command::Max2txt {
+            input,
+            output,
+            texto,
+        } => simple(max2txt::run(&input, output.as_deref(), texto)),
         Command::Png2mag {
             input,
             output,

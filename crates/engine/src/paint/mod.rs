@@ -9,6 +9,7 @@ pub mod objects;
 pub mod print;
 pub mod shape;
 pub mod shaped;
+pub mod splot_res;
 pub mod stamp;
 pub mod store;
 pub mod text;

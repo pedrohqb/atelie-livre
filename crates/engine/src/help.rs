@@ -7,8 +7,8 @@
 //! das ligações, ao lado, são retos, como no original.
 
 use crate::Frame;
-use crate::assets::Assets;
-use crate::balloon::{BOX_EXTRA, PAD, PAD_BOTTOM, WRAP_LESS, draw_frame, draw_tail_box};
+use crate::assets::{Assets, Program};
+use crate::balloon::{BOX_EXTRA, PAD, WRAP_LESS, draw_frame_in, draw_tail_box_in, pad_bottom};
 use crate::rich::{self, Ctx, Laid};
 use formats::fnt::Font;
 use formats::what::Record;
@@ -33,6 +33,9 @@ pub struct HelpBalloon {
     pub right: Option<i32>,
     /// Centralizado na tela (as dicas das gemas, da chave e do glossário).
     pub centered: bool,
+    /// Programa dos registros: de que tabela e de que `.PIC` vêm as figuras
+    /// embutidas.
+    pub program: Program,
 }
 
 impl HelpBalloon {
@@ -54,7 +57,14 @@ impl HelpBalloon {
             tail: None,
             right: None,
             centered: false,
+            program: Program::Artist,
         })
+    }
+
+    /// Mesmo balão, com as figuras embutidas de outro programa (o Writer).
+    pub fn in_program(mut self, program: Program) -> HelpBalloon {
+        self.program = program;
+        self
     }
 
     /// O mesmo balão com a borda direita (inclusive) na coluna `right`.
@@ -68,6 +78,7 @@ impl HelpBalloon {
     pub fn follow(&self, index: usize) -> Option<HelpBalloon> {
         HelpBalloon::new(self.records.clone(), self.block, index, self.x, self.y).map(|mut h| {
             h.tail = self.tail;
+            h.program = self.program;
             match self.right {
                 Some(r) => h.anchored_right(r),
                 None => h,
@@ -111,6 +122,7 @@ impl HelpBalloon {
         let glossary = |k: usize| records.get(k).map(|r| r.title.trim().to_string());
         let ctx = Ctx {
             assets: a,
+            program: self.program,
             font: font.as_deref(),
             name: "",
             glossary: &glossary,
@@ -120,7 +132,7 @@ impl HelpBalloon {
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
-        PAD + self.layout(a).height + PAD_BOTTOM
+        PAD + self.layout(a).height + pad_bottom(self.program)
     }
 
     /// Posição de tela do balão, puxado para cima se não couber.
@@ -151,9 +163,10 @@ impl HelpBalloon {
         let lay = self.layout(a);
         let (bx, by, h) = self.origin(a);
         let bw = self.w + BOX_EXTRA;
-        draw_frame(f, bx, by, bw, h, self.tail.is_some());
+        let p = self.program;
+        draw_frame_in(f, p, (bx, by, bw, h), self.tail.is_some());
         if let Some(tip) = self.tail.filter(|t| t.1 < by - 4) {
-            draw_tail_box(f, (bx, by, bw, h), tip);
+            draw_tail_box_in(f, p, (bx, by, bw, h), tip);
         }
         rich::draw(
             f,
@@ -285,5 +298,63 @@ mod tests {
         b.draw(&mut f, &a);
         // sem rabicho: canto reto, borda preta
         assert_eq!(f.pixel(bx as u32 + 1, by as u32 + 1)[..3], [0, 0, 0]);
+    }
+
+    #[test]
+    fn writer_balloons_take_their_figures_from_the_writer_pic() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        // Seleciona-adesivos: ícone da ferramenta, gemas e o Cavalete
+        let recs = Rc::new(a.dialogs(Program::Writer, 0x0fa1));
+        let b = HelpBalloon::new(recs, 0x0fa1, 0, 0, 115)
+            .unwrap()
+            .in_program(Program::Writer);
+        let pics = |b: &HelpBalloon| {
+            b.layout(&a)
+                .runs
+                .iter()
+                .filter_map(|r| match r {
+                    rich::Run::Picture { id, .. } => Some(*id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(pics(&b), [0x225, 0x21b, 0x80a, 0x21b]);
+        assert_eq!(b.layout(&a).program, Program::Writer);
+        // a ligação continua no Writer
+        let tip = b.follow_beside(1).unwrap();
+        assert_eq!(tip.program, Program::Writer);
+        // o Cavalete (43×41) sai apagado, como no original
+        let lay = b.layout(&a);
+        let (ex, ey) = lay
+            .runs
+            .iter()
+            .find_map(|r| match r {
+                rich::Run::Picture {
+                    id: 0x80a, x, y, ..
+                } => Some((*x, *y)),
+                _ => None,
+            })
+            .unwrap();
+        let mut f = Frame::new(640, 480);
+        b.draw(&mut f, &a);
+        let (bx, by, _) = b.origin(&a);
+        let (ox, oy) = (bx + PAD + ex, by + PAD + ey);
+        let grey = (0..41)
+            .flat_map(|dy| (0..43).map(move |dx| (dx, dy)))
+            .filter(|(dx, dy)| f.pixel((ox + dx) as u32, (oy + dy) as u32)[..3] == [100, 100, 100])
+            .count();
+        assert!(grey > 100, "{grey}");
+    }
+
+    #[test]
+    fn writer_balloons_are_one_pixel_taller_at_the_bottom() {
+        // medido nas 11 capturas do Escritório: o mesmo texto, a borda de
+        // baixo 1 px mais longe
+        let (_d, a) = empty_assets();
+        let b = HelpBalloon::new(records(), 0x1003, 0, 445, 115).unwrap();
+        let w = b.clone().in_program(Program::Writer);
+        assert_eq!(w.height(&a), b.height(&a) + 1);
     }
 }

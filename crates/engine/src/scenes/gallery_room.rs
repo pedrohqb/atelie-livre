@@ -21,7 +21,7 @@ use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::paint::Canvas;
 use crate::paint::drawings;
-use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
+use crate::paint::store::{MAG_TITLE, NAME_FILE, load_picture};
 use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::{PIC_ALERT, Part, TextBalloon};
@@ -245,6 +245,8 @@ pub struct GalleryRoom {
     binder: Binder,
     drag: Option<Drag>,
     clicks: DoubleClick<Source>,
+    /// Relógio do clique duplo (s): cada quadro conta no máximo
+    /// [`crate::scene::CLICK_FRAME_MAX`].
     clock: f32,
     balloon: Option<(Ask, Balloon)>,
     alert: Option<Alert>,
@@ -651,9 +653,7 @@ impl GalleryRoom {
                 it.path.display()
             ))];
         };
-        if let Err(e) = std::fs::create_dir_all(dir)
-            .and_then(|()| save_png(&c, &self.pal, &dir.join(LAST_NAME)))
-        {
+        if let Err(e) = crate::paint::store::open_as_last(dir, &c, &it.path, &self.pal) {
             return vec![Effect::Log(format!("galeria: {e}"))];
         }
         let name_file = dir.join(NAME_FILE);
@@ -735,10 +735,21 @@ impl GalleryRoom {
             fx.push(Effect::Log(format!("lixeira: {e}")));
             return fx;
         }
-        // o .mag gêmeo do .png vai junto
+        // o .mag gêmeo do .png vai junto, e também os objetos, o fundo e os
+        // metadados de projeto gravados ao lado
         let twin = it.path.with_extension("mag");
         if twin != it.path {
             let _ = std::fs::remove_file(twin);
+        }
+        if let Some(stem) = it
+            .path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+        {
+            let [objects, background] = crate::paint::store::companions(&stem);
+            for name in [objects, background, super::projects::meta_name(&stem)] {
+                let _ = std::fs::remove_file(it.path.with_file_name(name));
+            }
         }
         self.items.remove(i);
         self.binder.rebuild(&self.items);
@@ -1094,7 +1105,7 @@ fn wall_contains(w: &[Option<usize>], i: usize) -> bool {
 
 impl Scene for GalleryRoom {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
-        self.clock += dt;
+        self.clock += crate::scene::click_time(dt);
         let mut fx = self.common.update(input);
         if !self.arrived {
             self.arrived = true;
@@ -1239,7 +1250,7 @@ impl Scene for GalleryRoom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paint::store::save_drawing;
+    use crate::paint::store::{LAST_NAME, save_drawing};
     use crate::paint::{CANVAS_H, CANVAS_W};
     use crate::scenes::testutil::empty_assets;
 

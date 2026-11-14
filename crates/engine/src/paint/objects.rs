@@ -1015,7 +1015,7 @@ mod store_tests {
         let mut objs = Objects::default();
         let mut w = ShapedWords::new("Oi, \"Ana\"", 5);
         w.font = "DejaVu Sans".into();
-        w.shape = WordShape::Circle;
+        w.shape = WordShape::Rainbow;
         w.set_styles("negrito,contorno,vertical");
         w.colors = vec![5, 9, 12];
         w.pattern = 4;

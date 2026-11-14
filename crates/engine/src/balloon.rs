@@ -4,7 +4,7 @@
 //! até quem fala e o texto formatado do registro `WHAT` (ver [`crate::rich`]).
 
 use crate::Frame;
-use crate::assets::Assets;
+use crate::assets::{Assets, Program};
 use crate::rich::{self, Ctx, Laid, Rect};
 use formats::fnt::Font;
 use formats::what::{
@@ -22,6 +22,15 @@ pub const PAD: i32 = 5;
 pub const BOX_EXTRA: i32 = 2;
 /// Do pé da última linha até a borda de fora (4 + 2 de borda).
 pub const PAD_BOTTOM: i32 = 6;
+
+/// [`PAD_BOTTOM`] nos balões do programa `p`: no Writer, 1 px a mais
+/// (medido nas capturas do Escritório).
+pub fn pad_bottom(p: Program) -> i32 {
+    match p {
+        Program::Writer => PAD_BOTTOM + 1,
+        _ => PAD_BOTTOM,
+    }
+}
 /// A largura de quebra é a do registro menos 8.
 pub const WRAP_LESS: i32 = 8;
 const LINE_GAP: i32 = 2;
@@ -37,6 +46,8 @@ pub struct RichSource {
     pub own: Option<usize>,
     /// Nome do usuário (troca o `@`).
     pub name: String,
+    /// Programa do bloco: de que tabela e de que `.PIC` vêm as figuras.
+    pub program: Program,
     text: String,
     options: Vec<String>,
     links: Vec<(usize, String)>,
@@ -113,6 +124,15 @@ impl Balloon {
         Balloon::from_record_in(r, x, y, name, None)
     }
 
+    /// Mesmo balão, com as figuras do registro tiradas da tabela e do `.PIC`
+    /// de outro programa (o Writer).
+    pub fn in_program(mut self, program: Program) -> Balloon {
+        if let Some(src) = &mut self.rich {
+            Rc::make_mut(src).program = program;
+        }
+        self
+    }
+
     /// `own` é o índice do registro no bloco, se conhecido: a lâmpada que
     /// aponta para ele — ou para o registro 0, como a do título dos
     /// registros de dica (`21B0000`) — é só enfeite do título, que fica no
@@ -168,6 +188,7 @@ impl Balloon {
             glossary: Vec::new(),
             own,
             name: name.to_string(),
+            program: Program::Artist,
             text: text.clone(),
             options: options.clone(),
             links: links.clone(),
@@ -230,10 +251,22 @@ pub fn wrap_opt(font: Option<&Font>, text: &str, width: u32) -> Vec<String> {
 /// (amarelo onde o bit está ligado), alinhado à tela como um pincel do
 /// Windows.
 const DOTS: [u8; 8] = [0x09, 0xa0, 0x09, 0x40, 0x12, 0x84, 0x21, 0x88];
+/// O mesmo padrão no `WRITER.EXE`: só a primeira linha muda (conferido no
+/// executável e nas capturas do Escritório).
+const DOTS_WRITER: [u8; 8] = [0x0a, 0xa0, 0x09, 0x40, 0x12, 0x84, 0x21, 0x88];
 
 /// Cor do fundo pontilhado no pixel (x, y) da tela.
 pub fn dot(x: i32, y: i32) -> [u8; 3] {
-    if (DOTS[(y & 7) as usize] >> (7 - (x & 7))) & 1 == 1 {
+    dot_in(Program::Artist, x, y)
+}
+
+/// Como [`dot`], com o padrão do programa `p`.
+pub fn dot_in(p: Program, x: i32, y: i32) -> [u8; 3] {
+    let dots = match p {
+        Program::Writer => &DOTS_WRITER,
+        _ => &DOTS,
+    };
+    if (dots[(y & 7) as usize] >> (7 - (x & 7))) & 1 == 1 {
         YELLOW
     } else {
         WHITE
@@ -249,6 +282,11 @@ const CORNER_BOTTOM: [(i32, i32); 6] = [(4, ALL), (3, ALL), (2, 6), (1, 5), (0, 
 
 /// Caixa do balão em (x, y) com `w`×`h` pixels (borda incluída).
 pub fn draw_frame(f: &mut Frame, x: i32, y: i32, w: i32, h: i32, rounded: bool) {
+    draw_frame_in(f, Program::Artist, (x, y, w, h), rounded);
+}
+
+/// Como [`draw_frame`], com o fundo do programa `p`.
+pub fn draw_frame_in(f: &mut Frame, p: Program, (x, y, w, h): Rect, rounded: bool) {
     for dy in 0..h {
         let from_bottom = h - 1 - dy;
         let (out, border) = if rounded && dy < CORNER_TOP.len() as i32 {
@@ -268,7 +306,7 @@ pub fn draw_frame(f: &mut Frame, x: i32, y: i32, w: i32, h: i32, rounded: bool) 
             let c = if border == ALL || d < border {
                 BLACK
             } else {
-                dot(x + dx, y + dy)
+                dot_in(p, x + dx, y + dy)
             };
             f.put(x + dx, y + dy, c);
         }
@@ -290,6 +328,11 @@ pub fn draw_box_square(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
 /// curvado para o lado de quem fala (como o do original), contorno de 2 px
 /// e o fundo pontilhado por dentro, abrindo a borda da caixa.
 pub fn draw_tail_box(f: &mut Frame, b: (i32, i32, i32, i32), tip: (i32, i32)) {
+    draw_tail_box_in(f, Program::Artist, b, tip);
+}
+
+/// Como [`draw_tail_box`], com o fundo do programa `p`.
+pub fn draw_tail_box_in(f: &mut Frame, p: Program, b: Rect, tip: (i32, i32)) {
     let (x, y, w, h) = b;
     // lado e sistema (u para fora, v ao longo do lado)
     let side = if tip.1 < y {
@@ -351,7 +394,7 @@ pub fn draw_tail_box(f: &mut Frame, b: (i32, i32, i32, i32), tip: (i32, i32)) {
                     .any(|dv| du.abs() + dv.abs() <= 2 && u + du > -2 && !inside(u + du, v + dv))
             });
             // na borda da caixa (u ≤ 0) o meio se abre para o rabicho
-            let c = if edge { BLACK } else { dot(px, py) };
+            let c = if edge { BLACK } else { dot_in(p, px, py) };
             f.put(px, py, c);
         }
     }
@@ -552,6 +595,7 @@ impl Balloon {
         };
         let ctx = Ctx {
             assets: a,
+            program: src.map_or(Program::Artist, |s| s.program),
             font: font.as_deref(),
             name: src.map_or("", |s| s.name.as_str()),
             glossary: &glossary,
@@ -570,7 +614,8 @@ impl Balloon {
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
-        PAD + self.layout(a).height + PAD_BOTTOM
+        let lay = self.layout(a);
+        PAD + lay.height + pad_bottom(lay.program)
     }
 
     fn abs(&self, r: Rect) -> Rect {
@@ -649,10 +694,11 @@ impl Balloon {
     pub fn draw(&self, f: &mut Frame, a: &Assets) {
         let font = Self::font(a);
         let lay = self.layout(a);
-        let h = PAD + lay.height + PAD_BOTTOM;
-        draw_box(f, self.x, self.y, self.box_width(), h);
+        let h = PAD + lay.height + pad_bottom(lay.program);
+        let b = (self.x, self.y, self.box_width(), h);
+        draw_frame_in(f, lay.program, b, true);
         if let Some(tip) = self.tail {
-            draw_tail_box(f, (self.x, self.y, self.box_width(), h), tip);
+            draw_tail_box_in(f, lay.program, b, tip);
         }
         let (ox, oy) = self.origin();
         rich::draw(
