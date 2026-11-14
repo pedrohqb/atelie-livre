@@ -72,7 +72,9 @@ A janela de 640×480 fica centrada no Xvfb (deslocamento 192,144). Com
    há discos; a dica do disquete `4400[7]` é omitida); o apelido é
    sugerido a partir do nome.
 3. **História do McZee** (álbum `4201`, 495×314, com a máscara `4209`, em
-   (76,114) sobre o fundo `4200`; medido no livro verde do Ateliê,
+   (76,114) sobre o fundo da Entrada `4139` com a prancha — conferido pixel
+   a pixel no original no Wine; o `4200` é só a versão preto e branco desse
+   fundo; medido no livro verde do Ateliê,
    `studio_o_book_6.png` e `studio_o_bookpg_*.png` da varredura): 9 falas
    do `WHAT 4200` (os registros 2 e 3 repetem o 1, "Same as #2", e não
    aparecem) em 7 páginas duplas. Fotos de 169×119 em (37,122) e (276,163)
@@ -437,10 +439,13 @@ seção 4. Resumo:
 
 Os projetos da Maggie são modos da tela de pintura (spec
 [`2026-10-31-projetos-design.md`](../superpowers/specs/2026-10-31-projetos-design.md);
-geometria reconstruída, não medida — o Wine não chega a mostrar essas telas).
-O rótulo da barra inferior vira "Fazendo uma História em Quadrinhos" /
-"Fazendo um Botão" / "Fazendo um Adesivo" e a porta "Saída" volta ao andar
-dos Projetos. O nicho do McZee (x 533..580 da faixa) mostra o estado do
+geometria reconstruída; o original roda essas telas no Wine — ver
+`/home/claude/sweep/report/wine-trava.md` e os relatórios `fid-*.md` —, e o
+que já foi conferido está indicado). A caixa esquerda da barra inferior diz
+"Projetos" (o andar de onde se veio) e a do meio "Fazendo uma História em
+Quadrinhos" / "Fazendo um Botão" / "Fazendo um Adesivo"; a porta mostra a
+Maggie na soleira (`6d87`, como no original) e clicar nela leva ao fim
+guiado e de volta ao andar dos Projetos. O nicho do McZee (x 533..580 da faixa) mostra o estado do
 projeto e, clicado, abre e fecha o painel do projeto na faixa de opções;
 qualquer outro clique fecha o painel e devolve a faixa às opções da ferramenta.
 
@@ -476,13 +481,17 @@ qualquer outro clique fecha o painel e devolve a faixa às opções da ferrament
   tamanho pelos Transformadores. O bitmap `10b0` que o roteiro cita não
   existe no `ARTIST.PIC`.
 - **Botão ou adesivo**: a faixa mostra os cartões da forma, com a miniatura
-  e o rótulo. Botão (roteiro 3c00 [4], "Redondo ou Quadrado"): círculo de
-  300 px ou 300×300 com cantos de raio 30, borda preta de 3 px e anel cinza
-  de 12 px (a aba de metal). Adesivo (3c00 [26]): **Retangular** (360×260,
-  raio 24), **Redondo** (círculo de 300), **Quadrado** (300×300, raio 30),
-  **Oval alto** (elipse de 260×318) e **Oval largo** (318×260), só com a
-  borda de 3 px — os bitmaps `109d`–`10a1` do roteiro não existem no
-  `ARTIST.PIC`, por isso as formas são geométricas. O último cartão troca
+  e o rótulo. Tamanho e lugar de cada forma medidos no original (caixa com o
+  contorno, em coordenadas da tela): botão **Redondo** círculo de 163 px em
+  (230,186), **Quadrado** 146×146 em (243,209); adesivo **Retangular**
+  218×164 em (216,196), **Redondo** círculo de 199 em (224,180),
+  **Quadrado** 200×200 em (224,180), **Oval alto** 163×199 em (232,180) e
+  **Oval largo** 199×163 em (224,196). Contorno preto de 1 px, cantos vivos,
+  interior branco e o resto do quadro cinza (100,100,100) — sem aba nem
+  anel. Os bitmaps `109d`–`10a1` do roteiro não existem no `ARTIST.PIC`,
+  por isso as formas são geométricas. No original a forma é escolhida num
+  balão da Maggie ("Qual é a forma que você quer para o seu botão?", com
+  bolinhas e amostras coloridas), não em cartões na faixa. O último cartão troca
   entre botão e adesivo. Tudo overlay; a pintura fica limitada ao interior
   e, ao trocar a forma, o que ficaria fora vira branco (o ovo desfaz). A
   forma fica em `ultimo-<tipo>.projeto.txt` e volta ao reabrir. Imprimir

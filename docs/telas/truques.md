@@ -1,9 +1,39 @@
-# Truques de Desenho — a lição na tela de pintura
+# Truques de Desenho — a apresentação e a lição na tela de pintura
 
 Complementa a spec `docs/superpowers/specs/2026-10-31-truques-design.md`
 com o comportamento do assistente (`scenes/wizard.rs`) e dos roteiros
 (`scenes/tricks_basic.rs`, `scenes/tricks_3d.rs`) depois da varredura de
-cliques contra o original (`WHAT 3800` e `4000`).
+cliques contra o original (`WHAT 3800` e `4000`) e da conferência com o
+original rodando no Wine (`/home/claude/sweep/report/fid-tricks.md`).
+
+## Duas telas
+
+A lição começa na **tela de apresentação** (`scenes/tricks_board.rs`,
+`SceneId::Tricks`): fundo preto, quadro branco de cantos arredondados
+(4,18)-(635,475), raio 10; título "Truques Básicos" / "Truques de 3-D" na
+fonte de 16 pontos numa caixa com moldura laranja (227,4) 186×30; a figura
+grande (313×272) em (168,118) numa moldura laranja de 5 px (de fora para
+dentro: preto, laranja, laranja, marrom, preto em cima e à direita; preto,
+marrom, laranja, laranja, preto à esquerda e embaixo). A Maggie muda de pose
+a cada balão (no básico: `3803` sentada com o pincel, `3807` encostada no
+quadro, `380b` agachada com o Max `380f`, `3813` acenando, `381f` de pernas
+cruzadas, `3823` deitada; no 3-D `4009`, `4033`, `404b` com o McZee `4041`,
+`4073`), e o balão tem um lugar por registro (`BOARD_BALLOONS`,
+`BOARD_POSES` em cada roteiro; medidos nas capturas do original). Os
+cliques "no espaço positivo", "no rosto", "nos círculos" são no próprio
+quadro, e "trace o espaço negativo" pinta no quadro com um pincel preto de
+7 px. Os passos antes de `STUDIO` (10 no básico, 12 no 3-D) são desta tela.
+
+Ao escolher treinar ("Sim, vamos experimentar", "Levar você para o lugar
+onde você pode treinar"), a lição segue na **tela de pintura**
+(`SceneId::TricksStudio(tipo, passo)`) a partir de `STUDIO`: "Seja
+bem-vindo ao meu ateliê de treinamento!" (`3800[3]` / `4000[50]`). Ali o
+quadro tem duas molduras em relevo com título na fonte de 8 pontos: "Sua
+Área de Desenho" (26,115) 398×338 e "Área de Desenho da Maggie" (426,277)
+185×176, com a figura pequena (178×149) em (431,302), coberta em parte pela
+moldura. O balão fica encostado à direita (borda direita x 620, topo y 118),
+sob a Maggie da porta (que substitui a porta "Saída"; clicar nela vale como
+"clique em mim (Maggie)").
 
 ## Balão do passo
 
