@@ -111,7 +111,7 @@ Tela de pintura e ferramentas:
 | `wizard`, `tricks_basic`, `tricks_3d` | Assistente da Maggie e os roteiros dos Truques. |
 | `projects` (`button`, `comics`, `flipbook`, `dialogs`) | Oficina de Projetos. |
 | `paint_sfx` | Sons da pintura. |
-| `writer` | Escritório do Creative Writer (início); núcleo em `crate::writer` (`doc`, `layout`, `store`). |
+| `writer` | Escritório do Creative Writer (início). Núcleo em `crate::writer`: modelo rico `doc`, `object`, `layout`, `selection`, `undo` (`docs/telas/creative-writer-modelo.md`; ainda não ligado à cena) e o provisório `legacy` + `store`, que a cena usa hoje. |
 
 ### Componentes compartilhados entre cenas
 
