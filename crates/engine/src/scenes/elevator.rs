@@ -10,6 +10,7 @@
 
 use super::gags::{self, Character};
 use super::room::Floor;
+use super::room_spec::RoomSpec;
 use crate::anim::{self, Animator};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
@@ -80,6 +81,111 @@ pub const SND_ARRIVE: u16 = 0x311;
 const ROOMS_WHAT: u16 = 0x100d;
 const ASK: usize = 64;
 
+/// Figura colorida, máscara (se houver; sem ela, opaca) e canto.
+pub type Pic = (u16, Option<u16>, (i32, i32));
+
+/// O que muda no elevador de um programa (ids do `.PIC`/`.SND`/`WHAT`
+/// dele). A mecânica (um roteiro por andar, mostrador acompanhando,
+/// portas que se abrem para o fundo do andar) é a mesma.
+#[derive(Debug, Clone, Copy)]
+pub struct ElevatorSpec {
+    pub program: Program,
+    pub background: u16,
+    /// Portas (cor, máscara) e canto; os roteiros da escotilha são gravados
+    /// em relação a ele.
+    pub doors: (u16, u16),
+    pub doors_pos: (i32, i32),
+    /// Escotilha separada das portas (FA), desenhada por cima delas.
+    pub porthole: Option<((u16, u16), (i32, i32))>,
+    /// Mostrador no alto e o número aceso de cada andar (S, 2, 3, 4).
+    pub indicator: Pic,
+    pub lit: [Pic; 4],
+    /// Painel (ou seta) com os andares e o botão aceso (máscara duas
+    /// figuras adiante).
+    pub panel: ((u16, u16), (i32, i32)),
+    pub panel_lit: [(u16, (i32, i32)); 4],
+    /// Áreas clicáveis: botões do painel e números do mostrador, de S a 4.
+    pub buttons: [Rect; 4],
+    pub indicator_buttons: [Rect; 4],
+    /// Porta: abre no andar em que se está.
+    pub door: Rect,
+    /// Luminária "Tchau" (cor, máscara, canto) e a área do clique.
+    pub tchau: ((u16, u16), (i32, i32)),
+    pub tchau_rect: Rect,
+    pub mczee_pos: (i32, i32),
+    /// Fantasias do McZee quando a sala não manda a dela.
+    pub costumes: &'static [u16],
+    /// Roteiros da escotilha (subindo, descendo), um por andar.
+    pub ride: (u16, u16),
+    /// Salas do programa: o fundo do andar (do `.PIC` do kit da sala)
+    /// aparece pelas portas abertas.
+    pub floor_room: fn(Floor) -> &'static RoomSpec,
+    /// Moldura das portas que fica à mostra com elas abertas (px).
+    pub doorway_rim: i32,
+    /// Balão "Subindo? Ou descendo?": bloco, registro e canto.
+    pub what: u16,
+    pub ask: usize,
+    pub ask_pos: (i32, i32),
+    pub snd: ElevatorSounds,
+}
+
+/// Sons do elevador (`None`: nenhum).
+#[derive(Debug, Clone, Copy)]
+pub struct ElevatorSounds {
+    /// Motor da viagem.
+    pub motor: u16,
+    /// O motor tem um trecho em laço (bloco `loop`) que se repete até a
+    /// chegada: `PlayLoop` na partida e `StopLoop` ao chegar.
+    pub motor_loops: bool,
+    /// Portas se abrindo.
+    pub doors: Option<u16>,
+    pub arrive: u16,
+    /// Clique num botão do painel, num número do mostrador e na porta.
+    pub button: Option<u16>,
+    pub indicator_button: Option<u16>,
+    pub door: Option<u16>,
+}
+
+/// O elevador do Fine Artist.
+pub const ARTIST_ELEVATOR: ElevatorSpec = ElevatorSpec {
+    program: Program::Artist,
+    background: BACKGROUND,
+    doors: DOORS,
+    doors_pos: DOORS_POS,
+    porthole: Some((PORTHOLE, PORTHOLE_POS)),
+    indicator: (INDICATOR, None, INDICATOR_POS),
+    lit: [
+        (LIT[0].0, None, LIT[0].1),
+        (LIT[1].0, None, LIT[1].1),
+        (LIT[2].0, None, LIT[2].1),
+        (LIT[3].0, None, LIT[3].1),
+    ],
+    panel: (PANEL, PANEL_POS),
+    panel_lit: PANEL_LIT,
+    buttons: BUTTONS,
+    indicator_buttons: INDICATOR_BUTTONS,
+    door: DOOR,
+    tchau: (TCHAU_IMG, TCHAU_POS),
+    tchau_rect: TCHAU,
+    mczee_pos: MCZEE_POS,
+    costumes: gags::MCZEE_COSTUMES,
+    ride: (RIDE_UP, RIDE_DOWN),
+    floor_room: super::rooms_data::room,
+    doorway_rim: 24,
+    what: ROOMS_WHAT,
+    ask: ASK,
+    ask_pos: (118, 192),
+    snd: ElevatorSounds {
+        motor: SND_MOTOR,
+        motor_loops: false,
+        doors: Some(SND_DOORS),
+        arrive: SND_ARRIVE,
+        button: None,
+        indicator_button: None,
+        door: None,
+    },
+};
+
 /// O que o elevador pede à sala.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -110,6 +216,7 @@ fn level(f: Floor) -> usize {
 }
 
 pub struct Elevator {
+    spec: &'static ElevatorSpec,
     /// Andar em que o elevador está (o do mostrador).
     at: Floor,
     target: Floor,
@@ -123,33 +230,43 @@ pub struct Elevator {
 
 impl Elevator {
     /// Elevador do programa `p` parado em `at`, com o McZee da sala
-    /// (`costume`; sem ele, sorteia). Por enquanto o do Fine Artist nos
-    /// dois programas: o do Writer vem com o `ElevatorSpec` (`writer_elevator`),
-    /// escolhido aqui sem mudar quem chama.
+    /// (`costume`, se for do `.PIC` do programa; sem ele, sorteia).
     pub fn for_program(
-        _p: Program,
+        p: Program,
         at: Floor,
         costume: Option<&Character>,
         assets: &Assets,
         user: &str,
     ) -> Elevator {
-        let image = costume
-            .filter(|c| c.program == Program::Artist)
-            .map(|c| c.image);
-        Elevator::new(at, image, assets, user)
+        let spec = match p {
+            Program::Artist => &ARTIST_ELEVATOR,
+            Program::Writer => &super::writer_elevator::WRITER_ELEVATOR,
+        };
+        let image = costume.filter(|c| c.program == p).map(|c| c.image);
+        Elevator::with_spec(spec, at, image, assets, user)
     }
 
-    /// Elevador parado em `at`; `costume` é a fantasia do McZee (ou sorteia).
+    /// Elevador do Fine Artist parado em `at`; `costume` é a fantasia do McZee (ou sorteia).
     pub fn new(at: Floor, costume: Option<u16>, assets: &Assets, user: &str) -> Elevator {
+        Elevator::with_spec(&ARTIST_ELEVATOR, at, costume, assets, user)
+    }
+
+    fn with_spec(
+        spec: &'static ElevatorSpec,
+        at: Floor,
+        costume: Option<u16>,
+        assets: &Assets,
+        user: &str,
+    ) -> Elevator {
         let mut rng = XorShift::from_clock();
         let character = match costume {
             Some(image) => Some(Character {
-                program: Program::Artist,
+                program: spec.program,
                 image,
-                x: MCZEE_POS.0,
-                y: MCZEE_POS.1,
+                x: spec.mczee_pos.0,
+                y: spec.mczee_pos.1,
             }),
-            None => Character::pick(gags::MCZEE_COSTUMES, MCZEE_POS, &mut rng),
+            None => Character::pick_in(spec.program, spec.costumes, spec.mczee_pos, &mut rng),
         };
         let fallback = Balloon {
             x: 0,
@@ -162,17 +279,17 @@ impl Elevator {
             ..Default::default()
         };
         let mut balloon = Balloon::from_block(
-            &assets.dialogs(Program::Artist, ROOMS_WHAT),
-            ASK,
+            &assets.dialogs(spec.program, spec.what),
+            spec.ask,
             0,
             0,
             user,
         )
         .filter(|b| !b.text.is_empty())
         .unwrap_or(fallback);
-        balloon.x = 118;
-        balloon.y = 192;
+        (balloon.x, balloon.y) = spec.ask_pos;
         Elevator {
+            spec,
             at,
             target: at,
             phase: Phase::Waiting,
@@ -202,21 +319,26 @@ impl Elevator {
 
     fn start_step(&mut self, assets: &Assets, fx: &mut Vec<Effect>) {
         let id = if level(self.target) > level(self.at) {
-            RIDE_UP
+            self.spec.ride.0
         } else {
-            RIDE_DOWN
+            self.spec.ride.1
         };
-        self.ride = anim::load_exe(assets, Program::Artist, id).map(|a| a.with_offset(DOORS_POS));
+        self.ride = anim::load_exe(assets, self.spec.program, id)
+            .map(|a| a.with_offset(self.spec.doors_pos));
         if let Some(a) = &mut self.ride {
             fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
         }
         self.phase = Phase::Riding { t: 0.0 };
     }
 
+    fn snd(&self, id: u16) -> Effect {
+        Effect::PlaySound(SoundRef::Snd(self.spec.program, id))
+    }
+
     fn open_doors(&mut self, fx: &mut Vec<Effect>) {
         self.ride = None;
         self.phase = Phase::Opening { t: 0.0 };
-        fx.push(Effect::PlaySound(SoundRef::Snd(Program::Artist, SND_DOORS)));
+        fx.extend(self.spec.snd.doors.map(|id| self.snd(id)));
     }
 
     /// Escolhe o andar: viaja até ele (ou só abre as portas, se já está nele).
@@ -229,7 +351,12 @@ impl Elevator {
         if floor == self.at {
             self.open_doors(fx);
         } else {
-            fx.push(Effect::PlaySound(SoundRef::Snd(Program::Artist, SND_MOTOR)));
+            let motor = SoundRef::Snd(self.spec.program, self.spec.snd.motor);
+            fx.push(if self.spec.snd.motor_loops {
+                Effect::PlayLoop(motor)
+            } else {
+                Effect::PlaySound(motor)
+            });
             self.start_step(assets, fx);
         }
     }
@@ -257,6 +384,10 @@ impl Elevator {
                     };
                     self.at = ORDER[next];
                     if self.at == self.target {
+                        if self.spec.snd.motor_loops {
+                            // o laço do motor acaba: toca a freada
+                            fx.push(Effect::StopLoop);
+                        }
                         self.open_doors(fx);
                     } else {
                         self.start_step(assets, fx);
@@ -270,10 +401,7 @@ impl Elevator {
                 let t = t + dt;
                 if t >= OPEN_TIME {
                     self.phase = Phase::Waiting;
-                    fx.push(Effect::PlaySound(SoundRef::Snd(
-                        Program::Artist,
-                        SND_ARRIVE,
-                    )));
+                    fx.push(self.snd(self.spec.snd.arrive));
                     return Some(Outcome::Arrived(self.at));
                 }
                 self.phase = Phase::Opening { t };
@@ -291,21 +419,30 @@ impl Elevator {
             };
             // qualquer clique fecha o balão do McZee
             self.balloon = None;
-            if let Some(k) = BUTTONS
+            let spec = self.spec;
+            if let Some(k) = spec
+                .buttons
                 .iter()
-                .chain(&INDICATOR_BUTTONS)
+                .chain(&spec.indicator_buttons)
                 .position(|&r| inside(r, x, y))
             {
+                let click = if k < 4 {
+                    spec.snd.button
+                } else {
+                    spec.snd.indicator_button
+                };
+                fx.extend(click.map(|id| self.snd(id)));
                 self.choose(ORDER[k % 4], assets, fx);
                 return None;
             }
-            if inside(TCHAU, x, y) {
+            if inside(spec.tchau_rect, x, y) {
                 return Some(Outcome::Quit);
             }
             if self.character.as_ref().is_some_and(|c| c.hit(assets, x, y)) {
                 return Some(Outcome::Helper);
             }
-            if inside(DOOR, x, y) {
+            if inside(spec.door, x, y) {
+                fx.extend(spec.snd.door.map(|id| self.snd(id)));
                 let at = self.at;
                 self.choose(at, assets, fx);
                 return None;
@@ -314,59 +451,62 @@ impl Elevator {
         None
     }
 
-    fn pic(frame: &mut Frame, assets: &Assets, (img, mask): (u16, u16), (x, y): (i32, i32)) {
+    fn pic(&self, frame: &mut Frame, assets: &Assets, (img, mask): (u16, u16), (x, y): (i32, i32)) {
+        let p = self.spec.program;
         frame.blit_masked(
-            &assets.image(&ImageRef::Pic(Program::Artist, img)),
-            &assets.image(&ImageRef::Pic(Program::Artist, mask)),
+            &assets.image(&ImageRef::Pic(p, img)),
+            &assets.image(&ImageRef::Pic(p, mask)),
             x,
             y,
         );
     }
 
-    /// Botão aceso: máscara duas imagens adiante no `.PIC`.
-    fn lit(frame: &mut Frame, assets: &Assets, img: u16, (x, y): (i32, i32)) {
-        let colour = assets.image(&ImageRef::Pic(Program::Artist, img));
-        match assets.pic_next_id(Program::Artist, img, 2) {
-            Some(m) => frame.blit_masked(
-                &colour,
-                &assets.image(&ImageRef::Pic(Program::Artist, m)),
-                x,
-                y,
+    /// Figura com máscara própria ou opaca.
+    fn figure(&self, frame: &mut Frame, assets: &Assets, (img, mask, pos): Pic) {
+        match mask {
+            Some(m) => self.pic(frame, assets, (img, m), pos),
+            None => frame.blit(
+                &assets.image(&ImageRef::Pic(self.spec.program, img)),
+                pos.0,
+                pos.1,
             ),
+        }
+    }
+
+    /// Botão aceso: máscara duas imagens adiante no `.PIC`.
+    fn lit(&self, frame: &mut Frame, assets: &Assets, img: u16, (x, y): (i32, i32)) {
+        let p = self.spec.program;
+        let colour = assets.image(&ImageRef::Pic(p, img));
+        match assets.pic_next_id(p, img, 2) {
+            Some(m) => frame.blit_masked(&colour, &assets.image(&ImageRef::Pic(p, m)), x, y),
             None => frame.blit(&colour, x, y),
         }
     }
 
     /// Com as portas abertas, o vão mostra o fundo do andar de destino.
     pub fn draw(&self, frame: &mut Frame, assets: &Assets) {
-        let floor_bg = self.target.background();
+        let spec = self.spec;
+        let p = spec.program;
         frame.fill([20, 70, 30]);
-        let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+        let bg = assets.image(&ImageRef::Pic(p, spec.background));
         frame.blit(
             &bg,
             (SCREEN_W as i32 - bg.width as i32) / 2,
             (SCREEN_H as i32 - bg.height as i32) / 2,
         );
-        frame.blit(
-            &assets.image(&ImageRef::Pic(Program::Artist, INDICATOR)),
-            INDICATOR_POS.0,
-            INDICATOR_POS.1,
-        );
-        let (img, pos) = LIT[level(self.at)];
-        frame.blit(
-            &assets.image(&ImageRef::Pic(Program::Artist, img)),
-            pos.0,
-            pos.1,
-        );
-        Self::pic(frame, assets, PANEL, PANEL_POS);
-        let (img, pos) = PANEL_LIT[level(if self.moving() { self.target } else { self.at })];
-        Self::lit(frame, assets, img, pos);
-        Self::pic(frame, assets, TCHAU_IMG, TCHAU_POS);
-        Self::pic(frame, assets, DOORS, DOORS_POS);
+        self.figure(frame, assets, spec.indicator);
+        self.figure(frame, assets, spec.lit[level(self.at)]);
+        self.pic(frame, assets, spec.panel.0, spec.panel.1);
+        let (img, pos) = spec.panel_lit[level(if self.moving() { self.target } else { self.at })];
+        self.lit(frame, assets, img, pos);
+        self.pic(frame, assets, spec.tchau.0, spec.tchau.1);
+        self.pic(frame, assets, spec.doors, spec.doors_pos);
         if matches!(self.phase, Phase::Opening { .. }) {
-            self.draw_doorway(frame, assets, floor_bg);
+            self.draw_doorway(frame, assets);
         } else {
-            Self::pic(frame, assets, PORTHOLE, PORTHOLE_POS);
+            if let Some((img, pos)) = spec.porthole {
+                self.pic(frame, assets, img, pos);
+            }
             if let Some(a) = &self.ride {
                 a.draw(frame, assets);
             }
@@ -380,11 +520,13 @@ impl Elevator {
     }
 
     /// Vão das portas abertas: o fundo do andar dentro do contorno das
-    /// portas, deixando a moldura (24 px) à mostra.
-    fn draw_doorway(&self, frame: &mut Frame, assets: &Assets, floor_bg: u16) {
-        const RIM: i32 = 24;
-        let mask = assets.image(&ImageRef::Pic(Program::Artist, DOORS.1));
-        let bg = assets.image(&ImageRef::Pic(Program::Artist, floor_bg));
+    /// portas, deixando a moldura (`doorway_rim`) à mostra.
+    fn draw_doorway(&self, frame: &mut Frame, assets: &Assets) {
+        let spec = self.spec;
+        let rim = spec.doorway_rim;
+        let room = (spec.floor_room)(self.target);
+        let mask = assets.image(&ImageRef::Pic(spec.program, spec.doors.1));
+        let bg = assets.image(&ImageRef::Pic(room.kit.program, room.background));
         let (mw, mh) = (mask.width as i32, mask.height as i32);
         let solid = |x: i32, y: i32| {
             if x < 0 || y < 0 || x >= mw {
@@ -404,13 +546,13 @@ impl Elevator {
         for dy in 0..mh {
             for dx in 0..mw {
                 if !(solid(dx, dy)
-                    && solid(dx - RIM, dy)
-                    && solid(dx + RIM, dy)
-                    && solid(dx, dy - RIM))
+                    && solid(dx - rim, dy)
+                    && solid(dx + rim, dy)
+                    && solid(dx, dy - rim))
                 {
                     continue;
                 }
-                let (x, y) = (DOORS_POS.0 + dx, DOORS_POS.1 + dy);
+                let (x, y) = (spec.doors_pos.0 + dx, spec.doors_pos.1 + dy);
                 let (bx, by) = (x - ox, y - oy);
                 let p = if bx >= 0 && by >= 0 && bx < bg.width as i32 && by < bg.height as i32 {
                     let i = ((by * bg.width as i32 + bx) * 4) as usize;
