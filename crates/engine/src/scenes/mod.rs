@@ -34,6 +34,14 @@ pub mod tricks_basic;
 pub mod tricks_board;
 pub mod wizard;
 pub mod writer;
+// Dados do Creative Writer para as cenas compartilhadas com o Fine Artist
+// (um arquivo por tarefa; ver docs/arquitetura.md, "Creative Writer: specs
+// por programa").
+pub mod writer_elevator;
+pub mod writer_library;
+pub mod writer_portfolio;
+pub mod writer_story;
+pub mod writer_street;
 
 pub use browser::Browser;
 pub use chooser::Chooser;

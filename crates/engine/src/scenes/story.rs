@@ -133,11 +133,21 @@ pub struct Story {
     done: bool,
     /// Aberta por cima de uma sala: sem o fundo de nuvens; sai com `Back`.
     over_room: bool,
+    /// Programa: o Segue final leva à Imaginópolis dele.
+    program: Program,
 }
 
 impl Story {
+    /// História do Fine Artist.
     pub fn new(click: Option<SoundRef>, assets: &Assets) -> Story {
+        Story::for_program(Program::Artist, click, assets)
+    }
+
+    /// História do programa `p`. Por enquanto o álbum é o do Fine Artist nos
+    /// dois; o do Writer vem com o `StorySpec` (`writer_story`, T2).
+    pub fn for_program(p: Program, click: Option<SoundRef>, assets: &Assets) -> Story {
         Story {
+            program: p,
             common: KidCommon::new(click),
             page: 0,
             balloon: Self::balloon(0, assets),
@@ -158,7 +168,7 @@ impl Story {
         fx.push(if self.over_room {
             Effect::Back
         } else {
-            Effect::ChangeScene(SceneId::Imaginopolis)
+            Effect::ChangeScene(SceneId::Imaginopolis.in_program(self.program))
         });
     }
 

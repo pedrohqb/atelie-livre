@@ -268,6 +268,8 @@ pub struct GalleryRoom {
     arrived: bool,
     /// Sons em sequência e quanto falta para o próximo.
     sounds: SoundQueue,
+    /// Programa: as saídas levam às telas dele (`SceneId::in_program`).
+    program: Program,
 }
 
 impl GalleryRoom {
@@ -333,6 +335,7 @@ impl GalleryRoom {
             wand_cursor: false,
             arrived: false,
             sounds: SoundQueue::new(),
+            program: Program::Artist,
         };
         g.ask(Ask::Welcome, WELCOME, assets);
         g
@@ -412,6 +415,32 @@ impl GalleryRoom {
         self.alert = Some(Alert { kind, balloon, ids });
     }
 
+    /// Galeria do programa `p` (no Writer, a Biblioteca). Por enquanto a do
+    /// Fine Artist nos dois; a do Writer vem com o `GallerySpec`
+    /// (`writer_library`, T9).
+    pub fn for_program(
+        p: Program,
+        click: Option<SoundRef>,
+        dir: Option<PathBuf>,
+        assets: &Assets,
+    ) -> GalleryRoom {
+        let mut g = GalleryRoom::new(click, dir, assets);
+        g.program = p;
+        g
+    }
+
+    /// Pasta de trabalhos do programa `p` (`writer_portfolio`, T13).
+    pub fn portfolio_for_program(
+        p: Program,
+        click: Option<SoundRef>,
+        dir: Option<PathBuf>,
+        assets: &Assets,
+    ) -> GalleryRoom {
+        let mut g = GalleryRoom::portfolio(click, dir, assets);
+        g.program = p;
+        g
+    }
+
     /// Só a pasta de trabalhos, aberta pela maleta vermelha de uma sala:
     /// desenhada por cima da sala; fechar (ou clicar fora) volta a ela, e um
     /// clique duplo abre o quadro na pintura.
@@ -471,7 +500,7 @@ impl GalleryRoom {
             }
             BagPart::Book => {
                 fx.extend(objects::SND_BOOK.map(|id| Effect::PlaySound(snd(id))));
-                fx.push(Effect::Push(SceneId::BookStory));
+                fx.push(Effect::Push(SceneId::BookStory.in_program(self.program)));
             }
             BagPart::Wand => {
                 self.bag.holding_wand = true;
@@ -661,7 +690,7 @@ impl GalleryRoom {
         if let Err(e) = named {
             fx.push(Effect::Log(format!("galeria: {e}")));
         }
-        fx.push(Effect::ChangeScene(SceneId::Paint));
+        fx.push(Effect::ChangeScene(SceneId::Paint.in_program(self.program)));
         fx
     }
 
@@ -919,7 +948,9 @@ impl GalleryRoom {
             }
         } else if inside(LOBBY_ARROW, x, y) {
             fx.push(Effect::PlaySound(snd(sfx::LOBBY)));
-            fx.push(Effect::ChangeScene(SceneId::Building));
+            fx.push(Effect::ChangeScene(
+                SceneId::Building.in_program(self.program),
+            ));
         } else if inside(TCHAU, x, y) {
             self.play(&[sfx::BYE, sfx::ALERT]);
             self.alert(Modal::Quit, 0, 0, QUIT_POS, assets);

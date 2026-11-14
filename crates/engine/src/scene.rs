@@ -112,6 +112,93 @@ pub enum SceneId {
     WriterSplash,
     /// Escritório do Creative Writer (editor de texto).
     Writer,
+    /// Telas do Creative Writer que reaproveitam uma cena do Fine Artist: a
+    /// mesma cena, montada com os dados (specs) do Writer. As cenas
+    /// compartilhadas não escrevem estes ids à mão: emitem o id do Fine
+    /// Artist passado por [`SceneId::in_program`].
+    Cw(CwScene),
+}
+
+/// Telas do Creative Writer equivalentes às do Fine Artist (ver
+/// `docs/arquitetura.md`, "Creative Writer: specs por programa").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CwScene {
+    /// Entrada: lista de usuários e cadastro (`Entry` com o `WRITER_ENTRY`).
+    Entry,
+    /// História do McZee (Biblioteca Maluca).
+    Story,
+    /// História aberta pelo livro verde da Bolsa Mágica, por cima da sala.
+    BookStory,
+    Imaginopolis,
+    Street,
+    /// Prédio no andar dado: saguão (`Floor::Lobby`), Escritório (andar 2,
+    /// `Floor::Studio`), Oficina de Projetos (3, `Floor::Projects`), Oficina
+    /// de Ideias (4, `Floor::Tricks`) ou o sótão.
+    Building(crate::scenes::room::Floor),
+    /// Biblioteca do saguão (a Galeria do Writer).
+    Library,
+    /// Pasta de documentos aberta pela maleta (por cima da sala).
+    Portfolio,
+    /// Área de escrita com um "Documento Novo" (opção 4 da Entrada,
+    /// clique duplo na prancheta).
+    NewDocument,
+}
+
+impl SceneId {
+    /// A tela equivalente no programa `p`. Uma cena usada pelos dois
+    /// programas emite `SceneId::Street.in_program(self.program)`: no Fine
+    /// Artist é a própria rua; no Writer, `Cw(CwScene::Street)`. Telas sem
+    /// equivalente ficam como estão.
+    pub fn in_program(self, p: Program) -> SceneId {
+        use crate::scenes::room::Floor;
+        match p {
+            Program::Writer => match self {
+                SceneId::Splash => SceneId::WriterSplash,
+                SceneId::Entry => SceneId::Cw(CwScene::Entry),
+                SceneId::Story => SceneId::Cw(CwScene::Story),
+                SceneId::BookStory => SceneId::Cw(CwScene::BookStory),
+                SceneId::Imaginopolis => SceneId::Cw(CwScene::Imaginopolis),
+                SceneId::Street => SceneId::Cw(CwScene::Street),
+                SceneId::Building => SceneId::Cw(CwScene::Building(Floor::Lobby)),
+                SceneId::Studio => SceneId::Cw(CwScene::Building(Floor::Studio)),
+                SceneId::Projects => SceneId::Cw(CwScene::Building(Floor::Projects)),
+                SceneId::TricksFloor => SceneId::Cw(CwScene::Building(Floor::Tricks)),
+                SceneId::Gallery => SceneId::Cw(CwScene::Library),
+                SceneId::Portfolio => SceneId::Cw(CwScene::Portfolio),
+                SceneId::Paint => SceneId::Writer,
+                SceneId::PaintNew => SceneId::Cw(CwScene::NewDocument),
+                other => other,
+            },
+            Program::Artist => match self {
+                SceneId::WriterSplash => SceneId::Splash,
+                SceneId::Writer => SceneId::Paint,
+                SceneId::Cw(c) => match c {
+                    CwScene::Entry => SceneId::Entry,
+                    CwScene::Story => SceneId::Story,
+                    CwScene::BookStory => SceneId::BookStory,
+                    CwScene::Imaginopolis => SceneId::Imaginopolis,
+                    CwScene::Street => SceneId::Street,
+                    CwScene::Building(Floor::Studio) => SceneId::Studio,
+                    CwScene::Building(Floor::Projects) => SceneId::Projects,
+                    CwScene::Building(Floor::Tricks) => SceneId::TricksFloor,
+                    CwScene::Building(_) => SceneId::Building,
+                    CwScene::Library => SceneId::Gallery,
+                    CwScene::Portfolio => SceneId::Portfolio,
+                    CwScene::NewDocument => SceneId::PaintNew,
+                },
+                other => other,
+            },
+        }
+    }
+
+    /// De que programa é a tela (a escolha do programa e o navegador contam
+    /// como do Fine Artist).
+    pub fn program(self) -> Program {
+        match self {
+            SceneId::WriterSplash | SceneId::Writer | SceneId::Cw(_) => Program::Writer,
+            _ => Program::Artist,
+        }
+    }
 }
 
 /// Pedidos de uma cena à plataforma.
@@ -229,6 +316,48 @@ impl KidCommon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scenes::room::Floor;
+
+    #[test]
+    fn scenes_map_between_programs() {
+        let shared = [
+            SceneId::Splash,
+            SceneId::Entry,
+            SceneId::Story,
+            SceneId::BookStory,
+            SceneId::Imaginopolis,
+            SceneId::Street,
+            SceneId::Building,
+            SceneId::Studio,
+            SceneId::Projects,
+            SceneId::TricksFloor,
+            SceneId::Gallery,
+            SceneId::Portfolio,
+            SceneId::Paint,
+            SceneId::PaintNew,
+        ];
+        for id in shared {
+            assert_eq!(id.in_program(Program::Artist), id);
+            let w = id.in_program(Program::Writer);
+            assert_eq!(w.program(), Program::Writer, "{id:?}");
+            assert_eq!(w.in_program(Program::Artist), id, "{id:?}");
+            assert_eq!(w.in_program(Program::Writer), w);
+        }
+        assert_eq!(
+            SceneId::Studio.in_program(Program::Writer),
+            SceneId::Cw(CwScene::Building(Floor::Studio))
+        );
+        assert_eq!(
+            SceneId::PaintNew.in_program(Program::Writer),
+            SceneId::Cw(CwScene::NewDocument)
+        );
+        // telas só do Fine Artist ficam como estão
+        assert_eq!(
+            SceneId::FlipbookFigure.in_program(Program::Writer),
+            SceneId::FlipbookFigure
+        );
+        assert_eq!(SceneId::Browser.program(), Program::Artist);
+    }
 
     #[test]
     fn ctrl_q_quits_escape_does_not() {

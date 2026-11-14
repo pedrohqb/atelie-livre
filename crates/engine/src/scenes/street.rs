@@ -80,11 +80,21 @@ pub struct Street {
     gag: Option<Animator>,
     /// Ao fim do roteiro, entra no saguão (porta giratória).
     then_lobby: bool,
+    /// Programa: a porta leva ao saguão dele; o resto, à Imaginópolis dele.
+    program: Program,
 }
 
 impl Street {
+    /// Rua do Fine Artist.
     pub fn new(click: Option<SoundRef>) -> Street {
+        Street::for_program(Program::Artist, click)
+    }
+
+    /// Rua do programa `p`. Por enquanto a do Fine Artist nos dois; a do
+    /// Writer vem com o `StreetSpec` (`writer_street`, T3).
+    pub fn for_program(p: Program, click: Option<SoundRef>) -> Street {
         Street {
+            program: p,
             common: KidCommon::new(click),
             gag: None,
             then_lobby: false,
@@ -113,9 +123,9 @@ impl Street {
         true
     }
 
-    fn enter_lobby(fx: &mut Vec<Effect>) {
+    fn enter_lobby(program: Program, fx: &mut Vec<Effect>) {
         fx.push(Effect::PlaySound(snd(SND_ENTER)));
-        fx.push(Effect::ChangeScene(SceneId::Building));
+        fx.push(Effect::ChangeScene(SceneId::Building.in_program(program)));
     }
 
     fn click(&mut self, x: i32, y: i32, assets: &Assets, fx: &mut Vec<Effect>) {
@@ -125,12 +135,12 @@ impl Street {
                 if self.start_gag(DOOR_SCRIPT, (DOOR.0, DOOR.1), assets, fx) {
                     self.then_lobby = true;
                 } else {
-                    Street::enter_lobby(fx);
+                    Street::enter_lobby(self.program, fx);
                 }
             }
             Spot::Lobby => {
                 fx.push(Effect::PlaySound(snd(SND_FACADE)));
-                Street::enter_lobby(fx);
+                Street::enter_lobby(self.program, fx);
             }
             Spot::Ball => {
                 fx.push(Effect::PlaySound(snd(SND_FACADE)));
@@ -144,7 +154,9 @@ impl Street {
                 self.start_gag(STREET_TRASH.0, STREET_TRASH.1, assets, fx);
             }
             // o som e o carrinho são de Imaginópolis, ao chegar
-            Spot::Town => fx.push(Effect::ChangeScene(SceneId::Imaginopolis)),
+            Spot::Town => fx.push(Effect::ChangeScene(
+                SceneId::Imaginopolis.in_program(self.program),
+            )),
         }
     }
 }
@@ -157,7 +169,7 @@ impl Scene for Street {
             if a.is_finished() {
                 self.gag = None;
                 if std::mem::take(&mut self.then_lobby) {
-                    Street::enter_lobby(&mut fx);
+                    Street::enter_lobby(self.program, &mut fx);
                     return fx;
                 }
             }
