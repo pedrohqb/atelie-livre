@@ -22,6 +22,10 @@
 //! O modelo provisório que a cena `scenes/writer` usa hoje fica em
 //! [`legacy`] e é reexportado aqui com os nomes antigos até a integração.
 
+pub mod assistant;
+pub mod assistant_banner;
+pub mod assistant_card;
+pub mod assistant_news;
 pub mod dict;
 pub mod doc;
 pub mod fold_figure;

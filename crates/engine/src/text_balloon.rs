@@ -619,6 +619,25 @@ impl TextBalloon {
             .map(|(b, _)| b)
     }
 
+    /// Ligação (dica `21b`/`21d`, Maggie `21e`, glossário) em (x, y).
+    pub fn hot_at(&self, a: &Assets, x: i32, y: i32) -> Option<rich::Hot> {
+        let lay = self.layout(a, Self::font(a).as_deref());
+        lay.laid.hot_at(x - self.x - PAD, y - self.y - PAD)
+    }
+
+    /// (x, y) cai na linha do "Precisa de ajuda?" (figura `222` do `WHAT`),
+    /// que o assistente do Max trata como ligação.
+    pub fn help_at(&self, a: &Assets, x: i32, y: i32) -> bool {
+        let lay = self.layout(a, Self::font(a).as_deref());
+        let (ox, oy) = (self.x + PAD, self.y + PAD);
+        lay.laid.runs.iter().any(|r| match r {
+            Run::Picture { y: py, id, .. } if *id == formats::what::PIC_HELP => {
+                inside((ox, oy + py, self.w, rich::LINE + 2), x, y)
+            }
+            _ => false,
+        })
+    }
+
     /// Largura máxima do texto que cabe no campo `k`.
     fn field_capacity(&self, a: &Assets, k: usize) -> i32 {
         self.field_rect(a, k).map_or(100, |r| r.2) - 6
