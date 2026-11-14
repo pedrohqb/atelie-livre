@@ -1,7 +1,7 @@
 //! `atelie-tools info`: inventário de um arquivo.
 
 use crate::detect::{FileKind, detect};
-use formats::{FormatError, chnk, glob, ne, pkbm, wave};
+use formats::{FormatError, chnk, glob, max, ne, pkbm, wave};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -69,6 +69,13 @@ pub fn report(data: &[u8]) -> Result<String, String> {
                         c.name.as_deref().unwrap_or("")
                     )
                     .unwrap();
+                }
+            }
+            if f.creator == max::CREATOR {
+                writeln!(out, "\nINK (documento do Creative Writer)").unwrap();
+                match max::read(data) {
+                    Ok(doc) => out.push_str(&crate::max2txt::summary(&doc)),
+                    Err(e) => writeln!(out, "erro ao ler o documento: {e}").unwrap(),
                 }
             }
         }
