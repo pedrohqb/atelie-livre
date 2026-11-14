@@ -22,6 +22,7 @@ pub mod pict;
 pub mod pkbm;
 pub mod reader;
 pub mod render;
+pub mod scrd;
 pub mod tag;
 pub mod wave;
 pub mod what;
