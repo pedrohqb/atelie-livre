@@ -14,6 +14,7 @@ pub mod gif;
 pub mod glob;
 pub mod macres;
 pub mod mag;
+pub mod max;
 pub mod ne;
 pub mod palette;
 pub mod pkbm;
