@@ -365,6 +365,48 @@ mod tests {
     }
 
     #[test]
+    fn recorded_sound_goes_to_the_sticker_and_the_wand_plays_it() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let (mut p, id) = paint_with_sticker(dir.path(), &a);
+        // Gravador: microfone, microfone (a plataforma grava o .wav), nome, OK
+        p.update(&[click(470, 75)], 0.0, &a);
+        p.update(&[click(236, 290)], 0.0, &a);
+        let fx = p.update(&[click(236, 290)], 0.0, &a);
+        let Some(Effect::RecordStop(temp)) =
+            fx.into_iter().find(|e| matches!(e, Effect::RecordStop(_)))
+        else {
+            panic!("sem RecordStop");
+        };
+        let pcm = crate::Pcm {
+            sample_rate: 22_050,
+            channels: 1,
+            samples: (0..2205).map(|i| ((i % 50) as i16 - 25) * 1000).collect(),
+            loop_points: None,
+        };
+        std::fs::write(&temp, crate::encode_pcm16(&pcm)).unwrap();
+        p.update(&[Input::Text("Meu galo".into())], 0.0, &a);
+        p.update(&[click(410, 289)], 0.0, &a);
+        assert!(p.sounds.recorder.is_none());
+        let file = SoundRef::File(dir.path().join("sons").join("Meu_galo.wav"));
+        assert_eq!(p.sounds.hand().and_then(|h| h.sound()), Some(&file));
+        // no adesivo: associa e toca
+        let (x, y) = at(id, &p);
+        let fx = p.update(&[click(x, y)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlaySound(file.clone())));
+        assert_eq!(p.objects.get(id).unwrap().sound, Some(file.clone()));
+        // guardado e reaberto, com o pincel: a Varinha toca o som gravado
+        p.leave();
+        let mut q = Paint::new(Some(dir.path().to_path_buf()), &a);
+        q.update(&[click(20, 30)], 0.0, &a);
+        assert_ne!(q.tool, Tool::Sounds);
+        q.wand = true;
+        let fx = q.update(&[click(x, y)], 0.0, &a);
+        assert!(fx.contains(&Effect::PlaySound(file.clone())), "{fx:?}");
+        assert_eq!(a.sound(&file).unwrap().samples, pcm.samples);
+    }
+
+    #[test]
     fn old_loose_spots_go_to_the_sticker_below() {
         let (_d, a) = empty_assets();
         let dir = tempfile::tempdir().unwrap();
