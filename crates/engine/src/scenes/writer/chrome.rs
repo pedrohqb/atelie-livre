@@ -1,89 +1,125 @@
-//! Moldura do Escritório: bordas, faixa, página, barra de baixo e a barra
-//! de ferramentas com o McZee e a porta.
+//! Moldura do Escritório (`office.md` §2–§4): bordas laranja, barra de
+//! ferramentas com a aba da ativa, faixa de opções, laterais da página,
+//! barra de baixo, o McZee no nicho e a porta.
+//!
+//! Cores medidas no original: barra de ferramentas cinza-escuro (100), aba
+//! ativa e faixa cinza-claro (190), laterais da página cinza (140).
 
-use super::*;
+use super::editor::Editor;
+use super::tools::{Pic, Rect, ToolDef, ToolId};
+use crate::Frame;
+use crate::assets::Assets;
 
-impl Writer {
-    pub(super) fn draw_chrome(&self, f: &mut Frame, a: &Assets) {
-        f.fill(DARK);
-        // bordas laranja em relevo, como na pintura
-        for y0 in [0, 104, 456, 475] {
-            for (dy, c) in [(0, BLACK), (1, ORANGE), (2, ORANGE), (3, BROWN), (4, BLACK)] {
-                f.rect(0, y0 + dy, 640, 1, c);
-            }
+const BLACK: [u8; 3] = [0, 0, 0];
+const WHITE: [u8; 3] = [255, 255, 255];
+const DARK: [u8; 3] = [100, 100, 100];
+const GRAY: [u8; 3] = [140, 140, 140];
+const LIGHT: [u8; 3] = [190, 190, 190];
+const ORANGE: [u8; 3] = [255, 140, 50];
+const BROWN: [u8; 3] = [185, 101, 36];
+
+/// Faixa de opções (fundo).
+pub const STRIP: Rect = (5, 56, 630, 48);
+
+/// Barra de baixo: três caixas brancas (andar, nome do documento, páginas).
+const BOTTOM_Y: i32 = 461;
+const BOTTOM_H: i32 = 14;
+const BOX_FLOOR: (i32, i32) = (29, 168);
+const BOX_TITLE: (i32, i32) = (194, 445);
+const BOX_PAGES: (i32, i32) = (471, 610);
+/// Cabeça vermelha (mapa do prédio) e ícone "todas as páginas".
+const FLOOR_ICON: Pic = Pic::masked(0x03c3, 0x03c9, 33, 464);
+const PAGES_ICON: Pic = Pic::masked(0x0c37, 0x0c39, 475, 463);
+/// Setas ▲▼◀▶ da barra de baixo.
+pub const ARROW_UP: Pic = Pic::masked(0x02db, 0x02dd, 543, 463);
+pub const ARROW_DOWN: Pic = Pic::masked(0x02df, 0x02e1, 560, 463);
+pub const ARROW_LEFT: Pic = Pic::masked(0x0819, 0x081b, 577, 463);
+pub const ARROW_RIGHT: Pic = Pic::masked(0x0871, 0x0873, 594, 463);
+/// Clique nas setas (12×12).
+pub fn arrow_rect(p: Pic) -> Rect {
+    (p.x, p.y, 12, 12)
+}
+
+/// Nome mostrado na barra de baixo enquanto o documento não tem nome
+/// (`STR# 0800[0]`).
+pub const DEFAULT_TITLE: &str = "Documento Novo";
+
+/// Bordas laranja em relevo, fundo das barras e laterais da página.
+pub fn draw_frame(f: &mut Frame) {
+    f.fill(GRAY);
+    f.rect(5, 5, 630, 50, DARK);
+    let (x, y, w, h) = STRIP;
+    f.rect(x, y, w, h, LIGHT);
+    f.rect(5, 55, 630, 1, BLACK);
+    for y0 in [0, 104, 456, 475] {
+        for (dy, c) in [(0, BLACK), (1, ORANGE), (2, ORANGE), (3, BROWN), (4, BLACK)] {
+            f.rect(0, y0 + dy, 640, 1, c);
         }
-        for (x, c) in [(0, BLACK), (1, BROWN), (2, ORANGE), (3, ORANGE), (4, BLACK)] {
-            f.rect(x, 0, 1, 480, c);
-        }
-        for (x, c) in [
-            (635, BLACK),
-            (636, BROWN),
-            (637, ORANGE),
-            (638, ORANGE),
-            (639, BLACK),
-        ] {
-            f.rect(x, 0, 1, 480, c);
-        }
-        // faixa de opções e linha sob a barra de ferramentas
-        f.rect(5, 56, 630, 48, LIGHT);
-        f.rect(5, 55, 630, 1, BLACK);
-        // nicho escuro do McZee
-        f.rect(532, 55, 1, 49, BLACK);
-        f.rect(533, 56, 47, 48, DARK);
-        // página branca com borda preta de 1 px por fora
-        f.rect(PAGE.0 - 1, PAGE.1, 1, PAGE.3, BLACK);
-        f.rect(PAGE.0 + PAGE.2, PAGE.1, 1, PAGE.3, BLACK);
-        f.rect(PAGE.0, PAGE.1, PAGE.2, PAGE.3, WHITE);
-        // barra inferior
-        for (x0, x1) in [(22, 137), (155, 486), (518, 616)] {
-            f.rect(x0, 461, 1, 14, BLACK);
-            f.rect(x1, 461, 1, 14, BLACK);
-            f.rect(x0 + 1, 461, x1 - x0 - 1, 14, WHITE);
-        }
-        let pages = format!("Pág. {}", self.page + 1);
-        match a.font(8) {
-            Some(font) => {
-                f.text_font(&font, 69, 461, "Escritório", BLACK);
-                let name = "Documento Novo";
-                let w = font.width(name) as i32;
-                f.text_font(&font, 320 - w / 2, 462, name, BLACK);
-                f.text_font(&font, 537, 462, &pages, BLACK);
-            }
-            None => {
-                f.text(44, 464, "Escritório", BLACK);
-                f.text(264, 464, "Documento Novo", BLACK);
-                f.text(536, 464, &pages, BLACK);
-            }
-        }
-        f.blit(&a.image(&pic(0x03c3)), 27, 463);
-        f.blit(&a.image(&pic(0x03c3)), 523, 463);
-        f.blit_masked(
-            &a.image(&pic(0x02db)),
-            &a.image(&pic(0x02dd)),
-            PAGE_PREV.0,
-            PAGE_PREV.1,
-        );
-        f.blit_masked(
-            &a.image(&pic(0x02df)),
-            &a.image(&pic(0x02e1)),
-            PAGE_NEXT.0,
-            PAGE_NEXT.1,
-        );
     }
+    for (x, c) in [(0, BLACK), (1, BROWN), (2, ORANGE), (3, ORANGE), (4, BLACK)] {
+        f.rect(x, 0, 1, 480, c);
+    }
+    for (x, c) in [
+        (635, BLACK),
+        (636, BROWN),
+        (637, ORANGE),
+        (638, ORANGE),
+        (639, BLACK),
+    ] {
+        f.rect(x, 0, 1, 480, c);
+    }
+    // barra de baixo: fundo escuro entre as caixas
+    f.rect(5, BOTTOM_Y - 2, 630, BOTTOM_H + 3, DARK);
+    // nicho escuro do McZee
+    f.rect(532, 56, 1, 48, BLACK);
+    f.rect(533, 56, 47, 48, DARK);
+}
 
-    pub(super) fn draw_tools(&self, f: &mut Frame, a: &Assets) {
-        for t in &TOOLS {
-            let active = t.action == Action::Select(self.tool);
-            let (img, mask) = if active { t.active } else { t.normal };
-            if active {
-                let w = a.image(&pic(img)).width as i32;
-                f.rect(t.x - 5, 5, w + 11, 51, LIGHT);
-                f.rect(t.x - 6, 5, 1, 50, BLACK);
-                f.rect(t.x + w + 6, 5, 1, 50, BLACK);
-            }
-            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), t.x, t.y);
+/// Barra de ferramentas: aba clara atrás da ferramenta ativa.
+pub fn draw_toolbar(f: &mut Frame, a: &Assets, active: ToolId) {
+    for t in ToolId::ALL.map(ToolId::def) {
+        if t.id == active {
+            draw_tab(f, t);
+            t.active.draw(f, a);
+        } else {
+            t.inactive.draw(f, a);
         }
-        f.blit_masked(&a.image(&pic(0x0235)), &a.image(&pic(0x0237)), 536, 47);
-        f.blit_masked(&a.image(&pic(0x023d)), &a.image(&pic(0x023f)), 581, 16);
+    }
+}
+
+fn draw_tab(f: &mut Frame, t: &ToolDef) {
+    let (x, y, w, h) = t.hit;
+    f.rect(x, y, w, h + 1, LIGHT);
+    f.rect(x - 1, y, 1, h, BLACK);
+    f.rect(x + w, y, 1, h, BLACK);
+}
+
+fn text_in(f: &mut Frame, a: &Assets, (x0, x1): (i32, i32), s: &str) {
+    match a.font(8) {
+        Some(font) => {
+            let w = font.width(s) as i32;
+            f.text_font(&font, (x0 + x1) / 2 - w / 2, BOTTOM_Y + 1, s, BLACK);
+        }
+        None => {
+            let w = 8 * s.chars().count() as i32;
+            f.text((x0 + x1) / 2 - w / 2, BOTTOM_Y + 3, s, BLACK);
+        }
+    }
+}
+
+/// Barra de baixo: andar ("Escritório"), nome do documento e páginas.
+pub fn draw_bottom(f: &mut Frame, a: &Assets, ed: &Editor, title: &str) {
+    for (x0, x1) in [BOX_FLOOR, BOX_TITLE, BOX_PAGES] {
+        f.rect(x0, BOTTOM_Y, 1, BOTTOM_H, BLACK);
+        f.rect(x1, BOTTOM_Y, 1, BOTTOM_H, BLACK);
+        f.rect(x0 + 1, BOTTOM_Y, x1 - x0 - 1, BOTTOM_H, WHITE);
+    }
+    FLOOR_ICON.draw(f, a);
+    text_in(f, a, (44, 140), "Escritório");
+    text_in(f, a, BOX_TITLE, title);
+    PAGES_ICON.draw(f, a);
+    text_in(f, a, (488, 538), &format!("Pág. {}", ed.page + 1));
+    for p in [ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT] {
+        p.draw(f, a);
     }
 }
