@@ -15,12 +15,12 @@
 
 use super::*;
 use crate::paint::print::{self as pr, Composer, Options, Rgb8, Stretch};
+use crate::scenes::printing::{self, Poll, PrintJob, Rendered, mczee_balloon};
 use crate::text_balloon::{
     Button, PIC_BALL, PIC_BALL_CHECKED, Part, TextBalloon, blit_pic, blit_pic_opaque,
 };
 use formats::what::Record;
 
-use crate::paint::print::machine::WHAT_ERRORS;
 use crate::paint::print::machine::*;
 
 const MCZEE_RECT: (i32, i32, i32, i32) = (545, 2, 90, 158);
@@ -73,19 +73,6 @@ pub struct PrintBackground {
     pub full: Rgb8,
 }
 
-/// Folhas gravadas pela thread de montagem, ou o erro.
-type Rendered = Result<Vec<PathBuf>, String>;
-
-/// Impressão em andamento.
-struct Job {
-    /// Montagem e gravação das folhas, numa thread (não trava a tela).
-    render: Option<std::sync::mpsc::Receiver<Rendered>>,
-    child: Option<std::process::Child>,
-    t: f32,
-    /// Resultado do `lp`, quando terminou.
-    ok: Option<bool>,
-}
-
 pub struct PrintMachine {
     pub quick: bool,
     pub stage: Stage,
@@ -97,29 +84,11 @@ pub struct PrintMachine {
     alert: Option<(TextBalloon, Alert)>,
     picture: Rgb8,
     preview: Rgb8,
-    job: Option<Job>,
+    job: Option<PrintJob>,
     /// Programa de impressão (`ATELIE_LP`, senão `lp`).
     pub lp: String,
     /// Arquivos gravados na última impressão.
     pub files: Vec<PathBuf>,
-}
-
-/// Texto e opções de um registro, ou a reserva.
-fn record_text(
-    r: Option<&Record>,
-    fallback: &str,
-    fallback_opts: &[&str],
-) -> (String, Vec<String>) {
-    match r {
-        Some(r) if !r.plain().trim().is_empty() => {
-            let b = Balloon::from_record(r, 0, 0, "");
-            (b.text, b.options)
-        }
-        _ => (
-            fallback.to_string(),
-            fallback_opts.iter().map(|s| s.to_string()).collect(),
-        ),
-    }
 }
 
 /// Lê os fundos de impressão (`IBGF` de `0MAG100.BOR`): a miniatura `PKBM`
@@ -277,24 +246,17 @@ impl PrintMachine {
                 &[],
                 vec![Back, Stop, Next],
             ),
-            Stage::Ready => (
-                REC_READY,
-                "OK. Já estou pronto para imprimir a figura!\nQuando você estiver pronto para imprimir, clique em Segue.",
-                &[],
-                vec![Stop, Next],
-            ),
-            Stage::Printing => (
-                REC_PRINTING,
-                "Eu ainda estou imprimindo... um pouquinho de paciência!\nPara cancelar a impressão, aperte a tecla Esc.",
-                &[],
-                vec![],
-            ),
-            Stage::Done => (
-                REC_DONE,
-                "Terminei de imprimir a figura. Foi divertido!\nPara voltar ao seu trabalho, clique em Pára.",
-                &[],
-                vec![Stop],
-            ),
+            Stage::Ready | Stage::Printing | Stage::Done => {
+                self.balloon = printing::step_balloon(
+                    assets,
+                    match stage {
+                        Stage::Ready => printing::Step::Ready,
+                        Stage::Printing => printing::Step::Printing,
+                        _ => printing::Step::Done,
+                    },
+                );
+                return;
+            }
         };
         let r = rec(k);
         let width = r.map_or(200, |r| r.width as i32).clamp(150, 260);
@@ -317,12 +279,7 @@ impl PrintMachine {
                 buttons,
             )
         } else {
-            let (text, options) = record_text(r, fallback, opts);
-            let mut parts = vec![Part::Text(text)];
-            if !options.is_empty() {
-                parts.push(Part::Options(options));
-            }
-            TextBalloon::new(0, BALLOON_TOP, width, parts, buttons)
+            mczee_balloon(r, fallback, opts, buttons)
         };
         b.x = BALLOON_RIGHT - b.w;
         if stage == Stage::Copies {
@@ -336,7 +293,7 @@ impl PrintMachine {
     }
 
     fn open_alert(&mut self, alert: Alert, assets: &Assets) {
-        let (block, k, fallback) = match alert {
+        let spec = match alert {
             Alert::TooManyCopies => (
                 WHAT_MACHINE,
                 REC_TOO_MANY,
@@ -347,34 +304,10 @@ impl PrintMachine {
                 REC_POSTER_BACKGROUND,
                 "Sinto muito! Eu não consigo imprimir um pôster com fundo! Eu vou apagar o fundo.",
             ),
-            Alert::CantPrint => (
-                WHAT_ERRORS,
-                REC_CANT_PRINT,
-                "Sinto muito, por algum motivo eu não consigo imprimir isto.\nVerifique a impressora e tente outra vez.",
-            ),
-            Alert::Canceled => (
-                WHAT_ERRORS,
-                REC_CANCELED,
-                "Você acabou de cancelar a impressão.",
-            ),
+            Alert::CantPrint => printing::CANT_PRINT,
+            Alert::Canceled => printing::CANCELED,
         };
-        let recs = Self::records(assets, block);
-        let b = match recs.get(k) {
-            Some(r) if !r.plain().trim().is_empty() => {
-                TextBalloon::from_record(r, ALERT_POS.0, ALERT_POS.1, "", vec![])
-            }
-            _ => TextBalloon::new(
-                ALERT_POS.0,
-                ALERT_POS.1,
-                220,
-                vec![
-                    Part::Figure(crate::text_balloon::PIC_ALERT),
-                    Part::Text(fallback.into()),
-                ],
-                vec![],
-            ),
-        };
-        self.alert = Some((b.as_alert(), alert));
+        self.alert = Some((printing::alert_balloon(assets, spec).as_alert(), alert));
     }
 
     fn set_stretch(&mut self, s: Stretch, assets: &Assets) {
@@ -613,22 +546,9 @@ impl PrintMachine {
         let background = self.background_image().cloned();
         let options = self.options;
         let stamp = crate::paint::store::timestamp(now_secs());
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = tx.send(render_files(
-                &dir,
-                &picture,
-                background.as_ref(),
-                options,
-                &stamp,
-            ));
-        });
-        self.job = Some(Job {
-            render: Some(rx),
-            child: None,
-            t: 0.0,
-            ok: None,
-        });
+        self.job = Some(PrintJob::render(move || {
+            render_files(&dir, &picture, background.as_ref(), options, &stamp)
+        }));
         self.go(Stage::Printing, assets);
     }
 
@@ -638,18 +558,18 @@ impl PrintMachine {
         let Some(first) = self.files.first().cloned() else {
             return self.fail(fx, assets);
         };
-        let child = pr::spawn_lp(&self.lp, self.options.copies, &self.files);
-        match child {
-            Ok(c) => {
+        let started = match self.job.as_mut() {
+            Some(job) => job.lp(&self.lp, self.options.copies, &self.files),
+            None => return,
+        };
+        match started {
+            Ok(()) => {
                 fx.push(Effect::Log(format!(
                     "imprimindo {} folha(s), {} cópia(s): {}",
                     self.files.len(),
                     self.options.copies,
                     first.display()
                 )));
-                if let Some(job) = self.job.as_mut() {
-                    job.child = Some(c);
-                }
             }
             Err(_) => {
                 fx.push(Effect::Log(format!(
@@ -671,11 +591,8 @@ impl PrintMachine {
     }
 
     fn cancel(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
-        if let Some(mut job) = self.job.take()
-            && let Some(c) = job.child.as_mut()
-        {
-            let _ = c.kill();
-            let _ = c.wait();
+        if let Some(mut job) = self.job.take() {
+            job.cancel();
         }
         fx.push(Effect::Log("impressão cancelada".into()));
         self.open_alert(Alert::Canceled, assets);
@@ -683,49 +600,21 @@ impl PrintMachine {
 
     fn tick(&mut self, dt: f32, fx: &mut Vec<Effect>, assets: &Assets) {
         let Some(job) = self.job.as_mut() else { return };
-        if let Some(rx) = &job.render {
-            use std::sync::mpsc::TryRecvError;
-            let got = match rx.try_recv() {
-                Ok(r) => r,
-                Err(TryRecvError::Empty) => return,
-                Err(TryRecvError::Disconnected) => Err("a montagem das folhas parou".into()),
-            };
-            job.render = None;
-            match got {
-                Ok(files) => self.spawn_lp(files, fx, assets),
-                Err(e) => {
-                    fx.push(Effect::Log(format!("imprimir: {e}")));
-                    self.fail(fx, assets);
-                }
+        match job.poll(dt) {
+            Poll::Rendering | Poll::Waiting => {}
+            Poll::Rendered(Ok(files)) => self.spawn_lp(files, fx, assets),
+            Poll::Rendered(Err(e)) => {
+                fx.push(Effect::Log(format!("imprimir: {e}")));
+                self.fail(fx, assets);
             }
-            return;
-        }
-        let Some(job) = self.job.as_mut() else { return };
-        if dt.is_finite() && dt > 0.0 {
-            job.t += dt;
-        }
-        if job.ok.is_none()
-            && let Some(c) = job.child.as_mut()
-        {
-            match c.try_wait() {
-                Ok(Some(status)) => job.ok = Some(status.success()),
-                Ok(None) => {}
-                Err(_) => job.ok = Some(false),
-            }
-        }
-        if job.t < MIN_PRINTING {
-            return;
-        }
-        match job.ok {
-            Some(true) => {
+            Poll::Finished(true) => {
                 self.job = None;
                 self.go(Stage::Done, assets);
             }
-            Some(false) => {
+            Poll::Finished(false) => {
                 fx.push(Effect::Log(format!("{}: a impressão falhou", self.lp)));
                 self.fail(fx, assets);
             }
-            None => {}
         }
     }
 

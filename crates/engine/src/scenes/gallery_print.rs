@@ -9,14 +9,14 @@
 //! o "EPA!" do Rex (`100f[19]`), que fecha com qualquer clique ou tecla.
 //! Medido em `gallery_o_dprint_3.png` e `gallery_o_print_segue_3.png`.
 
+use super::printing::{self, PrintJob};
 use crate::assets::{Assets, Program, SoundRef};
 use crate::paint::Canvas;
 use crate::scene::{Effect, Input, Key, MouseButton};
-use crate::text_balloon::{Button, Part, TextBalloon, blit_pic};
+use crate::text_balloon::{Button, TextBalloon, blit_pic};
 use crate::{Frame, paint::store::save_png};
 use formats::palette::Rgb;
 use std::path::PathBuf;
-use std::process::Child;
 
 type Rect = (i32, i32, i32, i32);
 
@@ -60,23 +60,8 @@ pub struct PrintPreview {
     command: String,
     stage: Stage,
     balloon: TextBalloon,
-    child: Option<Child>,
-    /// O `lp` terminou: `Some(true)` com sucesso.
-    result: Option<bool>,
-    t: f32,
-}
-
-fn record_balloon(
-    assets: &Assets,
-    block: u16,
-    k: usize,
-    fallback: &str,
-    buttons: Vec<Button>,
-) -> TextBalloon {
-    match assets.dialogs(Program::Artist, block).get(k) {
-        Some(r) => TextBalloon::from_record(r, 0, 0, "", buttons),
-        None => TextBalloon::new(0, 0, 200, vec![Part::Text(fallback.into())], buttons),
-    }
+    /// Impressão em andamento (desde Segue).
+    job: Option<PrintJob>,
 }
 
 impl PrintPreview {
@@ -94,9 +79,7 @@ impl PrintPreview {
             command: command.to_string(),
             stage: Stage::Ready,
             balloon: TextBalloon::new(0, 0, 120, Vec::new(), Vec::new()),
-            child: None,
-            result: None,
-            t: 0.0,
+            job: None,
         };
         p.go(Stage::Ready, assets, false);
         p
@@ -112,60 +95,25 @@ impl PrintPreview {
 
     fn go(&mut self, stage: Stage, assets: &Assets, canceled: bool) {
         self.stage = stage;
-        let mut b = match stage {
-            Stage::Ready => record_balloon(
-                assets,
-                WHAT_MACHINE,
-                REC_READY,
-                "OK. Já estou pronto para imprimir a figura! Quando você estiver pronto para imprimir, clique em Segue.",
-                vec![Button::Stop, Button::Next],
-            ),
-            Stage::Printing => record_balloon(
-                assets,
-                WHAT_MACHINE,
-                REC_PRINTING,
-                "Eu ainda estou imprimindo... um pouquinho de paciência! Para cancelar a impressão, aperte a tecla Esc.",
-                Vec::new(),
-            ),
-            Stage::Done => record_balloon(
-                assets,
-                WHAT_MACHINE,
-                REC_DONE,
-                "Terminei de imprimir a figura. Foi divertido!",
-                vec![Button::Stop],
-            ),
-            Stage::Alert => {
-                let (k, text) = if canceled {
-                    (REC_CANCELED, "Você acabou de cancelar a impressão.")
-                } else {
-                    (
-                        REC_CANT_PRINT,
-                        "Sinto muito, por algum motivo eu não consigo imprimir isto. Verifique a impressora e tente outra vez.",
-                    )
-                };
-                let mut b = record_balloon(assets, WHAT_ERRORS, k, text, Vec::new());
-                b.x = ALERT_POS.0;
-                b.y = ALERT_POS.1;
-                self.balloon = b;
-                return;
-            }
+        self.balloon = match stage {
+            Stage::Ready => printing::step_balloon(assets, printing::Step::Ready),
+            Stage::Printing => printing::step_balloon(assets, printing::Step::Printing),
+            Stage::Done => printing::step_balloon(assets, printing::Step::Done),
+            Stage::Alert if canceled => printing::alert_balloon(assets, printing::CANCELED),
+            Stage::Alert => printing::alert_balloon(assets, printing::CANT_PRINT),
         };
-        b.x = BALLOON_RIGHT - b.w;
-        b.y = BALLOON_TOP;
-        self.balloon = b;
     }
 
     /// Grava a folha e chama o programa de impressão.
     fn start(&mut self, fx: &mut Vec<Effect>) {
-        self.t = 0.0;
-        self.result = None;
+        let job = self.job.insert(PrintJob::new());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let Some(dir) = &self.dir else {
             fx.push(Effect::Log("imprimir: sem pasta de desenhos".into()));
-            self.result = Some(false);
+            job.fail();
             return;
         };
         let path =
@@ -174,22 +122,16 @@ impl PrintPreview {
             std::fs::create_dir_all(dir).and_then(|()| save_png(&self.picture, &self.pal, &path))
         {
             fx.push(Effect::Log(format!("imprimir: {e}")));
-            self.result = Some(false);
+            job.fail();
             return;
         }
-        match crate::paint::print::spawn_lp(&self.command, 1, std::slice::from_ref(&path)) {
-            Ok(c) => {
-                fx.push(Effect::Log(format!("imprimindo {}", path.display())));
-                self.child = Some(c);
-            }
-            Err(_) => {
-                fx.push(Effect::Log(format!(
-                    "sem impressora ({}): o desenho ficou em {}",
-                    self.command,
-                    path.display()
-                )));
-                self.result = Some(false);
-            }
+        match job.lp(&self.command, 1, std::slice::from_ref(&path)) {
+            Ok(()) => fx.push(Effect::Log(format!("imprimindo {}", path.display()))),
+            Err(_) => fx.push(Effect::Log(format!(
+                "sem impressora ({}): o desenho ficou em {}",
+                self.command,
+                path.display()
+            ))),
         }
     }
 
@@ -199,22 +141,16 @@ impl PrintPreview {
         if self.stage != Stage::Printing {
             return fx;
         }
-        self.t += dt;
-        if let Some(c) = self.child.as_mut()
-            && let Ok(Some(status)) = c.try_wait()
-        {
-            self.result = Some(status.success());
-            self.child = None;
-        }
-        if self.t >= MIN_PRINTING
-            && let Some(ok) = self.result
-        {
-            if ok {
-                self.go(Stage::Done, assets, false);
-            } else {
+        let Some(job) = self.job.as_mut() else {
+            return fx;
+        };
+        match job.poll(dt) {
+            printing::Poll::Finished(true) => self.go(Stage::Done, assets, false),
+            printing::Poll::Finished(false) => {
                 fx.push(snd(SND_ALERT));
                 self.go(Stage::Alert, assets, false);
             }
+            _ => {}
         }
         fx
     }
@@ -249,9 +185,8 @@ impl PrintPreview {
                     key: Key::Escape, ..
                 } = i
                 {
-                    if let Some(mut c) = self.child.take() {
-                        let _ = c.kill();
-                        let _ = c.wait();
+                    if let Some(job) = self.job.as_mut() {
+                        job.cancel();
                     }
                     fx.push(snd(SND_ALERT));
                     self.go(Stage::Alert, assets, true);
@@ -302,10 +237,14 @@ impl PrintPreview {
         let (x, y, w, h) = STRIP;
         f.rect(x, y, w, h, BLACK);
         f.rect(x + 1, y + 1, w - 2, h - 2, WHITE);
-        let k = if self.result == Some(true) {
+        let (t, ok) = self
+            .job
+            .as_ref()
+            .map_or((0.0, false), |j| (j.elapsed(), j.succeeded()));
+        let k = if ok {
             1.0
         } else {
-            (self.t / MIN_PRINTING).min(1.0) * 0.9
+            (t / MIN_PRINTING).min(1.0) * 0.9
         };
         let done = ((w - 4) as f32 * k) as i32;
         f.rect(x + 2, y + h - 6, done, 4, ORANGE);
@@ -326,9 +265,8 @@ impl PrintPreview {
 
 impl Drop for PrintPreview {
     fn drop(&mut self) {
-        if let Some(mut c) = self.child.take() {
-            let _ = c.kill();
-            let _ = c.wait();
+        if let Some(job) = self.job.as_mut() {
+            job.cancel();
         }
     }
 }

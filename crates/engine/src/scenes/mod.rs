@@ -14,6 +14,7 @@ pub mod imaginopolis;
 pub mod paint;
 pub mod paint_sfx;
 pub mod portfolio;
+pub mod printing;
 pub mod projects;
 pub mod room;
 pub mod room_objects;
