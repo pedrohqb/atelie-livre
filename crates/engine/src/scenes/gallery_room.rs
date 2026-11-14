@@ -553,7 +553,9 @@ impl GalleryRoom {
             Ask::HelpOff | Ask::HelpOn => {
                 // o mesmo menu do McZee das salas
                 let off = kind == Ask::HelpOn;
-                let b = Helper::McZee.balloon(assets, super::room::DEFAULT_USER, off, WELCOME_POS);
+                let mut b =
+                    Helper::McZee.balloon(assets, super::room::DEFAULT_USER, off, WELCOME_POS);
+                b.tail = super::room_talk::mczee_tail(Some(Helper::McZee), false, &b);
                 self.balloon = Some((kind, b));
                 return;
             }
