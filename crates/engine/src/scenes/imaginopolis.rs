@@ -23,7 +23,29 @@ pub const SND_ARRIVE: u16 = 0x302;
 /// Som da troca para a rua (1068 bytes; 0x2c0–0x2c5 são o mesmo som).
 pub const SND_ENTER: u16 = 0x253;
 
+/// O que muda na Imaginópolis de um programa.
+#[derive(Debug, Clone, Copy)]
+pub struct ImaginopolisSpec {
+    pub program: Program,
+    pub background: u16,
+    /// Roteiro do carrinho (uma vez, na chegada).
+    pub cart: u16,
+    pub snd_arrive: u16,
+    /// Som da troca para a rua.
+    pub snd_enter: u16,
+}
+
+/// A Imaginópolis do Fine Artist.
+pub const ARTIST_IMAGINOPOLIS: ImaginopolisSpec = ImaginopolisSpec {
+    program: Program::Artist,
+    background: BACKGROUND,
+    cart: CART,
+    snd_arrive: SND_ARRIVE,
+    snd_enter: SND_ENTER,
+};
+
 pub struct Imaginopolis {
+    spec: &'static ImaginopolisSpec,
     common: KidCommon,
     clock: f32,
     /// O carrinho já começou (passa uma vez só).
@@ -39,10 +61,15 @@ impl Imaginopolis {
         Imaginopolis::for_program(Program::Artist, click)
     }
 
-    /// Imaginópolis do programa `p`. Por enquanto a do Fine Artist nos
-    /// dois; a do Writer vem com o `ImaginopolisSpec` (`writer_street`, T3).
+    /// Imaginópolis do programa `p` (`ARTIST_IMAGINOPOLIS` ou
+    /// `writer_street::WRITER_IMAGINOPOLIS`).
     pub fn for_program(p: Program, click: Option<SoundRef>) -> Imaginopolis {
+        let spec = match p {
+            Program::Artist => &ARTIST_IMAGINOPOLIS,
+            Program::Writer => &super::writer_street::WRITER_IMAGINOPOLIS,
+        };
         Imaginopolis {
+            spec,
             program: p,
             common: KidCommon::new(click),
             clock: 0.0,
@@ -70,11 +97,12 @@ impl Scene for Imaginopolis {
         self.clock += dt;
         if !self.cart_started && self.clock >= CART_DELAY {
             self.cart_started = true;
+            let spec = self.spec;
             fx.push(Effect::PlaySound(SoundRef::Snd(
-                Program::Artist,
-                SND_ARRIVE,
+                spec.program,
+                spec.snd_arrive,
             )));
-            self.cart = anim::load_exe(assets, Program::Artist, CART);
+            self.cart = anim::load_exe(assets, spec.program, spec.cart);
             if let Some(a) = &mut self.cart {
                 fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
             }
@@ -95,7 +123,10 @@ impl Scene for Imaginopolis {
                 )
             })
         {
-            fx.push(Effect::PlaySound(SoundRef::Snd(Program::Artist, SND_ENTER)));
+            fx.push(Effect::PlaySound(SoundRef::Snd(
+                self.spec.program,
+                self.spec.snd_enter,
+            )));
             fx.push(Effect::ChangeScene(
                 SceneId::Street.in_program(self.program),
             ));
@@ -105,7 +136,7 @@ impl Scene for Imaginopolis {
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         frame.fill([0, 0, 0]);
-        let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+        let bg = assets.image(&ImageRef::Pic(self.spec.program, self.spec.background));
         // 641 px de largura: alinhado à esquerda, a última coluna fica de fora
         let x = if bg.width > SCREEN_W {
             0
