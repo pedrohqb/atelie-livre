@@ -82,6 +82,7 @@ dependencies = [
  "engine",
  "sdl3",
  "serde",
+ "tempfile",
  "toml",
 ]
 

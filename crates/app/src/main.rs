@@ -2,6 +2,8 @@
 
 mod audio;
 mod config;
+#[cfg(test)]
+mod mic_tests;
 mod platform;
 mod run;
 
