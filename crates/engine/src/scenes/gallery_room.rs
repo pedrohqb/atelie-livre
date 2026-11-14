@@ -14,6 +14,7 @@ use super::gags::{self, Character};
 use super::gallery_print::PrintPreview;
 use super::portfolio::{self, Action, Binder};
 use super::room_objects::{self as objects, BagPart, MagicBag, Target, snd};
+use super::room_talk::{self, Helper};
 use crate::Frame;
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
@@ -68,9 +69,6 @@ const TIP_PRINT: usize = 10;
 const TIP_TRASH: usize = 11;
 /// "A pasta é o lugar onde são guardados todos os seus quadros…".
 const TIP_PORTFOLIO: usize = 12;
-/// "Você quer me ver menos?" e "Que bom que você me chamou de novo".
-const HELP_OFF: usize = 29;
-const HELP_ON: usize = 30;
 /// "Se você quiser trabalhar neste quadro…" (clique simples na moldura).
 const WORK_ON: usize = 41;
 /// "Wand - library": a varinha no buraco do rato da Galeria.
@@ -81,8 +79,6 @@ const RECYCLE: usize = 73;
 const NOT_YOURS_WALL: usize = 74;
 const NOT_YOURS: usize = 75;
 const RECYCLE_WALL: usize = 76;
-/// "O que você quer fazer? Sair do Fine Artist / Continuar trabalhando".
-const QUIT_WHAT: (u16, usize) = (0x1001, 2);
 /// Índices do original nas opções da lixeira (`22C000n`).
 const OPT_KEEP: u16 = 0;
 const OPT_TRASH: u16 = 1;
@@ -400,11 +396,22 @@ impl GalleryRoom {
     /// Aviso "EPA!" do bloco `block`, registro `k`, em `pos`; o reserva vale
     /// sem o `ARTIST.EXE`.
     fn alert(&mut self, kind: Modal, block: u16, k: usize, pos: (i32, i32), assets: &Assets) {
+        if kind == Modal::Quit {
+            // o mesmo "EPA!" da Entrada e das salas; aqui com o fundo de
+            // balão, como os outros avisos da Galeria
+            let mut balloon = room_talk::quit_balloon(assets, pos);
+            balloon.alert = false;
+            self.balloon = None;
+            self.alert = Some(Alert {
+                kind,
+                balloon,
+                // no original, "Sair" é a opção 1 e "Continuar" a 0
+                ids: vec![OPT_QUIT, 0],
+            });
+            return;
+        }
         let (fallback, opts): (&str, &[&str]) = match kind {
-            Modal::Quit => (
-                "O que você quer fazer?",
-                &["Sair do Fine Artist", "Continuar trabalhando"],
-            ),
+            Modal::Quit => unreachable!("tratado acima"),
             Modal::NotYours(_) => (
                 "Não, obrigado... Não posso reciclar isso — ele não é seu.",
                 &[],
@@ -428,8 +435,7 @@ impl GalleryRoom {
         let fallback_ids: Vec<u16> = match kind {
             Modal::Trash(_, Some(_)) => vec![OPT_TRASH, OPT_KEEP, 2],
             Modal::Trash(_, None) => vec![OPT_TRASH, OPT_KEEP],
-            Modal::Quit => vec![OPT_QUIT, 0],
-            Modal::NotYours(_) => Vec::new(),
+            Modal::Quit | Modal::NotYours(_) => Vec::new(),
         };
         let (balloon, ids) = match assets.dialogs(Program::Artist, block).get(k) {
             Some(r) => (
@@ -588,31 +594,13 @@ impl GalleryRoom {
                 links: Vec::new(),
                 figures: Vec::new(),
             },
-            Ask::HelpOff => Balloon {
-                x: 0,
-                y: 0,
-                w: 162,
-                text: "Você quer me ver menos?".into(),
-                options: vec![
-                    "Sim, por favor.".into(),
-                    "Diga de novo o que eu posso fazer aqui.".into(),
-                    "Deixa para lá.".into(),
-                ],
-                links: Vec::new(),
-                figures: Vec::new(),
-            },
-            Ask::HelpOn => Balloon {
-                x: 0,
-                y: 0,
-                w: 203,
-                text: "Que bom que você me chamou de novo. O que você quer que eu faça?".into(),
-                options: vec![
-                    "Ajudar você mais um pouco?".into(),
-                    "Não, eu não preciso de mais ajuda.".into(),
-                ],
-                links: Vec::new(),
-                figures: Vec::new(),
-            },
+            Ask::HelpOff | Ask::HelpOn => {
+                // o mesmo menu do McZee das salas
+                let off = kind == Ask::HelpOn;
+                let b = Helper::McZee.balloon(assets, super::room::DEFAULT_USER, off, WELCOME_POS);
+                self.balloon = Some((kind, b));
+                return;
+            }
             Ask::Tip => Balloon {
                 x: 0,
                 y: 0,
@@ -970,7 +958,7 @@ impl GalleryRoom {
             fx.push(Effect::ChangeScene(SceneId::Building));
         } else if inside(TCHAU, x, y) {
             self.play(&[sfx::BYE, sfx::ALERT]);
-            self.alert(Modal::Quit, QUIT_WHAT.0, QUIT_WHAT.1, QUIT_POS, assets);
+            self.alert(Modal::Quit, 0, 0, QUIT_POS, assets);
         } else if inside(PRINTER, x, y) {
             self.play(&[sfx::PRINTER]);
             self.tip(TIP_PRINT, (PRINTER.0 - 190, PRINTER.1 - 40), assets);
@@ -983,9 +971,9 @@ impl GalleryRoom {
         {
             self.play(&[sfx::MCZEE]);
             if self.help_off {
-                self.ask(Ask::HelpOn, HELP_ON, assets);
+                self.ask(Ask::HelpOn, room_talk::rec::HELP_ON, assets);
             } else {
-                self.ask(Ask::HelpOff, HELP_OFF, assets);
+                self.ask(Ask::HelpOff, room_talk::rec::HELP_OFF, assets);
             }
         }
     }
