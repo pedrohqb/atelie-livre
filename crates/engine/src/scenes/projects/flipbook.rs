@@ -20,6 +20,7 @@ use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::paint::store::{load_picture, load_png, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas, ORIGIN, WHITE};
 use crate::scene::{Effect, Key, SceneId};
+use crate::ui::DoubleClick;
 use crate::scenes::gallery::{list_drawings, list_samples};
 use crate::scenes::sounds::{Category, load_categories};
 use formats::fnt::Font;
@@ -61,7 +62,6 @@ const THUMB_H: i32 = (CANVAS_H / THUMB_SCALE) as i32;
 /// Distância a partir da qual um clique segurado vira arrasto.
 const DRAG_START: i32 = 6;
 /// Dois cliques na mesma figura dentro deste tempo são um clique duplo.
-const DOUBLE_CLICK_S: f32 = 0.45;
 /// Figura levada à tela de pintura pelo clique duplo (dentro de `ultimo-animacao/`).
 pub const EDIT_NAME: &str = "figura-em-edicao.png";
 /// Faixa branca da legenda na base da figura, ao tocar.
@@ -350,7 +350,9 @@ pub struct Flipbook {
     /// Arrastando o cursor da régua TEMPO.
     ruler_drag: bool,
     /// Último clique numa figura: espaço e tempo decorrido.
-    last_click: Option<(usize, f32)>,
+    clicks: DoubleClick<usize>,
+    /// Relógio da cena (s), para o clique duplo.
+    clock: f32,
     editing: Option<Editing>,
 }
 
@@ -374,7 +376,8 @@ impl Default for Flipbook {
             notice: None,
             drag: None,
             ruler_drag: false,
-            last_click: None,
+            clicks: DoubleClick::new(),
+            clock: 0.0,
             editing: None,
         }
     }
@@ -551,7 +554,7 @@ impl Flipbook {
             ))];
         }
         self.drag = None;
-        self.last_click = None;
+        self.clicks.reset();
         self.commit_caption();
         self.editing = Some(Editing {
             slot: k,
@@ -794,9 +797,7 @@ impl Flipbook {
                 self.notice = None;
             }
         }
-        if let Some((_, t)) = self.last_click.as_mut() {
-            *t += dt.max(0.0);
-        }
+        self.clock += dt.max(0.0);
         if let Some(e) = self.editing.as_mut() {
             if e.armed {
                 self.finish_edit();
@@ -1166,15 +1167,13 @@ impl Flipbook {
         self.commit_caption();
         if let Some(k) = self.slot_at(x, y) {
             // clique duplo numa figura: abre a tela de pintura com ela
-            if self.slots[k].is_some()
-                && self
-                    .last_click
-                    .is_some_and(|(s, t)| s == k && t < DOUBLE_CLICK_S)
-            {
+            if self.slots[k].is_some() && self.clicks.click(k, self.clock, (x, y)) {
                 self.selected = Some(k);
                 return self.edit(k, drawings);
             }
-            self.last_click = self.slots[k].as_ref().map(|_| (k, 0.0));
+            if self.slots[k].is_none() {
+                self.clicks.reset();
+            }
             // escolhido + outro espaço: troca (ou move, se o outro está vazio);
             // clicar de novo no escolhido desescolhe
             match (self.selected, self.slots[k].is_some()) {
@@ -1195,7 +1194,7 @@ impl Flipbook {
                 });
             }
         } else {
-            self.last_click = None;
+            self.clicks.reset();
         }
         Vec::new()
     }
@@ -1224,7 +1223,7 @@ impl Flipbook {
         if !d.moved && ((x - d.from.0).abs() >= DRAG_START || (y - d.from.1).abs() >= DRAG_START) {
             d.moved = true;
             self.folder = None;
-            self.last_click = None;
+            self.clicks.reset();
         }
     }
 

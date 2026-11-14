@@ -14,6 +14,7 @@ use crate::assets::{Assets, ImageRef, Program};
 use crate::balloon::{Balloon, balloon_font};
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::{PIC_ANIMAL0, Part, TextBalloon, blit_pic};
+use crate::ui::DoubleClick;
 use crate::{Frame, Image};
 use formats::palette::Rgb;
 
@@ -86,7 +87,6 @@ const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
 const GREEN: [u8; 3] = [71, 140, 80];
 const GRAY: [u8; 3] = [190, 190, 190];
-const DOUBLE_CLICK: f32 = 0.4;
 
 fn inside(r: Rect, x: i32, y: i32) -> bool {
     x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
@@ -124,7 +124,7 @@ pub struct Binder {
     animal: Option<usize>,
     help: Option<Balloon>,
     search: Option<(TextBalloon, Vec<u16>)>,
-    last_click: Option<(usize, f32)>,
+    clicks: DoubleClick<usize>,
 }
 
 /// Compara nomes sem maiúsculas nem acentos.
@@ -154,7 +154,7 @@ impl Binder {
             animal: None,
             help: None,
             search: None,
-            last_click: None,
+            clicks: DoubleClick::new(),
         }
     }
 
@@ -478,14 +478,9 @@ impl Binder {
             }
             if let Some(Row::Item(i)) = self.rows.get(self.scroll + k).cloned() {
                 fx.push(sound(sfx::SELECT));
-                if let Some((j, t)) = self.last_click
-                    && j == i
-                    && clock - t < DOUBLE_CLICK
-                {
-                    self.last_click = None;
+                if self.clicks.click(i, clock, (x, y)) {
                     return Some(Action::Open(i));
                 }
-                self.last_click = Some((i, clock));
                 self.selected = Some(i);
             }
             return None;

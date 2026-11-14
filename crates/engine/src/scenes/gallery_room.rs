@@ -18,7 +18,7 @@ use crate::Frame;
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
-use crate::ui::SoundQueue;
+use crate::ui::{DoubleClick, SoundQueue};
 use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
 use crate::rng::XorShift;
@@ -124,7 +124,6 @@ pub mod sfx {
 /// Programa que imprime a folha (o `lp` do CUPS).
 const PRINT_COMMAND: &str = "lp";
 
-const DOUBLE_CLICK: f32 = 0.4;
 /// Arquivo com os nomes dos quadros das três molduras.
 pub const WALL_FILE: &str = "galeria.txt";
 
@@ -297,7 +296,7 @@ pub struct GalleryRoom {
     /// O fichário verde (a pasta de trabalhos).
     binder: Binder,
     drag: Option<Drag>,
-    last_click: Option<(Source, f32)>,
+    clicks: DoubleClick<Source>,
     clock: f32,
     balloon: Option<(Ask, Balloon)>,
     alert: Option<Alert>,
@@ -367,7 +366,7 @@ impl GalleryRoom {
             folder_open: false,
             binder,
             drag: None,
-            last_click: None,
+            clicks: DoubleClick::new(),
             clock: 0.0,
             balloon: None,
             alert: None,
@@ -998,16 +997,11 @@ impl GalleryRoom {
         };
         if !d.moved {
             // clique: duplo abre o quadro; simples, na parede, pergunta
-            if let Some((s, t)) = self.last_click
-                && s == d.from
-                && self.clock - t < DOUBLE_CLICK
-            {
-                self.last_click = None;
+            if self.clicks.click(d.from, self.clock, (x, y)) {
                 self.balloon = None;
                 fx.extend(self.open(i));
                 return;
             }
-            self.last_click = Some((d.from, self.clock));
             if let Source::Wall(k) = d.from {
                 self.ask_work_on(i, k, assets);
             }

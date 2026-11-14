@@ -31,6 +31,7 @@ use crate::paint::store::{LAST_NAME, load_name, load_png};
 use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::TextBalloon;
+use crate::ui::DoubleClick;
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
 use std::path::PathBuf;
@@ -489,7 +490,7 @@ enum Via {
 const ELEVATOR_HELPER: (i32, i32) = (117, 102);
 
 /// Dois cliques no mesmo ponto dentro deste tempo são um clique duplo.
-const DOUBLE_CLICK: f32 = 0.4;
+/// Folga (px) entre os dois cliques do clique duplo no cavalete e na parede.
 const DOUBLE_SLACK: i32 = 6;
 
 /// Espera antes da primeira animação ambiente e entre as seguintes (s).
@@ -520,7 +521,7 @@ pub struct Room {
     /// Relógio da sala (s), para o clique duplo.
     clock: f32,
     /// Último clique simples no cavalete ou na parede: ação, hora e ponto.
-    last_click: Option<(Action, f32, i32, i32)>,
+    clicks: DoubleClick<Action>,
     /// "Você quer me ver menos? — Sim": sem balões de chegada até religar.
     help_off: bool,
     /// Plaqueta da parede em edição (novo nome do último quadro).
@@ -572,7 +573,7 @@ impl Room {
             quit: None,
             ctrl: false,
             clock: 0.0,
-            last_click: None,
+            clicks: DoubleClick::with_slack(DOUBLE_SLACK),
             help_off: false,
             naming: None,
             floor,
@@ -935,16 +936,9 @@ impl Room {
     /// Clique duplo no cavalete (quadro novo) ou no quadro da parede (o
     /// último quadro), se este clique completa um.
     fn double_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>) -> bool {
-        let Some((action, t, px, py)) = self.last_click else {
+        let Some(action) = self.clicks.take(self.clock, (x, y)) else {
             return false;
         };
-        if self.clock - t > DOUBLE_CLICK
-            || (x - px).abs() > DOUBLE_SLACK
-            || (y - py).abs() > DOUBLE_SLACK
-        {
-            return false;
-        }
-        self.last_click = None;
         fx.push(Effect::PlaySound(sound(talk::snd::OBJECT)));
         fx.push(Effect::ChangeScene(match action {
             Action::Easel => SceneId::PaintNew,
@@ -983,7 +977,7 @@ impl Room {
         self.painting = floor.painting(&mut self.rng);
         self.bag = floor.bag();
         self.surprise = None;
-        self.last_click = None;
+        self.clicks.reset();
         self.naming = None;
         self.gags = GagPlayer::with_rng(
             floor.gag_scripts(),
@@ -1071,7 +1065,7 @@ impl Room {
             (true, Action::MouseHole) => self.start_surprise(Target::Hole, fx, assets),
             (_, action) => {
                 if matches!(action, Action::Easel | Action::Wall) {
-                    self.last_click = Some((action, self.clock, x, y));
+                    self.clicks.arm(action, self.clock, (x, y));
                 }
                 self.act(action, fx, assets)
             }
