@@ -28,6 +28,7 @@ pub mod what;
 pub mod winres;
 pub mod winres_ui;
 pub mod wmf;
+pub mod workshop;
 
 pub use error::{ErrorKind, Format, FormatError, Result};
 pub use palette::Rgb;

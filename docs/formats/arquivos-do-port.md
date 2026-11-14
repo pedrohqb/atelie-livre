@@ -81,3 +81,23 @@ Linhas `chave=valor` (UTF-8, sem caracteres de controle), gravadas por
 Um projeto sem metadados (lista vazia) não grava o arquivo (e apaga o que
 houvesse). Ao jogar fora um trabalho no fim guiado, `ultimo-<tipo>.png`,
 `.objetos.json`, `.fundo.png` e `.projeto.txt` são apagados.
+
+## Ideias do Creative Writer (`<usuarios>/<apelido>/ideias/`)
+
+Gravadas por `crates/engine/src/writer/ideas/store.rs` (texto UTF-8; os
+leitores ignoram linhas inválidas e arquivos ausentes; cada arquivo é
+gravado num `.tmp` e renomeado). Correspondem aos arquivos `~MAXUSER.INF`
+(`STTB`/`SUDG`), `~MYPICS.CHK`, `~SPLOTID.MAX`, `~NOTESID.MAX` e
+`~PICWIN.CHK` do original (ver `workshop.md`).
+
+| Arquivo | Conteúdo |
+|---|---|
+| `maquina.txt` | entradas próprias da Máquina de Idéias, uma por linha: `1=O pirata Zeca,` (janela 1, 2 ou 3 e o texto, numa linha só) |
+| `figuras.txt` + `figuras/NNN.png` | figuras próprias do Quadro de Figuras, das mais novas para as mais velhas: uma linha `NNN.png=Título` por figura; PNG RGBA |
+| `caderno/maquina.txt` | Caderno de Idéias, aba Máquina: uma sentença por linha; figura-rebus como `[rebus:N]` (N = caractere, 1–255, decimal) |
+| `caderno/lembretes.txt` | Caderno, aba Lembretes: texto livre |
+| `caderno/figuras.txt` + `caderno/figuras/NNN.png` | Caderno, aba Figuras: uma página por figura, na ordem das páginas, no mesmo formato de `figuras.txt` |
+
+Nas listas de figuras só valem nomes `NNN.png` (dígitos), sem caminho. Ao
+gravar, figuras novas ou modificadas recebem o próximo número livre e os
+PNGs que saíram da lista são apagados.

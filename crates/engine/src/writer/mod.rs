@@ -20,6 +20,7 @@
 //! [`legacy`] e é reexportado aqui com os nomes antigos até a integração.
 
 pub mod doc;
+pub mod ideas;
 pub mod layout;
 pub mod legacy;
 pub mod object;
