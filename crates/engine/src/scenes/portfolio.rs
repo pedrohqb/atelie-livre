@@ -14,7 +14,7 @@ use crate::assets::{Assets, ImageRef, Program};
 use crate::balloon::{Balloon, balloon_font};
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::{PIC_ANIMAL0, Part, TextBalloon, blit_pic};
-use crate::ui::{DoubleClick, clip_text};
+use crate::ui::{DoubleClick, blit_canvas_fit, clip_text};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
 
@@ -556,18 +556,7 @@ impl Binder {
     fn draw_thumb(f: &mut Frame, it: &Item, pal: &[Rgb]) {
         let (x, y, w, h) = THUMB;
         f.rect(x - 1, y - 1, w + 2, h + 2, BLACK);
-        let t = it.thumb();
-        for ty in 0..h {
-            for tx in 0..w {
-                let sx = (tx as u32 * t.w / w as u32).min(t.w - 1);
-                let sy = (ty as u32 * t.h / h as u32).min(t.h - 1);
-                let p = pal
-                    .get(t.px[(sy * t.w + sx) as usize] as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                f.put(x + tx, y + ty, [p.r, p.g, p.b]);
-            }
-        }
+        blit_canvas_fit(f, it.thumb(), pal, THUMB);
     }
 
     pub fn draw(&self, f: &mut Frame, a: &Assets, items: &[Item], pal: &[Rgb]) {

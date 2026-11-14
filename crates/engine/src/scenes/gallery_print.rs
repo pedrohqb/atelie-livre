@@ -14,6 +14,7 @@ use crate::assets::{Assets, Program, SoundRef};
 use crate::paint::Canvas;
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::{Button, TextBalloon, blit_pic};
+use crate::ui::blit_canvas;
 use crate::{Frame, paint::store::save_png};
 use formats::palette::Rgb;
 use std::path::PathBuf;
@@ -221,16 +222,10 @@ impl PrintPreview {
         let (px, py, pw, ph) = PAGE;
         f.rect(px, py, pw, ph, BLACK);
         f.rect(px + 1, py + 1, pw - 2, ph - 2, WHITE);
-        let c = &self.picture;
-        let (w, h) = (c.w as i32 / 2, c.h as i32 / 2);
-        let (ox, oy) = (px + (pw - w) / 2, py + (ph - h) / 2);
-        for y in 0..h {
-            for x in 0..w {
-                let i = c.px[((2 * y) as u32 * c.w + (2 * x) as u32) as usize] as usize;
-                let p = self.pal.get(i).copied().unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                f.put(ox + x, oy + y, [p.r, p.g, p.b]);
-            }
-        }
+        // o desenho pela metade, no meio da folha
+        let half = crate::paint::drawings::shrink(&self.picture, 2);
+        let (w, h) = (half.w as i32, half.h as i32);
+        blit_canvas(f, &half, &self.pal, px + (pw - w) / 2, py + (ph - h) / 2);
     }
 
     fn draw_progress(&self, f: &mut Frame, a: &Assets) {

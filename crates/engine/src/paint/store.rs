@@ -17,11 +17,7 @@ pub const MAG_TITLE: &str = "Quadro Novo";
 pub fn save_png(c: &Canvas, pal: &[Rgb], path: &Path) -> io::Result<()> {
     let mut rgb = Vec::with_capacity(c.px.len() * 3);
     for &i in &c.px {
-        let p = pal
-            .get(i as usize)
-            .copied()
-            .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-        rgb.extend_from_slice(&[p.r, p.g, p.b]);
+        rgb.extend_from_slice(&crate::ui::pal_rgb(pal, i));
     }
     // grava num temporário e renomeia: uma queda no meio não estraga o arquivo anterior
     let mut tmp = path.as_os_str().to_owned();
@@ -80,11 +76,8 @@ pub fn save_stamp_png(st: &super::stamp::Stamp, pal: &[Rgb], path: &Path) -> io:
     for p in &st.px {
         match p {
             Some(i) => {
-                let c = pal
-                    .get(*i as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                rgba.extend_from_slice(&[c.r, c.g, c.b, 255]);
+                let [r, g, b] = crate::ui::pal_rgb(pal, *i);
+                rgba.extend_from_slice(&[r, g, b, 255]);
             }
             None => rgba.extend_from_slice(&[255, 255, 255, 0]),
         }

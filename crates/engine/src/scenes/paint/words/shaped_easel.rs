@@ -406,14 +406,7 @@ impl ShapedEasel {
     }
 
     fn draw_menu(&self, f: &mut Frame, a: &Assets, ctx: &Ctx, m: Menu, l: &List) {
-        let rgb = |i: u8| {
-            let c = ctx
-                .pal
-                .get(i as usize)
-                .copied()
-                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-            [c.r, c.g, c.b]
-        };
+        let rgb = |i: u8| crate::ui::pal_rgb(ctx.pal, i);
         let font = ctx.ui_font;
         let w = &self.words;
         l.draw(f, a, |f, k, r| match m {
@@ -552,11 +545,7 @@ pub fn draw_fit(f: &mut Frame, s: &Stamp, r: Rect, pal: &[Rgb]) {
                 continue;
             }
             if let Some(v) = s.px[(sy * s.w + sx) as usize] {
-                let c = pal
-                    .get(v as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                f.put(ox + x, oy + y, [c.r, c.g, c.b]);
+                f.put(ox + x, oy + y, crate::ui::pal_rgb(pal, v));
             }
         }
     }

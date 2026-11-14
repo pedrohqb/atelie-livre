@@ -167,12 +167,9 @@ pub fn stamp_thumb(st: &Stamp, pal: &[Rgb], side: u32) -> Image {
         for x in 0..w {
             let src = ((y * k) * st.w + x * k) as usize;
             if let Some(Some(i)) = st.px.get(src) {
-                let c = pal
-                    .get(*i as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+                let [r, g, b] = crate::ui::pal_rgb(pal, *i);
                 let o = ((y * w + x) * 4) as usize;
-                rgba[o..o + 4].copy_from_slice(&[c.r, c.g, c.b, 255]);
+                rgba[o..o + 4].copy_from_slice(&[r, g, b, 255]);
             }
         }
     }
@@ -1009,11 +1006,7 @@ fn draw_stamp(f: &mut Frame, stamp: &Stamp, pal: &[Rgb], mouse: (i32, i32), clip
             y0 + (k as u32 / stamp.w) as i32,
         );
         if inside(clip, x, y) {
-            let c = pal
-                .get(*v as usize)
-                .copied()
-                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-            f.put(x, y, [c.r, c.g, c.b]);
+            f.put(x, y, crate::ui::pal_rgb(pal, *v));
         }
     }
 }

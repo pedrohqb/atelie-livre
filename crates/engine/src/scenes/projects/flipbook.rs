@@ -20,7 +20,7 @@ use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::paint::store::{load_picture, load_png, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas, ORIGIN, WHITE};
 use crate::scene::{Effect, Key, SceneId};
-use crate::ui::DoubleClick;
+use crate::ui::{DoubleClick, blit_canvas};
 use crate::paint::drawings::{list_drawings, list_samples, shrink};
 use crate::scenes::sounds::{Category, load_categories};
 use formats::fnt::Font;
@@ -1296,18 +1296,8 @@ impl Flipbook {
 
     // ----- desenho -----
 
-    fn rgb(&self, i: u8) -> [u8; 3] {
-        self.pal.get(i as usize).map_or(BLACK, |p| [p.r, p.g, p.b])
-    }
-
     fn blit_canvas(&self, f: &mut Frame, c: &Canvas, x: i32, y: i32) {
-        for (k, &i) in c.px.iter().enumerate() {
-            f.put(
-                x + (k as u32 % c.w) as i32,
-                y + (k as u32 / c.w) as i32,
-                self.rgb(i),
-            );
-        }
+        blit_canvas(f, c, &self.pal, x, y);
     }
 
     fn label(&self, f: &mut Frame, x: i32, y: i32, s: &str, rgb: [u8; 3]) -> i32 {

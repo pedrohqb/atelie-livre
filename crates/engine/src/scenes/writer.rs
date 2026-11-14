@@ -757,12 +757,7 @@ impl Writer {
     }
 
     fn rgb(&self, index: u8) -> [u8; 3] {
-        let p = self
-            .pal
-            .get(index as usize)
-            .copied()
-            .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-        [p.r, p.g, p.b]
+        crate::ui::pal_rgb(&self.pal, index)
     }
 
     fn draw_chrome(&self, f: &mut Frame, a: &Assets) {

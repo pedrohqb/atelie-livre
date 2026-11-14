@@ -1124,15 +1124,10 @@ impl Room {
         for y in 0..c.h / WALL_SCALE {
             for x in 0..c.w / WALL_SCALE {
                 let i = c.px[((y * WALL_SCALE) * c.w + x * WALL_SCALE) as usize];
-                let p = self
-                    .pal
-                    .get(i as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
                 frame.put(
                     WALL_PIC.0 + x as i32,
                     WALL_PIC.1 + y as i32,
-                    [p.r, p.g, p.b],
+                    crate::ui::pal_rgb(&self.pal, i),
                 );
             }
         }

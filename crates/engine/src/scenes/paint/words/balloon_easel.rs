@@ -311,11 +311,7 @@ fn draw_zoomed(f: &mut Frame, s: &Stamp, r: Rect, pal: &[Rgb]) {
     for y in 0..s.h as i32 {
         for x in 0..s.w as i32 {
             if let Some(v) = s.px[(y * s.w as i32 + x) as usize] {
-                let c = pal
-                    .get(v as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                f.rect(ox + 2 * x, oy + 2 * y, 2, 2, [c.r, c.g, c.b]);
+                f.rect(ox + 2 * x, oy + 2 * y, 2, 2, crate::ui::pal_rgb(pal, v));
             }
         }
     }

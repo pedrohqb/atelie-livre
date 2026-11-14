@@ -9,6 +9,7 @@ use crate::paint::drawings::shrink;
 use crate::paint::store::{LAST_NAME, load_picture, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::ui::blit_canvas;
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
 use std::path::PathBuf;
@@ -217,17 +218,7 @@ impl Scene for Gallery {
         for (k, e) in entries.iter().enumerate() {
             let r = Self::cell_rect(k);
             frame.rect(r.0, r.1, r.2, r.3, if is_sample { BLUE } else { BLACK });
-            for y in 0..e.thumb.h {
-                for x in 0..e.thumb.w {
-                    let i = e.thumb.px[(y * e.thumb.w + x) as usize];
-                    let p = self
-                        .pal
-                        .get(i as usize)
-                        .copied()
-                        .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                    frame.put(r.0 + 2 + x as i32, r.1 + 2 + y as i32, [p.r, p.g, p.b]);
-                }
-            }
+            blit_canvas(frame, &e.thumb, &self.pal, r.0 + 2, r.1 + 2);
         }
         Self::button(frame, BACK, "Voltar", assets);
         if self.pages() > 1 {

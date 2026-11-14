@@ -19,7 +19,7 @@ use crate::Frame;
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
-use crate::ui::{DoubleClick, SoundQueue, clip_text};
+use crate::ui::{DoubleClick, SoundQueue, blit_canvas, clip_text};
 use crate::paint::drawings;
 use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
 use crate::paint::Canvas;
@@ -1041,16 +1041,7 @@ impl GalleryRoom {
     }
 
     fn draw_thumb(&self, f: &mut Frame, t: &Canvas, x: i32, y: i32) {
-        for ty in 0..t.h {
-            for tx in 0..t.w {
-                let p = self
-                    .pal
-                    .get(t.px[(ty * t.w + tx) as usize] as usize)
-                    .copied()
-                    .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-                f.put(x + tx as i32, y + ty as i32, [p.r, p.g, p.b]);
-            }
-        }
+        blit_canvas(f, t, &self.pal, x, y);
     }
 
     fn draw_text_centered(f: &mut Frame, a: &Assets, r: Rect, s: &str) {
