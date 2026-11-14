@@ -9,8 +9,16 @@ impl XorShift {
         XorShift(seed.max(1))
     }
 
-    /// Semente tirada do relógio.
+    /// Semente tirada do relógio; com `ATELIE_SEED=<número>` no ambiente, a
+    /// semente é fixa (capturas e varreduras reproduzíveis: mesma fantasia
+    /// do McZee, mesmas animações).
     pub fn from_clock() -> XorShift {
+        if let Some(seed) = std::env::var("ATELIE_SEED")
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+        {
+            return XorShift::new(seed);
+        }
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos() ^ (d.as_secs() as u32))

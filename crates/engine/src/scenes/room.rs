@@ -1976,4 +1976,113 @@ mod tests {
         let p = f.pixel(300, 430);
         assert!(p[0] > 150 && p[1] < 80, "{p:?}");
     }
+
+    /// Fixa o que a sala sorteia (fantasia, pose, obra-prima), para comparar
+    /// quadros de duas versões do código.
+    fn pin(r: &mut Room) {
+        if let Some(c) = r.character.as_mut() {
+            c.image = if gags::MCZEE_COSTUMES.contains(&c.image) {
+                gags::MCZEE_COSTUMES[0]
+            } else {
+                gags::MAGGIE_POSES[0]
+            };
+        }
+        if r.painting.is_some() {
+            r.painting = Some((0x6d37, 0x6d39));
+        }
+    }
+
+    /// Estados de uma sala no despejo: nome e cliques até ele.
+    type Steps<'a> = &'a [(&'a str, &'a [(i32, i32)])];
+
+    /// Com `ATELIE_DATA` e `ATELIE_DUMP`: grava quadros das salas do Fine
+    /// Artist em estados fixos (chegada, sem balão, bolsa aberta, menu do
+    /// personagem, "EPA!", balões dos objetos, elevador, sótão), para
+    /// conferir que uma refatoração não muda nada (`cmp` dos `.ppm`).
+    #[test]
+    fn dump_fa_rooms_for_comparison() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        if std::env::var_os("ATELIE_DUMP").is_none() {
+            return;
+        }
+        let mut f = Frame::new(640, 480);
+        let shot = |r: &mut Room, f: &mut Frame, name: &str| {
+            pin(r);
+            r.draw(f, &a);
+            crate::scenes::testutil::dump(f, name);
+        };
+        let steps: &[(Floor, Steps)] = &[
+            (
+                Floor::Lobby,
+                &[
+                    ("base", &[(140, 300)]),
+                    ("bag", &[(150, 425)]),
+                    ("helper", &[(60, 300)]),
+                    ("helper_out", &[(400, 300)]),
+                    ("quit", &[(600, 470), (170, 220)]),
+                    ("tip", &[(300, 430)]),
+                ],
+            ),
+            (
+                Floor::Studio,
+                &[
+                    ("base", &[(600, 470)]),
+                    ("easel", &[(191, 201)]),
+                    ("wall", &[(350, 100)]),
+                    ("bag", &[(600, 470), (180, 420)]),
+                ],
+            ),
+            (
+                Floor::Projects,
+                &[
+                    ("base", &[(600, 470)]),
+                    ("comics", &[(100, 100)]),
+                    ("flipbook", &[(320, 60)]),
+                    ("sticker", &[(250, 220)]),
+                    ("helper", &[(600, 470), (40, 380)]),
+                ],
+            ),
+            (
+                Floor::Tricks,
+                &[
+                    ("base", &[(600, 470)]),
+                    ("basic", &[(220, 200)]),
+                    ("threed", &[(420, 200)]),
+                    ("frame", &[(600, 470), (60, 60)]),
+                ],
+            ),
+            (Floor::Attic, &[("dark", &[(100, 300)])]),
+        ];
+        for (floor, list) in steps {
+            let mut r = Room::new(*floor, None, None, &a).with_user("ana", &a);
+            shot(&mut r, &mut f, &format!("fa_{floor:?}_arrival"));
+            for (name, clicks) in list.iter() {
+                for &(x, y) in clicks.iter() {
+                    r.update(&[click(x, y)], 0.0, &a);
+                }
+                shot(&mut r, &mut f, &format!("fa_{floor:?}_{name}"));
+            }
+        }
+        // saguão: arrival options e o elevador
+        let mut r = Room::new(Floor::Lobby, None, None, &a).with_user("ana", &a);
+        for k in 0..4 {
+            let o = option(&r, &a, k);
+            r.update(&[o], 0.0, &a);
+            shot(&mut r, &mut f, &format!("fa_lobby_option{k}"));
+            r.update(&[click(600, 470)], 0.0, &a);
+            r.show_arrival(&a);
+        }
+        r.update(&[click(600, 470), click(340, 300)], 0.0, &a);
+        shot(&mut r, &mut f, "fa_elevator");
+        r.update(&[click(590, 180)], 0.0, &a);
+        for k in 0..30 {
+            r.update(&[], 0.1, &a);
+            if k % 6 == 0 {
+                shot(&mut r, &mut f, &format!("fa_elevator_ride{k}"));
+            }
+        }
+        shot(&mut r, &mut f, "fa_elevator_arrived");
+    }
 }
