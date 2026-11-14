@@ -149,7 +149,14 @@ mod tests {
 
     #[test]
     fn shrink_takes_the_corner_and_darkest_keeps_thin_lines() {
-        let pal = vec![Rgb { r: 0, g: 0, b: 0 }, Rgb { r: 255, g: 255, b: 255 }];
+        let pal = vec![
+            Rgb { r: 0, g: 0, b: 0 },
+            Rgb {
+                r: 255,
+                g: 255,
+                b: 255,
+            },
+        ];
         let t = shrink(&canvas(), 4);
         assert_eq!((t.w, t.h), (2, 1));
         assert_eq!(t.px, vec![1, 1]);

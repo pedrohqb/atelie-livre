@@ -272,7 +272,10 @@ mod tests {
     #[test]
     fn render_thread_hands_over_the_files_without_counting_time() {
         let mut j = PrintJob::render(|| Ok(vec![PathBuf::from("/a.png")]));
-        assert_eq!(settle(&mut j), Poll::Rendered(Ok(vec![PathBuf::from("/a.png")])));
+        assert_eq!(
+            settle(&mut j),
+            Poll::Rendered(Ok(vec![PathBuf::from("/a.png")]))
+        );
         assert_eq!(j.elapsed(), 0.0);
         j.lp("true", 1, &[]).unwrap();
         assert_eq!(settle(&mut j), Poll::Finished(true));

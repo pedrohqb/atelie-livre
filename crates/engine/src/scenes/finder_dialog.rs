@@ -281,7 +281,12 @@ pub fn draw_left(
         f.rect(FILM_X + 5, y, 7, 2, WHITE);
     }
     pen.centered(f, 219, 122, "Esta Pasta", BLACK);
-    field(f, &pen, FOLDER_FIELD, if outside { OUTSIDE } else { INSIDE });
+    field(
+        f,
+        &pen,
+        FOLDER_FIELD,
+        if outside { OUTSIDE } else { INSIDE },
+    );
     pen.centered(f, 219, 162, "Conteúdo", BLACK);
     f.rect(LIST.0, LIST.1, LIST.2, LIST.3, WHITE);
     for row in 0..ROWS {
@@ -332,7 +337,13 @@ mod tests {
     fn list(n: usize) -> FileList {
         FileList::new(
             (0..n)
-                .map(|k| Entry::file(PathBuf::from(format!("/x/{k}")), format!("d{k}"), "ana".into()))
+                .map(|k| {
+                    Entry::file(
+                        PathBuf::from(format!("/x/{k}")),
+                        format!("d{k}"),
+                        "ana".into(),
+                    )
+                })
                 .collect(),
         )
     }
@@ -392,7 +403,11 @@ mod tests {
 
     #[test]
     fn entries_know_their_path() {
-        let e = Entry::file(PathBuf::from("/a/b.wav"), stem(Path::new("/a/b.wav")), String::new());
+        let e = Entry::file(
+            PathBuf::from("/a/b.wav"),
+            stem(Path::new("/a/b.wav")),
+            String::new(),
+        );
         assert_eq!(e.title, "b");
         assert_eq!(e.path(), Some(Path::new("/a/b.wav")));
         assert_eq!(Entry::outside().path(), None);
