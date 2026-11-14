@@ -16,6 +16,7 @@ pub mod rng;
 pub mod scene;
 pub mod scenes;
 pub mod text_balloon;
+pub mod ui;
 pub mod users;
 pub mod writer;
 
