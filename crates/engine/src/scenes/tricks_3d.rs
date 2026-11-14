@@ -3,7 +3,7 @@
 //! não mostra a lição); as figuras de cada passo são as cenas de 312×272
 //! (`3e0b`…`4088`) e os quadros de 177×148 (`40bb`…`4111`) da mesa.
 
-use super::wizard::{Advance, Goto, PanelAnim, Step, Target, Wizard};
+use super::wizard::{Advance, BoardPoses, Goto, PanelAnim, Step, Target, Wizard};
 use crate::scene::SceneId;
 
 const BLOCK: u16 = 0x4000;
@@ -43,7 +43,7 @@ pub const BOARD_BALLOONS: &[(usize, i32, i32)] = &[
 
 /// Maggie (e o McZee) na apresentação, por registro: (figura, x, y). As
 /// poses dos passos sem captura repetem a do passo anterior.
-pub const BOARD_POSES: &[(usize, &[(u16, i32, i32)])] = &[
+pub const BOARD_POSES: BoardPoses = &[
     (0, &[(0x4009, 483, 271)]),
     (3, &[(0x4033, 72, 218)]),
     (4, &[(0x4009, 483, 271)]),

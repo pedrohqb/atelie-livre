@@ -13,14 +13,17 @@
 use std::rc::Rc;
 
 use super::wizard::{
-    Advance, BOARD_PANEL, BTN_BACK, BTN_NEXT, BTN_STOP, BalloonPlace, TrickKind, Wizard,
-    WizardEvent, WizardOutcome,
+    Advance, BOARD_PANEL, BTN_BACK, BTN_NEXT, BTN_STOP, BalloonPlace, BoardPoses, Pose, TrickKind,
+    Wizard, WizardEvent, WizardOutcome,
 };
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::help::HelpBalloon;
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::blit_pic;
+
+/// Botão do balão: evento, lugar e figura (cor, mono).
+type BoardButton = (WizardEvent, (i32, i32), (u16, u16));
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -154,7 +157,7 @@ impl TrickKind {
         }
     }
 
-    fn board_poses(self) -> &'static [(usize, &'static [(u16, i32, i32)])] {
+    fn board_poses(self) -> BoardPoses {
         match self {
             TrickKind::Basic => super::tricks_basic::BOARD_POSES,
             TrickKind::ThreeD => super::tricks_3d::BOARD_POSES,
@@ -214,7 +217,7 @@ impl TricksBoard {
     }
 
     /// Figuras da Maggie (e companhia) do passo atual.
-    pub fn poses(&self) -> &'static [(u16, i32, i32)] {
+    pub fn poses(&self) -> &'static [Pose] {
         let k = self.wizard.step().record.1;
         let all = self.kind.board_poses();
         all.iter()
@@ -223,7 +226,7 @@ impl TricksBoard {
             .map_or(&[], |p| p.1)
     }
 
-    fn buttons(&self, a: &Assets) -> Vec<(WizardEvent, (i32, i32), (u16, u16))> {
+    fn buttons(&self, a: &Assets) -> Vec<BoardButton> {
         let w = &self.wizard;
         let Some(b) = w.balloon(a, "") else {
             return Vec::new();
@@ -365,10 +368,8 @@ impl Scene for TricksBoard {
                 Input::MouseUp {
                     button: MouseButton::Left,
                     ..
-                } => {
-                    if self.drag.take().is_some() {
-                        self.event(WizardEvent::Painted, &mut fx);
-                    }
+                } if self.drag.take().is_some() => {
+                    self.event(WizardEvent::Painted, &mut fx);
                 }
                 _ => {}
             }

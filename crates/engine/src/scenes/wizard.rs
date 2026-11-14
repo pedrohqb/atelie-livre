@@ -34,7 +34,11 @@ impl TrickKind {
     }
 }
 
-/// Retângulo (x, y, w, h) em coordenadas da tela.
+/// Figura do `.PIC` desenhada em (x, y): uma pose da Maggie na apresentação.
+pub type Pose = (u16, i32, i32);
+/// Poses da apresentação por registro do `WHAT`.
+pub type BoardPoses = &'static [(usize, &'static [Pose])];
+
 /// Painel "Área de Desenho da Maggie" na pintura: a figura (178×149) dentro
 /// da moldura com título do canto inferior direito; a moldura, desenhada
 /// depois, cobre a borda direita e a de baixo da figura (medido no original,

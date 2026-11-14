@@ -2,7 +2,7 @@
 //! e figuras do `ARTIST.PIC` (313×272). Tabela na spec
 //! `docs/superpowers/specs/2026-10-31-truques-design.md`.
 
-use super::wizard::{Advance, Goto, Step, Target, Wizard};
+use super::wizard::{Advance, BoardPoses, Goto, Step, Target, Wizard};
 use crate::scene::SceneId;
 
 const BLOCK: u16 = 0x3800;
@@ -51,7 +51,7 @@ pub const BOARD_BALLOONS: &[(usize, i32, i32)] = &[
 ];
 
 /// Maggie (e o Max) na apresentação, por registro: (figura, x, y).
-pub const BOARD_POSES: &[(usize, &[(u16, i32, i32)])] = &[
+pub const BOARD_POSES: BoardPoses = &[
     (0, &[(0x3803, 468, 262)]),
     (2, &[(0x3807, 483, 271)]),
     (4, &[(0x3807, 483, 271)]),
