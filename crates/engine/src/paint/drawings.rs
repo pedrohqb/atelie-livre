@@ -13,11 +13,19 @@ fn has_ext(p: &Path, ext: &str) -> bool {
     p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))
 }
 
+/// Prefixo dos adesivos do usuário na pasta de desenhos (ver
+/// `scenes::stickers::USER_PREFIX`).
+pub const USER_STICKER_PREFIX: &str = "meu-adesivo-";
+
 /// Arquivos de trabalho que não aparecem nas listas: os "últimos" reabertos
-/// pela pintura e pelos projetos (`ultimo*.png`) e as páginas de impressão.
+/// pela pintura e pelos projetos (`ultimo*.png`), as páginas de impressão e
+/// os adesivos do usuário (que ficam no rolo "Meus adesivos").
 fn is_listed(name: &std::ffi::OsStr) -> bool {
     let n = name.to_string_lossy();
-    n != LAST_NAME && !n.starts_with("ultimo") && !n.starts_with("impressao-")
+    n != LAST_NAME
+        && !n.starts_with("ultimo")
+        && !n.starts_with("impressao-")
+        && !n.starts_with(USER_STICKER_PREFIX)
 }
 
 /// Desenhos da pasta (`.png` e `.mag`), mais recentes primeiro (`ultimo.png`

@@ -3189,7 +3189,7 @@ mod tests {
         assert_eq!(o.pixel(20, 20), None);
         // o fundo não foi tocado e o adesivo virou um PNG do usuário
         assert!(p.canvas.px.iter().all(|&i| i == crate::paint::WHITE));
-        assert!(matches!(&o.source, Source::Png(n) if n.starts_with("adesivo-")));
+        assert!(matches!(&o.source, Source::Png(n) if n.starts_with("meu-adesivo-")));
         let Source::Png(n) = &o.source else {
             unreachable!()
         };
@@ -3759,7 +3759,7 @@ mod tests {
         assert!(p.stickers().film_open());
         assert_eq!(p.stickers().roll(), p.stickers().user_roll());
         let name = p.stickers().user_stickers()[0].name.clone();
-        assert!(name.starts_with("adesivo-") && dir.path().join(&name).exists());
+        assert!(name.starts_with("meu-adesivo-") && dir.path().join(&name).exists());
         // pega o adesivo da tira aberta e o coloca: vira objeto com origem PNG
         let film_x = p.stickers().film_x();
         p.update(&[click(film_x + 20, 120)], 0.0, &a);
@@ -3884,7 +3884,7 @@ mod tests {
         p.update(&[click(263, 340)], 0.0, &a);
         assert!(p.finder().is_none());
         assert!(p.stickers().holding());
-        assert!(dir.path().join("adesivo-desenho-x.png").exists());
+        assert!(dir.path().join("meu-adesivo-desenho-x.png").exists());
         let st = &p.stickers().user_stickers()[0].stamp;
         assert_eq!((st.w, st.h), (30, 20));
         p.update(&[click(300, 300)], 0.0, &a); // fecha a dica

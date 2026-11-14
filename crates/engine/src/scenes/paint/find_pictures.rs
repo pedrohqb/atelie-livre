@@ -3,7 +3,7 @@
 //! Imaginópolis", no disco todo); aqui lista os desenhos guardados na pasta
 //! de desenhos e, fora de Imaginópolis, os desenhos de exemplo da instalação
 //! (`SHARED/USERS/*/*.MAG`). A figura escolhida vira um adesivo do usuário
-//! (`adesivo-<nome>.png`, cortado ao que foi pintado) e vai para a mão.
+//! (`meu-adesivo-<nome>.png`, cortado ao que foi pintado) e vai para a mão.
 //! Geometria medida no original (varredura `paint-stickers`, `dog_*.png`).
 
 use super::sticker_easel::{canvas_to_stamp, gray_region};

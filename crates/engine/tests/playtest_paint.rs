@@ -167,6 +167,54 @@ fn vacuum_removes_the_sound_of_a_sticker() {
     assert!(sound(&p).is_some(), "o ovo não devolveu o som");
 }
 
+/// Um trabalho do projeto Adesivo (`adesivo-<data>.png`, página inteira) não
+/// entra no rolo "Meus adesivos"; os adesivos do usuário (novos e antigos)
+/// entram, e não aparecem na galeria como desenhos.
+#[test]
+fn sticker_project_pages_are_not_user_stickers() {
+    use engine::scene::{Input, MouseButton, Scene};
+    use engine::scenes::projects::ProjectKind;
+    let Some(a) = real_assets() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().to_path_buf();
+    // um adesivo pintado no projeto Adesivo, guardado ao sair
+    let mut p = engine::scenes::Paint::new_project(ProjectKind::Sticker, Some(dir.clone()), &a);
+    tap(&mut p, &a, 300, 455);
+    tap(&mut p, &a, 30, 25); // pincel
+    p.update(&[Input::Click { button: MouseButton::Left, x: 250, y: 250 }], common::DT, &a);
+    for k in 0..10 {
+        p.update(&[Input::MouseMove { x: 250 + 10 * k, y: 250 + 5 * k }], common::DT, &a);
+    }
+    p.update(&[Input::MouseUp { button: MouseButton::Left, x: 350, y: 300 }], common::DT, &a);
+    p.leave();
+    let names: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    let page = names
+        .iter()
+        .find(|n| n.starts_with("adesivo-") && n.ends_with(".png") && !n.contains(".fundo"))
+        .unwrap_or_else(|| panic!("o projeto não gravou a página: {names:?}"))
+        .clone();
+    // um adesivo do usuário de agora e um do prefixo antigo
+    let pal = a.palettes(engine::assets::Program::Artist).pal256.clone();
+    let st = engine::paint::stamp::Stamp {
+        w: 20,
+        h: 10,
+        px: vec![Some(5); 200],
+    };
+    let user = format!("{}x.png", engine::scenes::stickers::USER_PREFIX);
+    engine::paint::store::save_stamp_png(&st, &pal, &dir.join(&user)).unwrap();
+    engine::paint::store::save_stamp_png(&st, &pal, &dir.join("adesivo-velho.png")).unwrap();
+    let p = engine::scenes::Paint::new_blank(Some(dir.clone()), &a);
+    let roll: Vec<String> = p.stickers().user_stickers().iter().map(|u| u.name.clone()).collect();
+    assert!(!roll.contains(&page), "a página do projeto entrou no rolo: {roll:?}");
+    assert!(roll.contains(&user) && roll.contains(&"adesivo-velho.png".to_string()), "{roll:?}");
+    let listed = engine::scenes::gallery::list_drawings(&dir);
+    assert!(listed.iter().any(|p| p.ends_with(&page)), "{listed:?}");
+    assert!(!listed.iter().any(|p| p.ends_with(&user)), "{listed:?}");
+}
+
 /// Transformadores, Coloca-adesivos: o adesivo clicado vai para o rolo
 /// "Meus adesivos" (e para a pasta de desenhos).
 #[test]
@@ -188,3 +236,4 @@ fn add_sticker_transformer_puts_the_object_in_the_user_roll() {
     assert!(tmp.path().join(name).exists(), "{name} não foi gravado");
     assert_eq!(p.objects().len(), 1, "o quadro não deve mudar");
 }
+

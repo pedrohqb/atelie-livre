@@ -326,7 +326,8 @@ impl Paint {
             return;
         };
         let name = format!(
-            "adesivo-{}-{id}.png",
+            "{}{}-{id}.png",
+            crate::scenes::stickers::USER_PREFIX,
             crate::paint::store::timestamp(super::now_secs())
         );
         if let Some(dir) = &self.drawings
