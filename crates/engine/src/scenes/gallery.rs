@@ -5,13 +5,13 @@
 //! do Ateliê.
 
 use crate::assets::{Assets, ImageRef, Program};
+use crate::paint::drawings::shrink;
 use crate::paint::store::{LAST_NAME, load_picture, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
-use crate::paths::find_ci;
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const COLS: usize = 4;
 const ROWS: usize = 3;
@@ -51,85 +51,7 @@ pub struct Gallery {
     page: usize,
 }
 
-fn has_ext(p: &Path, ext: &str) -> bool {
-    p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))
-}
-
-/// Arquivos de trabalho que não aparecem na galeria: os "últimos" reabertos
-/// pela pintura e pelos projetos (`ultimo*.png`) e as páginas de impressão.
-fn is_listed(name: &std::ffi::OsStr) -> bool {
-    let n = name.to_string_lossy();
-    n != LAST_NAME && !n.starts_with("ultimo") && !n.starts_with("impressao-")
-}
-
-/// Desenhos da pasta (`.png` e `.mag`), mais recentes primeiro (`ultimo.png`
-/// fora, pois repete o desenho mais recente; `*.fundo.png` fora, pois é o
-/// fundo sem os objetos). Um `.mag` fica de fora quando há um `.png` de mesmo
-/// nome: são o mesmo desenho gravado duas vezes.
-pub fn list_drawings(dir: &Path) -> Vec<PathBuf> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let all: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
-    let is_background = |p: &Path| {
-        p.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(".fundo.png"))
-    };
-    let mut files: Vec<PathBuf> = all
-        .iter()
-        .filter(|p| {
-            (has_ext(p, "png") && p.file_name().is_some_and(is_listed) && !is_background(p))
-                || (has_ext(p, "mag") && !all.contains(&p.with_extension("png")))
-        })
-        .cloned()
-        .collect();
-    files.sort();
-    files.reverse();
-    files
-}
-
-/// Desenhos de exemplo da instalação: `SHARED/USERS/*/*.MAG`, em ordem.
-pub fn list_samples(data_dir: &Path) -> Vec<PathBuf> {
-    let Some(users) = find_ci(data_dir, "SHARED/USERS") else {
-        return Vec::new();
-    };
-    let Ok(rd) = std::fs::read_dir(&users) else {
-        return Vec::new();
-    };
-    let mut dirs: Vec<PathBuf> = rd
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    dirs.sort();
-    let mut files = Vec::new();
-    for d in dirs {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        let mut here: Vec<PathBuf> = rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| has_ext(p, "mag"))
-            .collect();
-        here.sort();
-        files.extend(here);
-    }
-    files
-}
-
-/// Reduz o quadro a 1/4 (vizinho mais próximo).
-fn thumbnail(c: &Canvas) -> Canvas {
-    let (w, h) = (c.w / 4, c.h / 4);
-    let mut t = Canvas::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            t.px[(y * w + x) as usize] = c.px[((y * 4) * c.w + x * 4) as usize];
-        }
-    }
-    t
-}
+pub use crate::paint::drawings::{list_drawings, list_samples};
 
 impl Gallery {
     pub fn new(dir: Option<PathBuf>, assets: &Assets) -> Gallery {
@@ -141,7 +63,7 @@ impl Gallery {
                     let c = load_picture(&path, &pal)?;
                     Some(Entry {
                         path,
-                        thumb: thumbnail(&c),
+                        thumb: shrink(&c, 4),
                     })
                 })
                 .collect()

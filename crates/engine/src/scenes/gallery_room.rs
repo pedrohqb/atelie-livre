@@ -20,8 +20,9 @@ use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::ui::{DoubleClick, SoundQueue, clip_text};
+use crate::paint::drawings;
 use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
-use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
+use crate::paint::Canvas;
 use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::{PIC_ALERT, Part, TextBalloon};
@@ -36,8 +37,6 @@ const FRAME_IMG: (u16, u16) = (0x6c79, 0x6c7d);
 /// Área do desenho dentro da moldura (1/4 do quadro) e a plaqueta do nome.
 const PICTURE_OFF: (i32, i32) = (24, 25);
 const PLATE: Rect = (32, 117, 140, 12);
-const THUMB_W: u32 = CANVAS_W / 4;
-const THUMB_H: u32 = CANVAS_H / 4;
 
 /// Elementos fixos: (cor, máscara, x, y). A Bolsa Mágica e o que sai dela
 /// (livro verde, maleta e varinha) vêm de `room_objects::GALLERY_BAG`.
@@ -159,23 +158,11 @@ impl Item {
 
 /// Título e autor do `.MAG` do quadro (o próprio arquivo ou o gêmeo do `.png`).
 fn mag_info(path: &Path) -> (Option<String>, String) {
-    let mag = if path
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("mag"))
-    {
-        path.to_path_buf()
-    } else {
-        path.with_extension("mag")
-    };
-    let Some(p) = std::fs::read(&mag)
-        .ok()
-        .and_then(|d| formats::mag::read(&d).ok())
-    else {
+    let Some((t, author)) = drawings::mag_meta(path) else {
         return (None, String::new());
     };
-    let t = p.title.trim();
-    let title = (!t.is_empty() && t != MAG_TITLE).then(|| t.to_string());
-    (title, p.author.trim().to_string())
+    let title = (!t.is_empty() && t != MAG_TITLE).then_some(t);
+    (title, author)
 }
 
 /// Nome para mostrar: o título do `.MAG`, ou o nome do arquivo sem o carimbo.
@@ -198,36 +185,6 @@ fn display_name(path: &Path) -> String {
         return format!("{kind} {}/{} {}:{}", &d[6..8], &d[4..6], &t[0..2], &t[2..4]);
     }
     stem
-}
-
-/// Miniatura 1/4: de cada bloco 4×4 fica o pixel mais escuro, para as
-/// linhas finas não sumirem (o original reduz com o `StretchBlt` do
-/// Windows, que preserva o preto).
-fn thumbnail(c: &Canvas, pal: &[Rgb]) -> Canvas {
-    let (w, h) = (THUMB_W, THUMB_H);
-    let luma = |i: u8| {
-        pal.get(i as usize)
-            .map_or(0, |p| 3 * p.r as u32 + 6 * p.g as u32 + p.b as u32)
-    };
-    let mut t = Canvas::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            let mut best = c.px[((y * 4) * c.w + x * 4) as usize];
-            for dy in 0..4 {
-                for dx in 0..4 {
-                    let (sx, sy) = (x * 4 + dx, y * 4 + dy);
-                    if sx < c.w && sy < c.h {
-                        let v = c.px[(sy * c.w + sx) as usize];
-                        if luma(v) < luma(best) {
-                            best = v;
-                        }
-                    }
-                }
-            }
-            t.px[(y * w + x) as usize] = best;
-        }
-    }
-    t
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -328,7 +285,8 @@ impl GalleryRoom {
                         name: display_name(&path),
                         title,
                         author,
-                        thumb: thumbnail(&c, &pal),
+                        // o pixel mais escuro de cada bloco: as linhas finas não somem
+                        thumb: drawings::shrink_darkest(&c, 4, &pal),
                         path,
                         sample,
                     });
@@ -337,11 +295,11 @@ impl GalleryRoom {
         };
         add(
             dir.as_deref()
-                .map(super::gallery::list_drawings)
+                .map(drawings::list_drawings)
                 .unwrap_or_default(),
             false,
         );
-        add(super::gallery::list_samples(assets.data_dir()), true);
+        add(drawings::list_samples(assets.data_dir()), true);
         let wall = load_wall(dir.as_deref(), &items);
         let folder = dir
             .as_ref()
@@ -1289,6 +1247,7 @@ impl Scene for GalleryRoom {
 mod tests {
     use super::*;
     use crate::paint::store::save_drawing;
+    use crate::paint::{CANVAS_H, CANVAS_W};
     use crate::scenes::testutil::empty_assets;
 
     fn down(x: i32, y: i32) -> Input {

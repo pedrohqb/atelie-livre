@@ -3,6 +3,7 @@
 pub mod brush;
 pub mod bucket_fx;
 pub mod canvas;
+pub mod drawings;
 pub mod geom;
 pub mod objects;
 pub mod print;

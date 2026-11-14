@@ -11,7 +11,7 @@ use super::*;
 use crate::paint::store::{load_picture, save_stamp_png};
 use crate::paths::safe_component;
 use crate::scenes::finder_dialog::{self as dialog, Entry, FileList, Hit, Kind, stem};
-use crate::scenes::gallery::{list_drawings, list_samples};
+use crate::paint::drawings::{list_drawings, list_samples, mag_meta, shrink};
 use crate::scenes::stickers::USER_PREFIX;
 use crate::ui::{Pen, Rect, blit_canvas, inside};
 use std::path::{Path, PathBuf};
@@ -59,11 +59,7 @@ pub fn sample_entries(data_dir: &Path) -> Vec<Entry> {
                 .and_then(|d| d.file_name())
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let (title, author) = std::fs::read(&p)
-                .ok()
-                .and_then(|d| formats::mag::read(&d).ok())
-                .map(|m| (m.title, m.author))
-                .unwrap_or_default();
+            let (title, author) = mag_meta(&p).unwrap_or_default();
             let title = if title.trim().is_empty() {
                 stem(&p)
             } else {
@@ -112,7 +108,7 @@ impl FindPictures {
         self.preview = self.list.entries()[k]
             .path()
             .and_then(|p| load_picture(p, pal))
-            .map(|c| thumbnail(&c));
+            .map(|c| shrink(&c, 4));
     }
 
     fn swap_entries(&mut self, entries: Vec<Entry>, outside: bool) {
@@ -121,18 +117,6 @@ impl FindPictures {
         self.preview = None;
         self.prompt = false;
     }
-}
-
-/// Reduz o quadro a 1/4 (vizinho mais próximo).
-fn thumbnail(c: &Canvas) -> Canvas {
-    let (w, h) = (c.w / 4, c.h / 4);
-    let mut t = Canvas::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            t.px[(y * w + x) as usize] = c.px[((y * 4) * c.w + x * 4) as usize];
-        }
-    }
-    t
 }
 
 /// O que o clique no diálogo decidiu.

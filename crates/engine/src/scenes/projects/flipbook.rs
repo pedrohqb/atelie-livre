@@ -21,7 +21,7 @@ use crate::paint::store::{load_picture, load_png, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas, ORIGIN, WHITE};
 use crate::scene::{Effect, Key, SceneId};
 use crate::ui::DoubleClick;
-use crate::scenes::gallery::{list_drawings, list_samples};
+use crate::paint::drawings::{list_drawings, list_samples, shrink};
 use crate::scenes::sounds::{Category, load_categories};
 use formats::fnt::Font;
 use formats::gif;
@@ -244,18 +244,6 @@ impl Slot {
         self.thumb = shrink(&canvas, THUMB_SCALE);
         self.canvas = canvas;
     }
-}
-
-/// Reduz o quadro `n` vezes (vizinho mais próximo).
-fn shrink(c: &Canvas, n: u32) -> Canvas {
-    let (w, h) = (c.w / n, c.h / n);
-    let mut t = Canvas::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            t.px[(y * w + x) as usize] = c.px[((y * n) * c.w + x * n) as usize];
-        }
-    }
-    t
 }
 
 /// Entrada da pasta aberta. A miniatura só é lida quando a página aparece
