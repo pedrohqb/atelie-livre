@@ -6,6 +6,7 @@ use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, 
 use engine::assets::{Assets, CursorRef};
 use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::room::DEFAULT_USER;
+use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
     Writer,
@@ -69,7 +70,10 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::Studio => room(Floor::Studio),
         SceneId::TricksFloor => room(Floor::Tricks),
         SceneId::Projects => room(Floor::Projects),
-        SceneId::Tricks(kind) => Box::new(Paint::new_tricks(kind, drawings_dir(), assets)),
+        SceneId::Tricks(kind) => Box::new(TricksBoard::new(kind, cfg.click_sound.clone())),
+        SceneId::TricksStudio(kind, start) => {
+            Box::new(Paint::new_tricks(kind, start, drawings_dir(), assets))
+        }
         SceneId::Project(kind) => Box::new(Paint::new_project(kind, drawings_dir(), assets)),
         SceneId::FlipbookFigure => Box::new(Paint::new_flipbook_figure(drawings_dir(), assets)),
         SceneId::Chooser => Box::new(Chooser::new()),
@@ -119,6 +123,12 @@ fn scene_by_name(name: &str) -> Option<SceneId> {
         "flipbook-figure" => SceneId::FlipbookFigure,
         "tricks-basic" => SceneId::Tricks(TrickKind::Basic),
         "tricks-3d" => SceneId::Tricks(TrickKind::ThreeD),
+        "tricks-basic-studio" => {
+            SceneId::TricksStudio(TrickKind::Basic, TrickKind::Basic.studio_step())
+        }
+        "tricks-3d-studio" => {
+            SceneId::TricksStudio(TrickKind::ThreeD, TrickKind::ThreeD.studio_step())
+        }
         _ => return None,
     })
 }

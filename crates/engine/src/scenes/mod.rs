@@ -31,6 +31,7 @@ pub mod supertools;
 pub mod transformers;
 pub mod tricks_3d;
 pub mod tricks_basic;
+pub mod tricks_board;
 pub mod wizard;
 pub mod writer;
 

@@ -1,9 +1,11 @@
-//! Lições dos Truques de Desenho na tela de pintura.
+//! Lições dos Truques de Desenho: a apresentação (quadro) e a pintura.
 
 use engine::assets::Assets;
 use engine::scene::{Effect, Input, MouseButton, Scene, SceneId};
 use engine::scenes::Paint;
-use engine::scenes::wizard::{MAGGIE_PANEL, TrickKind};
+use engine::scenes::tricks_basic;
+use engine::scenes::tricks_board::TricksBoard;
+use engine::scenes::wizard::{BOARD_PANEL, STUDIO_BALLOON, TrickKind};
 use std::path::PathBuf;
 
 fn data() -> Option<Assets> {
@@ -51,25 +53,34 @@ fn next(p: &mut Paint, a: &Assets) -> Vec<Effect> {
     click(p, a, b.x + 12 + 41 * n + 10, y + 6)
 }
 
+fn studio(kind: TrickKind, dir: Option<PathBuf>, a: &Assets) -> Paint {
+    Paint::new_tricks(kind, kind.studio_step(), dir, a)
+}
+
 #[test]
-fn basic_lesson_runs_and_paints_the_guide() {
+fn basic_studio_starts_at_the_training_intro() {
     let Some(a) = data() else { return };
     let dir = tempfile::tempdir().unwrap();
-    let mut p = Paint::new_tricks(TrickKind::Basic, Some(dir.path().to_path_buf()), &a);
-    assert_eq!(p.wizard().unwrap().current(), 0);
-    option(&mut p, &a, 0);
-    assert_eq!(p.wizard().unwrap().current(), 1);
+    let mut p = studio(TrickKind::Basic, Some(dir.path().to_path_buf()), &a);
+    let w = p.wizard().unwrap();
+    assert_eq!(w.current(), tricks_basic::STUDIO);
+    // "Seja bem-vindo ao meu ateliê de treinamento!", encostado à direita
+    assert_eq!(w.step().record, (0x3800, 3));
+    let b = w.balloon(&a, "").unwrap();
+    assert_eq!(b.x + b.w, STUDIO_BALLOON.0);
+    assert_eq!(b.y, STUDIO_BALLOON.1);
+    assert!(!w.has_back());
+    // a figura pequena do Chiquinho no painel da Maggie
+    assert_eq!(w.maggie_panel(), Some(0x3865));
+    let mut f = engine::Frame::new(engine::SCREEN_W, engine::SCREEN_H);
+    p.draw(&mut f, &a);
+    // molduras laranja: "Sua Área de Desenho" (x 28) e a da Maggie (x 428)
+    assert_eq!(f.pixel(28, 300)[..3], [255, 140, 50]);
+    assert_eq!(f.pixel(428, 380)[..3], [255, 140, 50]);
     next(&mut p, &a);
-    next(&mut p, &a);
-    assert_eq!(p.wizard().unwrap().current(), 3);
-    assert!(p.wizard().unwrap().maggie_panel().is_some());
-    // clique no porco, no painel da Maggie
-    click(&mut p, &a, MAGGIE_PANEL.0 + 150, MAGGIE_PANEL.1 + 140);
-    assert_eq!(p.wizard().unwrap().current(), 4);
-    // o passo 4 pinta as formas claras no quadro da criança
-    assert!(p.composed().px.iter().any(|&i| i != 0));
-    // um traço no quadro avisa a lição; o Segue continua
-    let fx = p.update(
+    assert_eq!(p.wizard().unwrap().step().record, (0x3800, 1));
+    // um traço no quadro
+    let _ = p.update(
         &[
             Input::Click {
                 button: MouseButton::Left,
@@ -86,12 +97,16 @@ fn basic_lesson_runs_and_paints_the_guide() {
         0.05,
         &a,
     );
-    assert!(fx.iter().all(|e| !matches!(e, Effect::ChangeScene(_))));
-    next(&mut p, &a);
-    assert_eq!(p.wizard().unwrap().current(), 5);
-    // a porta leva de volta ao andar dos Truques e a lição grava "truque-…png"
+    // a Maggie da porta fora de hora pergunta o que fazer (`3803[0]`)
     let fx = click(&mut p, &a, 600, 60);
-    assert!(fx.contains(&Effect::ChangeScene(SceneId::TricksFloor)));
+    assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+    assert!(p.wizard().unwrap().quitting());
+    // "Parar de trabalhar aqui" volta ao andar e a lição grava "truque-…png"
+    let fx = option(&mut p, &a, 1);
+    assert!(
+        fx.contains(&Effect::ChangeScene(SceneId::TricksFloor)),
+        "{fx:?}"
+    );
     p.leave();
     let names: Vec<String> = std::fs::read_dir(dir.path())
         .unwrap()
@@ -102,12 +117,10 @@ fn basic_lesson_runs_and_paints_the_guide() {
 }
 
 #[test]
-fn stop_and_free_paint_end_the_lesson() {
+fn three_d_studio_starts_at_its_intro() {
     let Some(a) = data() else { return };
-    let mut p = Paint::new_tricks(TrickKind::ThreeD, None, &a);
-    // "Levar você para o lugar onde você pode treinar?" = pintar por conta própria
-    option(&mut p, &a, 1);
-    assert!(p.wizard().is_none());
+    let p = studio(TrickKind::ThreeD, None, &a);
+    assert_eq!(p.wizard().unwrap().step().record, (0x4000, 50));
 }
 
 #[test]
@@ -115,45 +128,74 @@ fn lesson_without_data_draws() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("ARTIST.EXE"), b"MZ").unwrap();
     let a = Assets::open(d.path()).unwrap();
-    let p = Paint::new_tricks(TrickKind::Basic, None, &a);
+    let p = studio(TrickKind::Basic, None, &a);
     let mut f = engine::Frame::new(engine::SCREEN_W, engine::SCREEN_H);
     p.draw(&mut f, &a);
+    let b = TricksBoard::new(TrickKind::ThreeD, None);
+    b.draw(&mut f, &a);
 }
 
-/// Leva a lição básica ao passo 8 ("Oba! … Desafio", com a lâmpada).
-fn basic_to_step_8(p: &mut Paint, a: &Assets) {
-    option(p, a, 0);
-    next(p, a);
-    next(p, a);
-    click(p, a, MAGGIE_PANEL.0 + 150, MAGGIE_PANEL.1 + 140);
-    next(p, a);
-    click(p, a, MAGGIE_PANEL.0 + 80, MAGGIE_PANEL.1 + 136);
-    for (x, y, w, h) in engine::scenes::tricks_basic::PIG_CIRCLES {
-        click(p, a, MAGGIE_PANEL.0 + x + w / 2, MAGGIE_PANEL.1 + y + h / 2);
+fn board_click(b: &mut TricksBoard, a: &Assets, x: i32, y: i32) -> Vec<Effect> {
+    let mut fx = b.update(
+        &[Input::Click {
+            button: MouseButton::Left,
+            x,
+            y,
+        }],
+        0.05,
+        a,
+    );
+    fx.extend(b.update(
+        &[Input::MouseUp {
+            button: MouseButton::Left,
+            x,
+            y,
+        }],
+        0.05,
+        a,
+    ));
+    fx
+}
+
+fn board_next(b: &mut TricksBoard, a: &Assets) {
+    let bal = b.wizard().balloon(a, "").unwrap();
+    let y = bal.y + bal.height(a) + 4;
+    let n = if b.wizard().has_back() { 2 } else { 1 };
+    board_click(b, a, bal.x + 12 + 41 * n + 10, y + 6);
+}
+
+/// Leva a apresentação básica ao passo 8 ("Oba! … Desafio", com a lâmpada).
+fn basic_to_step_8(b: &mut TricksBoard, a: &Assets) {
+    let r = b.wizard().balloon(a, "").unwrap().option_rect(a, 0);
+    board_click(b, a, r.0 + 6, r.1 + 4);
+    board_next(b, a);
+    board_next(b, a);
+    let (px, py, _, _) = BOARD_PANEL;
+    board_click(b, a, px + 150, py + 140);
+    board_next(b, a);
+    board_click(b, a, px + 80, py + 136);
+    for (x, y, w, h) in tricks_basic::PIG_CIRCLES {
+        board_click(b, a, px + x + w / 2, py + y + h / 2);
     }
-    next(p, a);
-    assert_eq!(p.wizard().unwrap().current(), 8);
+    board_next(b, a);
+    assert_eq!(b.wizard().current(), 8);
 }
 
 #[test]
 fn lamp_opens_the_tip_and_a_click_outside_only_closes_it() {
     let Some(a) = data() else { return };
-    let mut p = Paint::new_tricks(TrickKind::Basic, None, &a);
-    basic_to_step_8(&mut p, &a);
-    let b = p.wizard().unwrap().balloon(&a, "").unwrap();
-    assert!(!b.links.is_empty(), "o passo 8 tem a dica Desafio");
-    let r = b.link_rect(&a, 0);
-    click(&mut p, &a, r.0 + 20, r.1 + r.3 / 2);
-    assert!(p.help().is_some(), "a lâmpada abre a dica");
-    assert_eq!(p.wizard().unwrap().current(), 8);
-    // o clique fora fecha a dica e não pinta
-    let before = p.composed();
-    click(&mut p, &a, 560, 420);
-    assert!(p.help().is_none());
-    assert!(
-        p.composed().px == before.px,
-        "o clique que fecha a dica pintou"
-    );
+    let mut b = TricksBoard::new(TrickKind::Basic, None);
+    basic_to_step_8(&mut b, &a);
+    let bal = b.wizard().balloon(&a, "").unwrap();
+    assert!(!bal.links.is_empty(), "o passo 8 tem a dica Desafio");
+    let r = bal.link_rect(&a, 0);
+    board_click(&mut b, &a, r.0 + 20, r.1 + r.3 / 2);
+    assert!(b.help().is_some(), "a lâmpada abre a dica");
+    assert_eq!(b.wizard().current(), 8);
+    // o clique fora só fecha a dica
+    board_click(&mut b, &a, 30, 440);
+    assert!(b.help().is_none());
+    assert_eq!(b.wizard().current(), 8);
 }
 
 #[test]

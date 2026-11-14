@@ -35,10 +35,27 @@ impl TrickKind {
 }
 
 /// Retângulo (x, y, w, h) em coordenadas da tela.
-/// Painel "Área de Desenho da Maggie": 313×272 no canto inferior direito do quadro.
-pub const MAGGIE_PANEL: Rect = (300, 180, 313, 272);
+/// Painel "Área de Desenho da Maggie" na pintura: a figura (178×149) dentro
+/// da moldura com título do canto inferior direito; a moldura, desenhada
+/// depois, cobre a borda direita e a de baixo da figura (medido no original,
+/// `docs/telas/truques.md`).
+pub const MAGGIE_PANEL: Rect = (431, 302, 178, 149);
+/// Quadro grande da tela de apresentação da lição (figuras de 313×272).
+pub const BOARD_PANEL: Rect = (168, 118, 313, 272);
 /// Posição padrão do balão do passo.
 pub const BALLOON_POS: (i32, i32) = (30, 115);
+/// Na pintura, o balão fica encostado à direita, logo abaixo da Maggie da
+/// porta: borda direita e topo da caixa.
+pub const STUDIO_BALLOON: (i32, i32) = (620, 118);
+
+/// Onde fica o balão de cada passo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BalloonPlace {
+    /// Canto superior esquerdo fixo.
+    At(i32, i32),
+    /// Borda direita e topo fixos (a largura vem do registro).
+    RightAt(i32, i32),
+}
 /// Botões Volta / Pára / Segue (31×14) do `ARTIST.PIC`.
 pub const BTN_BACK: (u16, u16) = (0x040f, 0x0410);
 pub const BTN_STOP: (u16, u16) = (0x0417, 0x0418);
@@ -221,6 +238,12 @@ pub struct Wizard {
     anim: Option<(PanelAnim, f32)>,
     /// Passos visitados, para o Volta.
     history: Vec<usize>,
+    /// Retângulo da figura da Maggie na tela que hospeda o assistente.
+    panel: Rect,
+    /// Lugar padrão do balão e os lugares próprios de alguns registros
+    /// (índice no bloco → canto superior esquerdo).
+    place: BalloonPlace,
+    places: &'static [(usize, i32, i32)],
 }
 
 /// `(x, y)` dentro da elipse inscrita em `r`.
@@ -248,7 +271,40 @@ impl Wizard {
             typed: String::new(),
             anim: None,
             history: Vec::new(),
+            panel: MAGGIE_PANEL,
+            place: BalloonPlace::At(BALLOON_POS.0, BALLOON_POS.1),
+            places: &[],
         }
+    }
+
+    /// O assistente hospedado noutra tela, com a figura da Maggie em `panel`.
+    pub fn with_panel(mut self, panel: Rect) -> Wizard {
+        self.panel = panel;
+        self
+    }
+
+    /// Lugar padrão do balão e os lugares por registro.
+    pub fn with_places(
+        mut self,
+        place: BalloonPlace,
+        places: &'static [(usize, i32, i32)],
+    ) -> Wizard {
+        self.place = place;
+        self.places = places;
+        self
+    }
+
+    /// Começa no passo `s` (sem histórico: o Volta não volta antes dele).
+    pub fn starting_at(mut self, s: usize) -> Wizard {
+        if s < self.steps.len() {
+            self.enter(s);
+        }
+        self
+    }
+
+    /// Retângulo da figura da Maggie.
+    pub fn panel(&self) -> Rect {
+        self.panel
     }
 
     pub fn current(&self) -> usize {
@@ -326,12 +382,21 @@ impl Wizard {
             self.step().record
         };
         let dialogs = assets.dialogs(Program::Artist, block);
-        let mut b = match Balloon::from_block(&dialogs, k, BALLOON_POS.0, BALLOON_POS.1, "artista")
-        {
+        let own = (block != QUIT_BLOCK)
+            .then(|| self.places.iter().find(|p| p.0 == k))
+            .flatten();
+        let place = match own {
+            Some(&(_, x, y)) => BalloonPlace::At(x, y),
+            None => self.place,
+        };
+        let (bx, by) = match place {
+            BalloonPlace::At(x, y) | BalloonPlace::RightAt(x, y) => (x, y),
+        };
+        let mut b = match Balloon::from_block(&dialogs, k, bx, by, "artista") {
             Some(b) => b,
             None => Balloon {
-                x: BALLOON_POS.0,
-                y: BALLOON_POS.1,
+                x: bx,
+                y: by,
                 w: 240,
                 text: fallback.to_string(),
                 options: if self.stopping {
@@ -359,6 +424,9 @@ impl Wizard {
             b.text.push_str("\n\n> ");
             b.text.push_str(&self.typed);
             b.text.push('_');
+        }
+        if let BalloonPlace::RightAt(right, _) = place {
+            b.x = right - b.w;
         }
         Some(b)
     }
@@ -584,13 +652,31 @@ impl Wizard {
         let Some(id) = self.maggie_panel() else {
             return;
         };
-        let (x, y, w, h) = MAGGIE_PANEL;
+        let (x, y, w, h) = self.panel;
         f.rect(x - 2, y - 2, w + 4, h + 4, [0, 0, 0]);
         f.rect(x, y, w, h, [255, 255, 255]);
         let img = a.image(&ImageRef::Pic(Program::Artist, id));
         let ox = x + (w - img.width as i32) / 2;
         let oy = y + (h - img.height as i32) / 2;
-        f.blit(&img, ox, oy);
+        // figura maior que o painel (178×149 no de 175×146): o meio dela
+        let (cx, cy) = ((x - ox).max(0) as u32, (y - oy).max(0) as u32);
+        let cw = img.width.saturating_sub(2 * cx).min(w as u32);
+        let ch = img.height.saturating_sub(2 * cy).min(h as u32);
+        if (cx, cy) == (0, 0) {
+            f.blit(&img, ox, oy);
+        } else {
+            let mut rgba = Vec::with_capacity((cw * ch * 4) as usize);
+            for row in cy..cy + ch {
+                let i = ((row * img.width + cx) * 4) as usize;
+                rgba.extend_from_slice(&img.rgba[i..i + (cw * 4) as usize]);
+            }
+            let part = crate::Image {
+                width: cw,
+                height: ch,
+                rgba,
+            };
+            f.blit(&part, ox + cx as i32, oy + cy as i32);
+        }
         if let Some((an, t)) = &self.anim {
             let k = if an.secs > 0.0 {
                 (t / an.secs).clamp(0.0, 1.0)
@@ -652,7 +738,7 @@ impl Wizard {
 
     /// Clique em (x, y) da tela traduzido para o painel, se cair nele.
     pub fn panel_hit(&self, x: i32, y: i32) -> Option<WizardEvent> {
-        let (px, py, w, h) = MAGGIE_PANEL;
+        let (px, py, w, h) = self.panel;
         if self.maggie_panel().is_some() && x >= px && y >= py && x < px + w && y < py + h {
             Some(WizardEvent::Panel(x - px, y - py))
         } else {
@@ -942,11 +1028,15 @@ mod tests {
 
     #[test]
     fn panel_hit_only_with_picture() {
-        let mut w = Wizard::new(steps());
-        assert!(w.panel_hit(400, 300).is_none());
+        let mut w = Wizard::new(steps()).with_panel(BOARD_PANEL);
+        let (px, py, _, _) = w.panel();
+        assert!(w.panel_hit(px + 100, py + 120).is_none());
         w.on_event(WizardEvent::Option(0));
         w.on_event(WizardEvent::Next);
-        assert_eq!(w.panel_hit(400, 300), Some(WizardEvent::Panel(100, 120)));
+        assert_eq!(
+            w.panel_hit(px + 100, py + 120),
+            Some(WizardEvent::Panel(100, 120))
+        );
         assert!(w.panel_hit(10, 10).is_none());
     }
 }

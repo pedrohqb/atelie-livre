@@ -13,22 +13,59 @@ pub const TOOL_SUPERTOOLS: usize = 8;
 pub const OPT_NO_GRID: usize = 0;
 pub const OPT_BIG_GRID: usize = 2;
 
-/// Figuras da Área de Desenho da Maggie.
+/// Figuras do quadro da apresentação (313×272), conferidas no original.
 /// O Chiquinho inteiro.
 const PIG: u16 = 0x3827;
-/// Contorno azul: o espaço negativo traçado.
-const PIG_NEGATIVE: u16 = 0x3835;
-/// Só o contorno preto (o espaço positivo).
+/// O espaço em volta (negativo) pontilhado.
+const PIG_AROUND: u16 = 0x382b;
+/// As formas de dentro (positivo) sombreadas.
+const PIG_INSIDE: u16 = 0x382d;
+/// "Já comecei para você": o espaço negativo para traçar.
+const PIG_TRACE: u16 = 0x3831;
+/// O rosto: as formas de dentro, sem o contorno.
+const PIG_FACE: u16 = 0x383c;
+/// Só o contorno preto (o espaço positivo), pintado no quadro da criança.
 const PIG_OUTLINE: u16 = 0x3838;
-/// Contorno com as formas de dentro apagadas.
-const PIG_SHAPES: u16 = 0x3830;
-/// Formas de dentro bem claras, para o quadro da criança.
-const PIG_FAINT: u16 = 0x3839;
-/// Chiquinho com o quadriculado verde (178×149).
+/// Figuras da Área de Desenho da Maggie na pintura (178×149): o Chiquinho e
+/// o Chiquinho com o quadriculado verde.
+const PIG_SMALL: u16 = 0x3865;
 const PIG_GRID: u16 = 0x3859;
 
+/// Primeiro passo na tela de pintura (o "ateliê de treinamento"); os
+/// anteriores são da tela de apresentação (`tricks_board`).
+pub const STUDIO: usize = 10;
+
+/// Lugar do balão de cada registro na apresentação (canto superior
+/// esquerdo, medido no original).
+pub const BOARD_BALLOONS: &[(usize, i32, i32)] = &[
+    (0, 425, 42),
+    (2, 464, 46),
+    (4, 459, 43),
+    (6, 16, 32),
+    (7, 463, 28),
+    (8, 462, 8),
+    (9, 460, 85),
+    (10, 482, 125),
+    (11, 439, 56),
+    (13, 470, 106),
+];
+
+/// Maggie (e o Max) na apresentação, por registro: (figura, x, y).
+pub const BOARD_POSES: &[(usize, &[(u16, i32, i32)])] = &[
+    (0, &[(0x3803, 468, 262)]),
+    (2, &[(0x3807, 483, 271)]),
+    (4, &[(0x3807, 483, 271)]),
+    (6, &[(0x380b, 22, 229), (0x380f, 55, 393)]),
+    (7, &[(0x3813, 485, 181)]),
+    (8, &[(0x3813, 485, 181)]),
+    (9, &[(0x3807, 483, 271)]),
+    (10, &[(0x3807, 483, 271)]),
+    (11, &[(0x381f, 445, 277)]),
+    (13, &[(0x3823, 405, 332)]),
+];
+
 /// As "3 formas circulares meio achatadas" do Chiquinho, como elipses no
-/// painel (`PIG_SHAPES`): a cabeça, o corpo e o focinho.
+/// quadro (`PIG_FACE`): a cabeça, o corpo e o focinho.
 pub const PIG_CIRCLES: [(i32, i32, i32, i32); 3] =
     [(85, 35, 130, 110), (105, 105, 165, 125), (68, 108, 54, 46)];
 
@@ -54,108 +91,98 @@ fn supertool(k: usize) -> Advance {
 /// Os passos, na ordem da tabela da spec.
 pub fn steps() -> Vec<Step> {
     vec![
-        // 0: "A garotada sempre me pergunta"
+        // apresentação (quadro "Truques Básicos")
+        // 0: "Maggie, como é que você aprendeu a desenhar?"
         step(
             0,
-            None,
+            Some(PIG),
             Advance::Choice(vec![
                 (0, Goto::Step(1)),
-                (1, Goto::FreePaint),
+                (1, Goto::Step(STUDIO)),
                 (2, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
-        // 1: Intro
-        step(3, None, Advance::Next),
-        // 2: É divertido desenhar
-        step(4, None, Advance::Next),
-        // 3: espaço negativo/positivo — clique no porco
+        // 1-2: "É divertido desenhar!" (em volta; depois, dentro)
+        step(2, Some(PIG_AROUND), Advance::Next),
+        step(4, Some(PIG_INSIDE), Advance::Next),
+        // 3: clique no espaço positivo
         step(
             6,
             Some(PIG),
             Advance::Click(Target::PanelArea((40, 30, 240, 220))),
         ),
-        // 4: trace o espaço negativo (a silhueta vai para o seu quadro)
-        Step {
-            your_area: Some(PIG_FAINT),
-            ..step(7, Some(PIG_NEGATIVE), Advance::PaintThenNext)
-        },
-        // 5: olhe as formas menores — clique no rosto (metade esquerda)
+        // 4: trace o espaço negativo (no próprio quadro)
+        step(7, Some(PIG_TRACE), Advance::PaintThenNext),
+        // 5: clique no rosto
         step(
             8,
-            Some(PIG_OUTLINE),
+            Some(PIG_FACE),
             Advance::Click(Target::PanelArea((0, 0, 160, 272))),
         ),
-        // 6: três formas circulares (a Maggie mostra onde estão)
-        step(
-            9,
-            Some(PIG_SHAPES),
-            Advance::FindShapes(PIG_CIRCLES.to_vec()),
-        ),
-        // 7: acabe de desenhar
-        step(10, Some(PIG_SHAPES), Advance::Next),
-        // 8: Oba! truques 1 e 2
-        step(11, None, Advance::Maggie),
+        // 6: as três formas
+        step(9, Some(PIG_FACE), Advance::FindShapes(PIG_CIRCLES.to_vec())),
+        step(10, Some(PIG_FACE), Advance::Next),
+        step(11, Some(PIG_FACE), Advance::Next),
         // 9: ferramentas especiais?
         step(
             13,
-            None,
-            Advance::Choice(vec![(0, Goto::Step(10)), (1, Goto::Step(16))]),
+            Some(PIG_FACE),
+            Advance::Choice(vec![(0, Goto::Step(STUDIO)), (1, Goto::Step(18))]),
         ),
-        // 10: clique nas Super-ferramentas
+        // pintura ("ateliê de treinamento")
+        // 10: "Seja bem-vindo ao meu ateliê de treinamento!"
+        step(3, Some(PIG_SMALL), Advance::Next),
+        // 11: "Vamos usar as Super-ferramentas de desenho…"
+        step(1, Some(PIG_SMALL), Advance::Next),
         step(14, None, Advance::Click(Target::Tool(TOOL_SUPERTOOLS))),
-        // 11: Quadriculado grande
         step(15, None, supertool(OPT_BIG_GRID)),
-        // 12: olhe o Chiquinho com os quadrados
         step(18, Some(PIG_GRID), Advance::Maggie),
-        // 13: eu contornei; preencha o resto
         Step {
             your_area: Some(PIG_OUTLINE),
             ..step(20, Some(PIG_GRID), Advance::Maggie)
         },
-        // 14: Sem quadriculado
         step(23, None, supertool(OPT_NO_GRID)),
-        // 15: Uau, D+ — ver sem o quadriculado (volta a 14) ou deixar
+        // 17
         step(
             40,
             None,
-            Advance::Choice(vec![(0, Goto::Step(14)), (1, Goto::Step(17))]),
+            Advance::Choice(vec![(0, Goto::Step(16)), (1, Goto::Step(19))]),
         ),
-        // 16: Tudo pronto ("Não, ignorar" as ferramentas especiais)
+        // 18
         step(
             41,
             None,
             Advance::Choice(vec![
-                (0, Goto::Step(3)),
+                (0, Goto::Step(12)),
                 (1, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
-        // 17: salvar a figura?
+        // 19
         step(
             24,
             None,
-            Advance::Choice(vec![(0, Goto::Step(18)), (1, Goto::DiscardThen(20))]),
+            Advance::Choice(vec![(0, Goto::Step(20)), (1, Goto::DiscardThen(22))]),
         ),
-        // 18: digite um nome
+        // 20
         step(25, None, Advance::TypeName),
-        // 19: imprimir?
+        // 21
         step(
             27,
             None,
-            Advance::Choice(vec![(0, Goto::PrintThen(21)), (1, Goto::Step(21))]),
+            Advance::Choice(vec![(0, Goto::PrintThen(23)), (1, Goto::Step(23))]),
         ),
-        // 20: imprimir antes de jogar fora?
+        // 22
         step(
             26,
             None,
-            Advance::Choice(vec![(0, Goto::PrintThen(21)), (1, Goto::Step(21))]),
+            Advance::Choice(vec![(0, Goto::PrintThen(23)), (1, Goto::Step(23))]),
         ),
-        // 21: Chocante! o que fazer em seguida (ordem da tela: nova figura /
-        // figura existente, pela pasta / voltar ao andar)
+        // 23
         step(
             29,
             None,
             Advance::Choice(vec![
-                (0, Goto::Step(1)),
+                (0, Goto::Step(STUDIO)),
                 (1, Goto::Folder),
                 (2, Goto::Scene(SceneId::TricksFloor)),
             ]),
@@ -175,16 +202,15 @@ mod tests {
     #[test]
     fn full_path_reaches_the_end() {
         let mut w = wizard();
+        // apresentação
         assert_eq!(w.on_event(E::Option(0)), O::Entered(1));
         assert_eq!(w.on_event(E::Next), O::Entered(2));
         assert_eq!(w.on_event(E::Next), O::Entered(3));
         assert_eq!(w.on_event(E::Panel(150, 150)), O::Entered(4));
-        assert_eq!(w.step().your_area, Some(0x3839));
         assert_eq!(w.on_event(E::Painted), O::Stay);
         assert_eq!(w.on_event(E::Next), O::Entered(5));
         assert_eq!(w.on_event(E::Panel(300, 100)), O::Stay);
         assert_eq!(w.on_event(E::Panel(50, 100)), O::Entered(6));
-        // as três formas: um clique fora e um repetido não contam
         assert_eq!(w.on_event(E::Panel(10, 10)), O::Stay);
         let centers: Vec<(i32, i32)> = PIG_CIRCLES
             .iter()
@@ -199,52 +225,65 @@ mod tests {
             O::Entered(7)
         );
         assert_eq!(w.on_event(E::Next), O::Entered(8));
-        assert_eq!(w.on_event(E::McZee), O::Entered(9));
-        assert_eq!(w.on_event(E::Option(0)), O::Entered(10));
+        assert_eq!(w.on_event(E::Next), O::Entered(9));
+        // "Sim, vamos experimentar": o ateliê de treinamento
+        assert_eq!(w.on_event(E::Option(0)), O::Entered(STUDIO));
+        assert_eq!(w.step().record.1, 3);
+        // a pintura começa ali, sem o Volta para a apresentação
+        let mut w = wizard().starting_at(STUDIO);
+        assert!(!w.has_back());
+        assert_eq!(w.on_event(E::Next), O::Entered(11));
+        assert_eq!(w.on_event(E::Next), O::Entered(12));
         assert_eq!(w.on_event(E::Tool(0)), O::Stay);
-        assert_eq!(w.on_event(E::Tool(TOOL_SUPERTOOLS)), O::Entered(11));
+        assert_eq!(w.on_event(E::Tool(TOOL_SUPERTOOLS)), O::Entered(13));
         let grid = |k| E::OptionButton {
             tool: TOOL_SUPERTOOLS,
             page: 1,
             k,
         };
-        assert_eq!(w.on_event(grid(OPT_BIG_GRID)), O::Entered(12));
-        assert_eq!(w.on_event(E::McZee), O::Entered(13));
-        assert_eq!(w.on_event(E::McZee), O::Entered(14));
-        assert_eq!(w.on_event(grid(OPT_NO_GRID)), O::Entered(15));
-        // fim guiado: salvar com nome, imprimir, o que fazer em seguida
-        assert_eq!(w.on_event(E::Option(1)), O::Entered(17));
-        assert_eq!(w.on_event(E::Option(0)), O::Entered(18));
+        assert_eq!(w.on_event(grid(OPT_BIG_GRID)), O::Entered(14));
+        assert_eq!(w.on_event(E::McZee), O::Entered(15));
+        assert_eq!(w.step().your_area, Some(PIG_OUTLINE));
+        assert_eq!(w.on_event(E::McZee), O::Entered(16));
+        assert_eq!(w.on_event(grid(OPT_NO_GRID)), O::Entered(17));
+        assert_eq!(w.on_event(E::Option(1)), O::Entered(19));
+        assert_eq!(w.on_event(E::Option(0)), O::Entered(20));
         for c in "porco".chars() {
             w.on_event(E::Typed(c));
         }
         assert_eq!(w.on_event(E::Enter), O::Save("porco".into()));
-        assert_eq!(w.current(), 19);
-        assert_eq!(w.on_event(E::Option(1)), O::Entered(21));
+        assert_eq!(w.current(), 21);
+        assert_eq!(w.on_event(E::Option(1)), O::Entered(23));
         assert_eq!(w.on_event(E::Option(1)), O::OpenFolder);
         assert_eq!(w.on_event(E::Option(2)), O::Leave(SceneId::TricksFloor));
     }
 
     #[test]
-    fn throwing_away_offers_to_print_first() {
+    fn board_steps_have_pictures_poses_and_places() {
+        for (i, s) in steps().iter().enumerate().take(STUDIO) {
+            assert!(s.maggie.is_some(), "passo {i}");
+            let k = s.record.1;
+            assert!(BOARD_POSES.iter().any(|p| p.0 == k), "pose {k}");
+            assert!(BOARD_BALLOONS.iter().any(|p| p.0 == k), "balão {k}");
+        }
+        // "Não, ignorar" vai ao fim ("Tudo pronto!")
         let mut w = wizard();
-        w.on_event(E::Option(0));
-        for _ in 0..2 {
-            w.on_event(E::Next);
+        for e in [E::Option(0), E::Next, E::Next] {
+            w.on_event(e);
         }
-        w.on_event(E::Panel(150, 150));
+        let steps = steps();
+        let Advance::Choice(c) = &steps[9].advance else {
+            panic!()
+        };
+        assert_eq!(c[1], (1, Goto::Step(18)));
+        assert_eq!(steps[18].record.1, 41);
+    }
+
+    #[test]
+    fn throwing_away_offers_to_print_first() {
+        let mut w = wizard().starting_at(STUDIO);
         w.on_event(E::Next);
-        w.on_event(E::Panel(50, 100));
-        for (x, y, cw, ch) in PIG_CIRCLES {
-            w.on_event(E::Panel(x + cw / 2, y + ch / 2));
-        }
-        assert_eq!(w.current(), 7);
         w.on_event(E::Next);
-        w.on_event(E::McZee);
-        // "Não, ignorar" as ferramentas: Tudo pronto
-        assert_eq!(w.on_event(E::Option(1)), O::Entered(16));
-        w.on_event(E::Back);
-        w.on_event(E::Option(0));
         w.on_event(E::Tool(TOOL_SUPERTOOLS));
         w.on_event(E::OptionButton {
             tool: TOOL_SUPERTOOLS,

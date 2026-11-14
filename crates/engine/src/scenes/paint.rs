@@ -880,20 +880,28 @@ impl Paint {
     /// tipo (`ultimo-<tipo>.png`), se houver, senão um quadro novo.
     /// Abre a tela como uma lição dos Truques de Desenho: quadro novo e o
     /// assistente da Maggie (spec `2026-10-31-truques-design.md`).
-    pub fn new_tricks(kind: TrickKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
+    pub fn new_tricks(
+        kind: TrickKind,
+        start: usize,
+        drawings: Option<PathBuf>,
+        assets: &Assets,
+    ) -> Paint {
         let mut p = Paint::new(None, assets);
         p.drawings = drawings;
         p.help = None;
-        p.wizard = Some(match kind {
-            TrickKind::Basic => super::tricks_basic::wizard(),
-            TrickKind::ThreeD => super::tricks_3d::wizard(),
-        });
+        p.wizard = Some(super::tricks_board::studio_wizard(kind, start));
+        p.door = Door::Maggie;
         p.trick = Some(kind);
         p
     }
 
     pub fn wizard(&self) -> Option<&Wizard> {
         self.wizard.as_ref()
+    }
+
+    /// Clique na Maggie da porta (lições): vale como "clique em mim".
+    fn maggie_in_door(&self, x: i32, y: i32) -> bool {
+        self.door == Door::Maggie && self.wizard.is_some() && inside(EXIT, x, y)
     }
 
     /// Botões Volta / Pára / Segue do balão da lição, com o evento de cada um.
@@ -958,7 +966,7 @@ impl Paint {
         }
         if w.paused() {
             // trabalhando por conta própria: só o McZee chama a Maggie de volta
-            if inside(NICHE, x, y) {
+            if inside(NICHE, x, y) || self.maggie_in_door(x, y) {
                 self.wizard_event(WizardEvent::McZee, fx, assets);
                 return true;
             }
@@ -986,7 +994,7 @@ impl Paint {
         if ev.is_none() {
             ev = w.panel_hit(x, y);
         }
-        if ev.is_none() && inside(NICHE, x, y) {
+        if ev.is_none() && (inside(NICHE, x, y) || self.maggie_in_door(x, y)) {
             ev = Some(WizardEvent::McZee);
         }
         match ev {
@@ -1137,7 +1145,7 @@ impl Paint {
     fn draw_wizard(&self, f: &mut Frame, a: &Assets) {
         let Some(w) = &self.wizard else { return };
         let blink = (self.wizard_t * 3.0) as i32 % 2 == 0;
-        w.draw_panel(f, a, blink);
+        super::tricks_board::draw_studio(f, a, w, blink);
         let color = if blink { [255, 238, 76] } else { BLACK };
         let tool_frame = |f: &mut Frame, i: usize| {
             if let Some(t) = TOOLS.get(i) {

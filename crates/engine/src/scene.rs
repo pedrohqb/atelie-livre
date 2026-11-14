@@ -87,8 +87,12 @@ pub enum SceneId {
     PaintNew,
     /// Andar dos Projetos, ao sair de um projeto.
     Projects,
-    /// Uma lição dos Truques de Desenho na tela de pintura.
+    /// Uma lição dos Truques de Desenho: começa na tela de apresentação
+    /// (`TricksBoard`).
     Tricks(crate::scenes::wizard::TrickKind),
+    /// A lição na tela de pintura (o "ateliê de treinamento"), a partir do
+    /// passo dado do roteiro.
+    TricksStudio(crate::scenes::wizard::TrickKind, usize),
     /// Um projeto da Oficina na tela de pintura.
     Project(crate::scenes::projects::ProjectKind),
     /// Uma figura do desenho animado aberta na tela de pintura pelo clique

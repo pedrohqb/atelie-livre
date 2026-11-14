@@ -28,6 +28,36 @@ pub const ICON_LINK: u16 = 0x14cc;
 pub const LINK_PAGE: u8 = 2;
 pub const OPT_LINK: usize = 3;
 
+/// Primeiro passo na tela de pintura (o "ateliê de treinamento"); os
+/// anteriores são da tela de apresentação (`tricks_board`).
+pub const STUDIO: usize = 12;
+
+/// Lugar do balão de cada registro na apresentação (medido no original).
+pub const BOARD_BALLOONS: &[(usize, i32, i32)] = &[
+    (0, 401, 37),
+    (3, 22, 19),
+    (4, 479, 16),
+    (6, 401, 84),
+    (22, 465, 228),
+];
+
+/// Maggie (e o McZee) na apresentação, por registro: (figura, x, y). As
+/// poses dos passos sem captura repetem a do passo anterior.
+pub const BOARD_POSES: &[(usize, &[(u16, i32, i32)])] = &[
+    (0, &[(0x4009, 483, 271)]),
+    (3, &[(0x4033, 72, 218)]),
+    (4, &[(0x4009, 483, 271)]),
+    (6, &[(0x404b, 478, 277), (0x4041, 105, 223)]),
+    (9, &[(0x404b, 478, 277)]),
+    (11, &[(0x404b, 478, 277)]),
+    (22, &[(0x4073, 231, 393)]),
+    (29, &[(0x4073, 231, 393)]),
+    (36, &[(0x4009, 483, 271)]),
+    (42, &[(0x4009, 483, 271)]),
+    (44, &[(0x4009, 483, 271)]),
+    (47, &[(0x4009, 483, 271)]),
+];
+
 // cenas do café da manhã (312×272)
 const SCENE_DEPTH: u16 = 0x3e0b;
 const SCENE_FLAT: u16 = 0x4008;
@@ -76,40 +106,38 @@ pub fn steps() -> Vec<Step> {
         // 0: "Maggie, como é que você faz para os seus desenhos parecerem tridimensionais?"
         step(
             0,
-            None,
+            Some(SCENE_DEPTH),
             Advance::Choice(vec![
                 (0, Goto::Step(1)),
-                (1, Goto::FreePaint),
+                (1, Goto::Step(STUDIO)),
                 (2, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
-        // 1: Intro do ateliê de treinamento
-        step(50, None, Advance::Next),
-        // 2: Desenhar pode ser uma coisa mágica
+        // 1: Desenhar pode ser uma coisa mágica
         step(3, Some(SCENE_DEPTH), Advance::Next),
-        // 3: com/sem profundidade (os botões trocam a figura; Segue continua)
+        // 2: com/sem profundidade (os botões trocam a figura; Segue continua)
         step(
             4,
             Some(SCENE_FLAT),
             Advance::Pictures(vec![SCENE_DEPTH, SCENE_FLAT]),
         ),
-        // 4: como você dá a idéia de profundidade — ponto de vista (três botões)
+        // 3: como você dá a idéia de profundidade — ponto de vista (três botões)
         step(
             6,
             Some(SCENE_EYE_MIDDLE),
             Advance::Pictures(vec![SCENE_EYE_MIDDLE, SCENE_EYE_HIGH, SCENE_EYE_TOP]),
         ),
-        // 5: um pouco mais para cima
+        // 4: um pouco mais para cima
         step(9, Some(SCENE_EYE_HIGH), Advance::Next),
-        // 6: bem lá em cima
+        // 5: bem lá em cima
         step(11, Some(SCENE_EYE_TOP), Advance::Next),
-        // 7: clique na caixa mais perto (a da frente, à direita)
+        // 6: clique na caixa mais perto (a da frente, à direita)
         step(
             22,
             Some(SCENE_BOXES),
             Advance::Click(Target::PanelArea((170, 40, 140, 160))),
         ),
-        // 8: sobreposição — clique na tigela mais perto (embaixo, à esquerda);
+        // 7: sobreposição — clique na tigela mais perto (embaixo, à esquerda);
         // ela desliza para a frente do leite
         Step {
             anim: Some(PanelAnim {
@@ -125,13 +153,13 @@ pub fn steps() -> Vec<Step> {
                 Advance::Click(Target::PanelArea((0, 150, 170, 122))),
             )
         },
-        // 9: detalhe — clique na tigela com menos detalhes
+        // 8: detalhe — clique na tigela com menos detalhes
         step(
             36,
             Some(SCENE_BOWLS),
             Advance::Click(Target::PanelArea((120, 80, 120, 80))),
         ),
-        // 10: clique na embalagem de leite; os detalhes aparecem aos poucos
+        // 9: clique na embalagem de leite; os detalhes aparecem aos poucos
         Step {
             anim: Some(PanelAnim {
                 sprite: SPRITE_MILK_DETAIL,
@@ -146,14 +174,17 @@ pub fn steps() -> Vec<Step> {
                 Advance::Click(Target::PanelArea((0, 40, 110, 130))),
             )
         },
-        // 11: resumo dos truques (a embalagem detalhada fica até o Segue)
+        // 10: resumo dos truques (a embalagem detalhada fica até o Segue)
         step(44, Some(SCENE_BOWLS), Advance::Next),
-        // 12: ferramentas especiais?
+        // 11: ferramentas especiais?
         step(
             47,
             Some(SCENE_DEPTH),
-            Advance::Choice(vec![(0, Goto::Step(13)), (1, Goto::Step(54))]),
+            Advance::Choice(vec![(0, Goto::Step(STUDIO)), (1, Goto::Step(54))]),
         ),
+        // pintura ("ateliê de treinamento")
+        // 12: "Seja bem-vindo ao meu ateliê de treinamento!"
+        step(50, None, Advance::Next),
         // 13: primeiro, a linha do horizonte
         step(48, Some(TABLE_HORIZON), Advance::Next),
         // 14: clique nas Super-ferramentas
@@ -296,7 +327,7 @@ pub fn steps() -> Vec<Step> {
             230,
             None,
             Advance::Choice(vec![
-                (0, Goto::Step(1)),
+                (0, Goto::Step(STUDIO)),
                 (1, Goto::Scene(SceneId::TricksFloor)),
             ]),
         ),
@@ -320,7 +351,7 @@ pub fn steps() -> Vec<Step> {
             202,
             None,
             Advance::Choice(vec![
-                (0, Goto::Step(1)),
+                (0, Goto::Step(STUDIO)),
                 (1, Goto::Folder),
                 (2, Goto::Scene(SceneId::TricksFloor)),
             ]),
@@ -364,10 +395,16 @@ mod tests {
     fn first_steps_run() {
         let mut w = wizard();
         assert_eq!(w.on_event(E::Option(0)), O::Entered(1));
-        for k in 2..=7 {
+        for k in 2..=6 {
             assert_eq!(w.on_event(E::Next), O::Entered(k));
         }
-        assert_eq!(w.on_event(E::Panel(200, 100)), O::Entered(8));
+        assert_eq!(w.on_event(E::Panel(200, 100)), O::Entered(7));
+        // "ferramentas especiais?" → o ateliê de treinamento
+        let mut w = wizard();
+        drive(&mut w, STUDIO);
+        assert_eq!(w.step().record.1, 50);
+        assert_eq!(w.on_event(E::Next), O::Entered(13));
+        assert_eq!(w.step().record.1, 48);
     }
 
     /// Avança até o passo `target` pelo caminho "sim" de cada passo.
