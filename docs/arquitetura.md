@@ -98,7 +98,7 @@ Telas do prédio e da Entrada:
 | `room`, `room_spec`, `rooms_data`, `room_objects`, `room_talk` | Salas do prédio: a mecânica (`room`), o contrato dos dados (`room_spec`: `RoomSpec` por sala, `RoomKit` por programa, `Action`), as salas do Fine Artist (`rooms_data`: `LOBBY_ROOM`…, `ARTIST_KIT`), objetos clicáveis (bolsa mágica, varinha, lâmpada, maleta), balões (`WHAT 100d`/`0bb8`), `Helper` (McZee/Maggie/Max, "Você quer me ver menos?"), `Pick`/`PickSpec` (balões de escolha), `quit_balloon_in(pos)`. |
 | `elevator`, `attic`, `gags`, `studio_wall` | Elevador, sótão, animações ambientes, plaqueta do quadro da parede. |
 | `writer_*` | Dados do Creative Writer para as cenas compartilhadas, um arquivo por tarefa (`writer_entry`, `writer_rooms`, `writer_lobby`, `writer_office_room`, `writer_floors`, `writer_attic`, `writer_gags`, `writer_street`, `writer_story`, `writer_elevator`, `writer_library`, `writer_portfolio`). |
-| `gallery_room` | Galeria do saguão: três molduras, maleta, lixeira, impressora, McZee. |
+| `gallery_room` | Galeria do saguão (FA: três molduras, maleta, lixeira, impressora, McZee) e Biblioteca do Writer, pelo `GallerySpec` (`ARTIST_GALLERY` / `writer_library::WRITER_LIBRARY`); o que os trabalhos são (desenhos ou documentos) é um `Works`. |
 | `gallery` | Galeria antiga (grade de miniaturas); reexporta `list_drawings`/`list_samples`. |
 | `portfolio` | Fichário verde (a pasta de trabalhos): árvore criança › Ateliê › quadros, busca pelo nome, miniatura, título/artista. |
 | `browser` | Navegador de recursos (desenvolvimento). |
@@ -122,7 +122,7 @@ Tela de pintura e ferramentas:
 |---|---|---|
 | Diálogo verde "achar arquivos" (Cachorrinho) | `scenes::finder_dialog`: geometria, `FileList` (rolagem, escolha, `hit` → `Hit`), `Entry`/`Kind` (`File`, `Outside`, `Back`), `draw_left`/`draw_right`. Cada ferramenta decide o que os botões fazem, os sons e a metade direita. | Cachorrinho dos sons (`sounds::finder`), Cachorrinho dos adesivos (`paint::find_pictures`). |
 | Fichário verde (pasta) | `scenes::portfolio::Binder` | Galeria e maleta das salas (`GalleryRoom::portfolio`). |
-| Impressão | `scenes::printing`: `PrintJob` (folhas numa thread, `lp`, tempo mínimo, cancelar), `step_balloon` (Pronto / Imprimindo / Terminei), `mczee_balloon`, `alert_balloon` + `CANT_PRINT`/`CANCELED`. | Prévia da Galeria (`gallery_print`), máquina do McZee (`paint::print_machine`). |
+| Impressão | `scenes::printing`: `PrintJob` (folhas numa thread, `lp`, tempo mínimo, cancelar), `step_balloon` (Pronto / Imprimindo / Terminei), `mczee_balloon`, `alert_balloon`/`alert_balloon_in` + `CANT_PRINT`/`CANCELED`. A prévia da Galeria (`gallery_print::PrintPreview`) muda por `PreviewSpec` (`ARTIST_PREVIEW`, `writer_library::WRITER_PREVIEW`) e imprime um `Sheet` (desenho ou folha já montada). | Prévia da Galeria e da Biblioteca (`gallery_print`), máquina do McZee (`paint::print_machine`). |
 | "EPA! O que você quer fazer?" (Sair / Continuar) | `Entry::quit_balloon`, posicionado por `room_talk::quit_balloon(assets, pos)` | Entrada, salas, elevador, Galeria (esta com `alert = false`). |
 | "Você quer me ver menos?" / "Que bom que você me chamou de novo" | `room_talk::Helper::balloon` | Salas, elevador, Galeria. |
 | Sons em sequência | `ui::SoundQueue` | Entrada, Galeria. |
@@ -384,8 +384,14 @@ impl Street {
   de chegada e de entrada.
 - **História** (`StorySpec`): bloco `WHAT`, álbum e máscara, falas e
   páginas, fotos e legendas por fala.
-- **Galeria/Biblioteca** (`GallerySpec`): número de molduras e posições,
-  impressora, lixeira, interruptor e gaveta de unidades, balões.
+- **Galeria/Biblioteca** (`GallerySpec`, feito na T9): molduras (posições,
+  tamanho, figura ou parede inteira, `Picture::Offset`/`Fit`), plaqueta,
+  áreas (sair, impressora, lixeira, seta, buraco), `DrawerSpec`
+  (interruptor e gaveta de unidades), registros (`GalleryRecords`,
+  `GalleryAlerts`), textos reserva, sons, posições dos balões, McZee, bolsa
+  e surpresas, e `works: &Works` — funções que listam os trabalhos com a
+  miniatura, leem/gravam a parede, abrem, montam a prévia de impressão,
+  apagam e dão as unidades. Ver `docs/telas/creative-writer-biblioteca.md`.
 - **Sótão**: aro, som de chegada, sons do escuro e (Writer) regiões e
   objetos do lampejo; o aro e o som de chegada já são dados do
   `RoomSpec` do sótão (`writer_attic::ATTIC`).
@@ -401,9 +407,14 @@ impl Street {
 
 ### Pendências conhecidas
 
-- As salas, a rua, a Imaginópolis, a história, o elevador, o sótão, a
-  Biblioteca e a pasta do Writer ainda mostram os dados do FA (com a
-  navegação do Writer) até as tarefas acima.
+- As salas, a rua, a Imaginópolis, a história, o elevador, o sótão e a
+  pasta do Writer ainda mostram os dados do FA (com a navegação do
+  Writer) até as tarefas acima.
+- Abrir um documento: `Effect::OpenDocument(caminho)` (o `SceneId` é
+  `Copy` e não leva o caminho); `run.rs` e o diretor dos testes trocam
+  para `Writer::open_document`, que hoje lê só o texto (`.txt` do
+  Escritório ou `.MAX`, `writer::store::load_any`). Quando o Escritório
+  usar o modelo rico, troque o corpo de `open_document`, não o efeito.
 - `CwScene::NewDocument` abre o editor com o último documento até o
   Escritório ganhar um construtor de documento em branco (`run.rs`).
 - O cursor padrão (`DEFAULT_CURSOR`) é a mão do `ARTIST.EXE`.

@@ -125,3 +125,18 @@ gravado num `.tmp` e renomeado). Correspondem aos arquivos `~MAXUSER.INF`
 Nas listas de figuras só valem nomes `NNN.png` (dígitos), sem caminho. Ao
 gravar, figuras novas ou modificadas recebem o próximo número livre e os
 PNGs que saíram da lista são apagados.
+
+## Textos do Creative Writer (`~/.local/share/atelie-livre/textos/`)
+
+| Arquivo | Conteúdo |
+|---|---|
+| `ultimo.txt`, `texto-AAAAMMDD-HHMMSS.txt` | o documento de trabalho e as cópias datadas do Escritório (`writer/store.rs`) |
+| `*.max` | documentos no formato do original (`max.md`); a Biblioteca os mostra com a miniatura `THMB` |
+| `~MAXUSER.INF` | preferências do usuário, como no original (`maxprefs.md`); a Biblioteca grava a parede nos `FILR` 1–4 e mantém o resto (lugar 0 = Escritório, fontes, Máquina de Idéias) |
+| `impressao-AAAAMMDD-HHMMSS.png` | folha mandada ao `lp` pela prévia de impressão da Biblioteca |
+
+Nos `FILR` gravados pelo port, os exemplos do Max vão como no original
+(pastas `SHARED`, `USERS`, `MAX` a partir de `MSKIDS`); um documento da
+criança vai **sem pastas**, só com o nome do arquivo, e é procurado na
+pasta de textos. A Biblioteca lista como documentos da criança os `*.max`
+e os `texto-*.txt` (não o `ultimo.*`).
