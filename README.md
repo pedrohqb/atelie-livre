@@ -253,5 +253,9 @@ de som, contíguos).
 
 GPL-3.0-or-later (ver `LICENSE`).
 
+As fontes livres em `assets/fonts/` (substitutas das TrueType do Creative
+Writer) têm licenças próprias (SIL OFL 1.1 e a da DejaVu); ver
+`assets/fonts/README.md`.
+
 Fine Artist, Creative Writer e demais nomes citados são marcas da Microsoft
 Corporation; este projeto não tem vínculo com a Microsoft.
