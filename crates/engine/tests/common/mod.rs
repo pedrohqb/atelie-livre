@@ -161,6 +161,22 @@ impl<'a> Director<'a> {
                             .with_user(&user, self.animal()),
                     ),
                     CwScene::NewDocument => Box::new(Writer::new(Some(self.texts()), assets)),
+                    CwScene::IdeaMachine => {
+                        Box::new(engine::scenes::writer_ideas::IdeaMachine::new(
+                            Some(&self.users()),
+                            &user,
+                            assets,
+                        ))
+                    }
+                    CwScene::PictureBoard => {
+                        Box::new(engine::scenes::writer_ideas::PictureBoard::new(
+                            Some(&self.users()),
+                            &user,
+                            assets,
+                        ))
+                    }
+                    // o editor ainda não pega o conteúdo da Oficina (TODO(office))
+                    CwScene::IdeaStory(_) => Box::new(Writer::new(Some(self.texts()), assets)),
                 }
             }
         }

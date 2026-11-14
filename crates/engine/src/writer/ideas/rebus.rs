@@ -1,5 +1,7 @@
 //! Figuras-rebus: o caractere `c` (1–255) é a figura `2c − 1` do
-//! `WRITER.PIC` (colorida, ≈30×28), com a versão em 1 bit em `2c`.
+//! `WRITER.PIC` (colorida, ≈30×28), com a versão em 1 bit em `2c`; a
+//! exceção é `c = 1` (aeronave), cuja colorida é a figura `0`
+//! (`office-complemento.md` §1: o `WRITER.PIC` não tem id 1).
 //!
 //! O bitmap `2c` não é uma máscara de transparência: em 252 dos 254 pares
 //! ele é exatamente o conjunto dos pixels pretos da figura colorida (a
@@ -20,7 +22,11 @@ const WHITE: [u8; 3] = [255, 255, 255];
 /// Ids no `WRITER.PIC` da figura colorida e da versão em 1 bit de `c`
 /// (`None` para `c = 0`).
 pub fn image_ids(c: u8) -> Option<(u16, u16)> {
-    (c > 0).then(|| (2 * c as u16 - 1, 2 * c as u16))
+    match c {
+        0 => None,
+        1 => Some((0, 2)),
+        _ => Some((2 * c as u16 - 1, 2 * c as u16)),
+    }
 }
 
 /// Cópia de `img` com alfa 0 no branco ligado à borda (vizinhança de 4).
@@ -98,6 +104,8 @@ mod tests {
         assert_eq!(image_ids(0x1a), Some((0x0033, 0x0034)));
         assert_eq!(image_ids(0xff), Some((0x01fd, 0x01fe)));
         assert_eq!(image_ids(0), None);
+        // aeronave: a colorida é o id 0
+        assert_eq!(image_ids(1), Some((0, 2)));
     }
 
     /// Imagem a partir de linhas: `.` branco, `#` preto, `o` laranja.

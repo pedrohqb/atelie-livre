@@ -97,7 +97,7 @@ Telas do prédio e da Entrada:
 | `street`, `imaginopolis`, `story` | Rua do museu, Imaginópolis, álbum da história do McZee. |
 | `room`, `room_spec`, `rooms_data`, `room_objects`, `room_talk` | Salas do prédio: a mecânica (`room`), o contrato dos dados (`room_spec`: `RoomSpec` por sala, `RoomKit` por programa, `Action`), as salas do Fine Artist (`rooms_data`: `LOBBY_ROOM`…, `ARTIST_KIT`), objetos clicáveis (bolsa mágica, varinha, lâmpada, maleta), balões (`WHAT 100d`/`0bb8`), `Helper` (McZee/Maggie/Max, "Você quer me ver menos?"), `Pick`/`PickSpec` (balões de escolha), `quit_balloon_in(pos)`. |
 | `elevator`, `attic`, `gags`, `studio_wall` | Elevador, sótão, animações ambientes, plaqueta do quadro da parede. |
-| `writer_*` | Dados do Creative Writer para as cenas compartilhadas, um arquivo por tarefa (`writer_entry`, `writer_rooms`, `writer_lobby`, `writer_office_room`, `writer_floors`, `writer_attic`, `writer_gags`, `writer_street`, `writer_story`, `writer_elevator`, `writer_library`, `writer_portfolio`). |
+| `writer_*` | Dados do Creative Writer para as cenas compartilhadas, um arquivo por tarefa (`writer_entry`, `writer_rooms`, `writer_lobby`, `writer_office_room`, `writer_floors`, `writer_attic`, `writer_gags`, `writer_street`, `writer_story`, `writer_elevator`, `writer_library`, `writer_portfolio`). Telas só do Writer: `writer_ideas` (Máquina de Idéias, Quadro de Figuras, Caderno) e `writer_easel` (Cavalete de lápis de cera). |
 | `gallery_room` | Galeria do saguão (FA: três molduras, maleta, lixeira, impressora, McZee) e Biblioteca do Writer, pelo `GallerySpec` (`ARTIST_GALLERY` / `writer_library::WRITER_LIBRARY`); o que os trabalhos são (desenhos ou documentos) é um `Works`. |
 | `gallery` | Galeria antiga (grade de miniaturas); reexporta `list_drawings`/`list_samples`. |
 | `portfolio` | Fichário verde (a pasta de trabalhos): árvore criança › Ateliê › quadros, busca pelo nome, miniatura, título/artista. |
@@ -158,9 +158,14 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   documento, `crate::writer::layout`.
 - **Oficina de Idéias**: `crate::writer::ideas` (sem SDL) tem a Máquina de
   Idéias (`Grammar` do `WORKSHOP.CHK`, `Machine` com o sorteio do
-  original), as figuras-rebus (`Assets::rebus`, `ideas::rebus::draw`) e a
-  gravação das entradas, figuras próprias e Caderno (`ideas::store`). As
-  cenas (sala, Máquina, Quadro, Caderno) ainda não existem.
+  original), as figuras-rebus (`Assets::rebus`, `ideas::rebus::draw`), a
+  gravação das entradas, figuras próprias e Caderno (`ideas::store`), a
+  lista do Quadro (`board`), o texto editável (`notes`), o estado da
+  sessão (`session`) e a ponte para o editor (`story`). As cenas são
+  `scenes::writer_ideas` (Máquina, Quadro, Caderno, botões com estado
+  apertado) e `scenes::writer_easel` (Cavalete de lápis de cera, que os
+  adesivos do Escritório podem reaproveitar); ver
+  `docs/telas/creative-writer-ideias.md`.
 
 ## Creative Writer: specs por programa
 
@@ -176,7 +181,9 @@ mudam); o do Writer vem de `cw/report/building*.md`.
 
 - As telas do Writer equivalentes às do FA são `SceneId::Cw(CwScene::…)`:
   `Entry`, `Story`, `BookStory`, `Imaginopolis`, `Street`,
-  `Building(Floor)`, `Library`, `Portfolio`, `NewDocument`. O editor é
+  `Building(Floor)`, `Library`, `Portfolio`, `NewDocument`; só do Writer:
+  `IdeaMachine`, `PictureBoard` (close-ups da Oficina de Idéias) e
+  `IdeaStory(fonte)` (o editor com a história começada lá). O editor é
   `SceneId::Writer`.
 - `SceneId::in_program(p)` leva um id ao programa `p` (`Street` →
   `Cw(Street)`, `Studio` → `Cw(Building(Floor::Studio))`, `Gallery` →
