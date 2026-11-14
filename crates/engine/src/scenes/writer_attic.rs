@@ -186,6 +186,9 @@ const ATTIC_ROOM: RoomSpec = RoomSpec {
     elevator_sound: 0x2fc,
     arrival_sound: Some(SND_ARRIVE),
     elevator_arrival_sound: None,
+    lamp: None,
+    object_balloon: None,
+    wand_props: &[],
 };
 
 /// O sótão do Writer.
