@@ -279,7 +279,7 @@ mod tests {
         // um .mag solto (vindo de fora) → entra
         c.px.fill(7);
         save_mag(&c, pal, &dir.path().join("Casa.MAG")).unwrap();
-        // um .mag de outro tamanho não abre e fica de fora
+        // um .mag menor que o quadro abre no meio de um quadro branco
         save_mag(&Canvas::new(3, 3), pal, &dir.path().join("mini.mag")).unwrap();
         let files = list_drawings(dir.path());
         assert_eq!(files.len(), 3);
@@ -290,7 +290,7 @@ mod tests {
                 .any(|p| p.ends_with("desenho-20261031-000000.mag"))
         );
         let mut g = Gallery::new(Some(dir.path().to_path_buf()), &a);
-        assert_eq!(g.count(), 2);
+        assert_eq!(g.count(), 3);
         let k = g
             .own
             .iter()

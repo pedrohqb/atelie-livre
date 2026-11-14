@@ -137,25 +137,36 @@ pub fn load_stamp_png(path: &Path, pal: &[Rgb]) -> Option<super::stamp::Stamp> {
     })
 }
 
-/// Abre um desenho `.MAG` do Fine Artist de 594×347; as cores da paleta do
-/// documento são aproximadas à do programa. Outro tamanho ou erro → `None`.
+/// Abre um desenho `.MAG` do Fine Artist; as cores da paleta do documento
+/// são aproximadas à do programa. Uma figura menor que o quadro (os botões
+/// e adesivos de exemplo, 162×162, 216×162...) fica no meio de um quadro
+/// branco. Maior que o quadro ou erro → `None`.
 pub fn load_mag(path: &Path, pal: &[Rgb]) -> Option<Canvas> {
     let data = std::fs::read(path).ok()?;
     let pic = mag::read(&data).ok()?;
-    if (pic.width as u32, pic.height as u32) != (CANVAS_W, CANVAS_H) {
+    let (w, h) = (pic.width as u32, pic.height as u32);
+    if w > CANVAS_W || h > CANVAS_H || pic.pixels.len() < (w * h) as usize {
         return None;
     }
     let mut c = Canvas::new(CANVAS_W, CANVAS_H);
-    if pic.palette == pal {
+    if (w, h) == (CANVAS_W, CANVAS_H) && pic.palette == pal {
         c.px.copy_from_slice(&pic.pixels);
         return Some(c);
     }
+    let same = pic.palette == pal;
     let mut map = [None; 256];
-    for (dst, &i) in c.px.iter_mut().zip(&pic.pixels) {
-        *dst = *map[i as usize].get_or_insert_with(|| {
-            let p = pic.palette[i as usize];
-            nearest(pal, p.r, p.g, p.b)
-        });
+    let (x0, y0) = ((CANVAS_W - w) / 2, (CANVAS_H - h) / 2);
+    for (k, &i) in pic.pixels.iter().take((w * h) as usize).enumerate() {
+        let v = if same {
+            i
+        } else {
+            *map[i as usize].get_or_insert_with(|| {
+                let p = pic.palette[i as usize];
+                nearest(pal, p.r, p.g, p.b)
+            })
+        };
+        let (x, y) = (x0 + k as u32 % w, y0 + k as u32 / w);
+        c.px[(y * CANVAS_W + x) as usize] = v;
     }
     Some(c)
 }
@@ -568,11 +579,20 @@ mod tests {
     }
 
     #[test]
-    fn load_mag_wrong_size_or_garbage_is_none() {
+    fn load_mag_too_big_or_garbage_is_none_and_small_is_centered() {
         let dir = tempfile::tempdir().unwrap();
         let m = dir.path().join("c.mag");
-        save_mag(&Canvas::new(10, 10), &pal(), &m).unwrap();
+        save_mag(&Canvas::new(CANVAS_W + 1, 10), &pal(), &m).unwrap();
         assert_eq!(load_mag(&m, &pal()), None);
+        // menor que o quadro (um botão de exemplo): no meio, sobre branco
+        let mut small = Canvas::new(10, 10);
+        small.px.fill(7);
+        save_mag(&small, &pal(), &m).unwrap();
+        let c = load_mag(&m, &pal()).unwrap();
+        let (cx, cy) = ((CANVAS_W - 10) / 2, (CANVAS_H - 10) / 2);
+        assert_eq!(c.get(cx as i32, cy as i32), Some(7));
+        assert_eq!(c.get(cx as i32 - 1, cy as i32), c.get(0, 0));
+        assert_eq!(c.get(0, 0), Canvas::new(1, 1).get(0, 0));
         std::fs::write(&m, b"CHNK lixo").unwrap();
         assert_eq!(load_mag(&m, &pal()), None);
         assert_eq!(load_mag(&dir.path().join("nao.mag"), &pal()), None);
