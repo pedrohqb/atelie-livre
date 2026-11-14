@@ -14,6 +14,8 @@ pub enum Format {
     Chnk,
     Mag,
     What,
+    Pict,
+    MacPaint,
 }
 
 impl fmt::Display for Format {
@@ -30,6 +32,8 @@ impl fmt::Display for Format {
             Format::Chnk => "chnk",
             Format::Mag => "mag",
             Format::What => "what",
+            Format::Pict => "pict",
+            Format::MacPaint => "macpaint",
         };
         f.write_str(s)
     }

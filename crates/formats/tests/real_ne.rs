@@ -224,3 +224,148 @@ fn standard_windows_resources_decode() {
     assert_eq!(strings[0], (1, "Erro".to_string()));
     assert!(strings[1].1.starts_with("Você precisa"));
 }
+
+#[test]
+fn writer_menu_dialogs_and_accelerators() {
+    use formats::winres_ui::{self, MenuItem};
+    let Some(d) = support::read("WRITER.EXE") else {
+        return;
+    };
+    let ne = ne::parse(&d).unwrap();
+
+    let menu = winres_ui::parse_menu(ne.find("MENU", 0x3e8).unwrap().data).unwrap();
+    let bar: Vec<String> = menu.items.iter().map(MenuItem::label).collect();
+    assert_eq!(bar, ["Arquivo", "Editar", "Ferramentas"]);
+    let salvar = menu.find(0x1f43).unwrap();
+    assert_eq!(salvar.label(), "Salvar Como...");
+    assert_eq!(salvar.shortcut(), Some("Ctrl+S"));
+    assert_eq!(
+        menu.find(0x1f5c).unwrap().label(),
+        "Sobre o Creative Writer..."
+    );
+    assert_eq!(
+        menu.find(0x1f50).unwrap().label(),
+        "Redefinir Máquina de Idéias..."
+    );
+    // Voltar ao Creative Writer e Sair têm o mesmo comando
+    assert_eq!(
+        menu.commands()
+            .iter()
+            .filter(|(_, c)| matches!(c, MenuItem::Command { id: 0x1f46, .. }))
+            .count(),
+        2
+    );
+
+    let acc = winres_ui::parse_accelerators(ne.find("ACCELERATOR", 0x3e9).unwrap().data).unwrap();
+    let keys: Vec<(char, u16)> = acc
+        .iter()
+        .map(|a| (a.ctrl_letter().unwrap(), a.command))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            ('N', 0x1f41),
+            ('O', 0x1f42),
+            ('S', 0x1f43),
+            ('Q', 0x1f46),
+            ('Z', 0x1f47),
+            ('X', 0x1f49),
+            ('C', 0x1f4a),
+            ('V', 0x1f4b)
+        ]
+    );
+
+    let dialogs = |id| winres_ui::parse_dialog(ne.find("DIALOG", id).unwrap().data).unwrap();
+    let sobre = dialogs(0x7d0);
+    assert_eq!(sobre.caption, "Creative Writer");
+    assert_eq!(sobre.font, Some((8, "MS Sans Serif".into())));
+    assert_eq!(
+        sobre.static_texts(),
+        [
+            "Versão 1.0",
+            "20 de outubro de 1995",
+            "® 1993-1995  Microsoft Corporation. Direitos reservados.",
+            "Olhe a barra de menu para ver comandos úteis."
+        ]
+    );
+    assert_eq!(sobre.buttons(), [(1, "OK".to_string())]);
+
+    let som = dialogs(0xbb8);
+    assert_eq!(som.caption, "Controle de Som");
+    assert_eq!(
+        som.buttons(),
+        [
+            (0xbba, "Ligar sons".to_string()),
+            (0xbb9, "Desligar sons".to_string())
+        ]
+    );
+    assert!(som.control(0xbb9).unwrap().is_default_button());
+
+    let decod = dialogs(0x1388);
+    assert_eq!(decod.caption, "Decodificar o Documento");
+    assert!(
+        decod
+            .static_texts()
+            .contains(&"Detetive McZee para salvar o dia")
+    );
+    assert_eq!(decod.buttons(), [(1, "Valeu, McZee".to_string())]);
+
+    let ideias = dialogs(0x1770);
+    assert_eq!(ideias.caption, "Redefinir a Máquina de Idéias");
+    assert_eq!(
+        ideias.static_texts()[1],
+        "Remove todas as entradas\nque você colocou."
+    );
+    assert_eq!(
+        ideias.buttons(),
+        [
+            (2, "Deixar como está".to_string()),
+            (3, "Apagar".to_string())
+        ]
+    );
+
+    let impr = dialogs(0x1b58);
+    assert_eq!(impr.caption, "Opções de Impressão");
+    assert_eq!((impr.cx, impr.cy), (230, 112));
+    assert_eq!(
+        impr.buttons(),
+        [
+            (0x1b5a, "Opções locais".to_string()),
+            (0x1b59, "Opções globais".to_string()),
+            (2, "Deixar como está".to_string())
+        ]
+    );
+}
+
+#[test]
+fn artist_menu_and_dialogs() {
+    use formats::winres_ui;
+    let Some(d) = support::read("ARTIST.EXE") else {
+        return;
+    };
+    let ne = ne::parse(&d).unwrap();
+    let named = |kind: &str, name: &str| {
+        ne.of_kind(kind)
+            .find(|r| r.name.as_deref() == Some(name))
+            .unwrap_or_else(|| panic!("{kind} {name}"))
+            .data
+    };
+    let menu = winres_ui::parse_menu(named("MENU", "ADULTMENU")).unwrap();
+    assert_eq!(menu.items.len(), 3);
+    assert_eq!(menu.find(0x1f).unwrap().label(), "Salvar Como BMP...");
+    assert_eq!(menu.find(0x28).unwrap().label(), "Sobre o Fine Artist...");
+
+    let sobre = winres_ui::parse_dialog(named("DIALOG", "ABOUTSPLAT")).unwrap();
+    assert_eq!(sobre.caption, "Fine Artist");
+    assert_eq!(sobre.static_texts()[0], "Versão 1.0");
+    let tt = winres_ui::parse_dialog(named("DIALOG", "TTDIALOG")).unwrap();
+    assert!(tt.static_texts()[0].starts_with("Não consigo achar as fontes TrueType."));
+    assert_eq!(
+        tt.buttons(),
+        [(1, "Continuar".to_string()), (2, "Sair".to_string())]
+    );
+    for name in ["PRINTOPTIONS", "SAVEAS", "SOUNDDIALOG"] {
+        let d = winres_ui::parse_dialog(named("DIALOG", name)).unwrap();
+        assert!(!d.controls.is_empty(), "{name}");
+    }
+}
