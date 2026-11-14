@@ -111,6 +111,11 @@ pub struct StorySpec {
     pub speeches: &'static [(usize, usize)],
     /// Texto reserva por registro (sem o `.EXE`).
     pub fallback: &'static [&'static str],
+    /// Cliques nas páginas do álbum e no balão e as teclas (Enter, setas)
+    /// também viram a página; sem isso, só os botões do balão.
+    pub page_turns: bool,
+    /// Som de um clique fora do balão (recusa), se houver.
+    pub refuse: Option<u16>,
 }
 
 /// A história do Fine Artist.
@@ -122,6 +127,8 @@ pub const ARTIST_STORY: StorySpec = StorySpec {
     pages: &PAGES,
     speeches: &SPEECHES,
     fallback: &FALLBACK,
+    page_turns: true,
+    refuse: None,
 };
 
 /// As falas: registro do `WHAT 4200` e página dupla. Os registros 2 e 3 do
@@ -260,6 +267,12 @@ impl Story {
         }
     }
 
+    /// Área de um botão do balão da fala atual (testes).
+    #[cfg(test)]
+    pub(crate) fn balloon_button(&self, a: &Assets, b: Button) -> Option<(i32, i32, i32, i32)> {
+        self.balloon.button_rect(a, b)
+    }
+
     /// Partes do balão da fala atual (testes).
     #[cfg(test)]
     pub(crate) fn balloon_parts(&self) -> &[Part] {
@@ -293,6 +306,9 @@ impl Scene for Story {
             if self.done {
                 break;
             }
+            if !self.spec.page_turns && matches!(i, Input::Key { .. }) {
+                continue;
+            }
             match self.balloon.handle(assets, i) {
                 Some(Button::Next) => self.next(&mut fx, assets),
                 Some(Button::Back) => self.back(&mut fx, assets),
@@ -306,7 +322,12 @@ impl Scene for Story {
                         x,
                         y,
                     } => {
-                        if self.balloon.contains(assets, *x, *y) {
+                        let inside = self.balloon.contains(assets, *x, *y);
+                        if !self.spec.page_turns {
+                            if !inside && let Some(id) = self.spec.refuse {
+                                fx.push(self.sound(id));
+                            }
+                        } else if inside {
                             self.next(&mut fx, assets);
                         } else {
                             match Self::album_page_at(*x, *y) {

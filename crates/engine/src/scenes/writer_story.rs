@@ -87,7 +87,9 @@ pub const FALLBACK: [&str; 11] = [
 ];
 
 /// A história do Writer: as falas e as páginas são as mesmas do FA (`[2]` e
-/// `[3]` são "blank" e ficam de fora).
+/// `[3]` são "blank" e ficam de fora). Medido no original: clicar no álbum
+/// ou fora do balão toca a recusa `217` sem virar a página; o texto do
+/// balão, Enter e as setas não fazem nada; só Volta/Para/Segue respondem.
 pub const WRITER_STORY: StorySpec = StorySpec {
     program: Program::Writer,
     background: WRITER_ENTRY.background,
@@ -96,6 +98,9 @@ pub const WRITER_STORY: StorySpec = StorySpec {
     pages: &PAGES,
     speeches: &SPEECHES,
     fallback: &FALLBACK,
+    // no original só os botões viram a página; fora do balão, a recusa
+    page_turns: false,
+    refuse: Some(0x217),
 };
 
 #[cfg(test)]
@@ -106,7 +111,7 @@ mod tests {
     use crate::scene::{Effect, Input, Key, Scene, SceneId};
     use crate::scenes::story::{ALBUM_POS, Story};
     use crate::scenes::testutil::{assets, empty_assets};
-    use crate::text_balloon::Part;
+    use crate::text_balloon::{Button, Part};
 
     fn key(key: Key) -> Input {
         Input::Key {
@@ -114,6 +119,40 @@ mod tests {
             ctrl: false,
             alt: false,
         }
+    }
+
+    fn next(s: &mut Story, a: &crate::assets::Assets) -> Vec<Effect> {
+        let r = s.balloon_button(a, Button::Next).unwrap();
+        s.update(&[click(r.0 + 2, r.1 + 2)], 0.0, a)
+    }
+
+    fn click(x: i32, y: i32) -> Input {
+        Input::Click {
+            button: crate::scene::MouseButton::Left,
+            x,
+            y,
+        }
+    }
+
+    /// Só os botões viram a página: álbum e fora do balão tocam a recusa;
+    /// texto do balão e teclas, nada.
+    #[test]
+    fn only_the_buttons_turn_pages() {
+        let (_d, a) = empty_assets();
+        let mut s = Story::for_program(Program::Writer, None, &a);
+        let refuse = Effect::PlaySound(crate::assets::SoundRef::Snd(Program::Writer, 0x217));
+        let fx = s.update(&[click(450, 330), click(40, 40)], 0.0, &a);
+        assert_eq!(fx.iter().filter(|e| **e == refuse).count(), 2);
+        let r = s.balloon_button(&a, Button::Stop).unwrap();
+        let fx = s.update(
+            &[click(r.0 + 40, r.1 - 20), key(Key::Right), key(Key::Enter)],
+            0.0,
+            &a,
+        );
+        assert!(!fx.contains(&refuse));
+        assert_eq!(s.page(), 0);
+        next(&mut s, &a);
+        assert_eq!(s.page(), 1);
     }
 
     /// Sem dados: os textos reserva do Writer, os sons do `WRITER.SND` e o
@@ -126,7 +165,7 @@ mod tests {
         s.draw(&mut f, &a);
         let mut all = Vec::new();
         for _ in 0..SPEECHES.len() {
-            all.extend(s.update(&[key(Key::Right)], 0.0, &a));
+            all.extend(next(&mut s, &a));
         }
         assert!(all.contains(&Effect::ChangeScene(
             SceneId::Imaginopolis.in_program(Program::Writer)
@@ -174,7 +213,7 @@ mod tests {
             matches!(&s.balloon_parts()[0], Part::Text(t) if t.starts_with("Oi, eu sou o McZee!"))
         );
         for _ in 0..5 {
-            s.update(&[key(Key::Right)], 0.0, &a);
+            next(&mut s, &a);
         }
         assert_eq!(s.spread(), 4);
         assert!(

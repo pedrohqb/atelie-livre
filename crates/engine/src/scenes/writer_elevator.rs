@@ -20,6 +20,8 @@
 //!   (16416 + 11712 + 31868 B) com o do meio em laço e chama
 //!   `waveOutBreakLoop` ao chegar — o mesmo número de trechos numa viagem
 //!   de um andar ou de três (medido no Wine, S→4 e 4→3).
+//! - Portas abertas: o fundo do andar aparece de x 174 a 475 (y ≥ 88),
+//!   30 px para dentro da máscara das portas (`building_ride`, `open`).
 //! - McZee (fantasia da sala) em (−5,180); balão `0bb8[63]` "Subindo? Ou
 //!   descendo?" em (140,193); luminária "Tchau" `6917` em (46,6).
 
@@ -66,7 +68,7 @@ pub const WRITER_ELEVATOR: ElevatorSpec = ElevatorSpec {
     costumes: MCZEE_COSTUMES,
     ride: (0x0822, 0x0823),
     floor_room: super::writer_rooms::room,
-    doorway_rim: 12,
+    doorway_rim: 30,
     what: 0x0bb8,
     ask: 63,
     ask_pos: (140, 193),
