@@ -26,6 +26,7 @@ leitores sem consultar o código original.
 | [`pict.md`](pict.md) | Figuras do Mac que o Writer importa: `PICT` (bitmaps das versões 1 e 2) e MacPaint |
 | [`fontes-substitutas.md`](fontes-substitutas.md) | As 5 TrueType do produto (ausentes nos dados) e a escolha de substitutos instalados (`engine::paint::ttf::substitute`) |
 | [`workshop.md`](workshop.md) | Oficina de Idéias do Creative Writer (`WORKSHOP.CHK`): frases e gramática da Máquina de Idéias, regra de sorteio, lista e figuras do Quadro de Figuras, figuras-rebus |
+| [`dct.md`](dct.md) | Dicionários do Creative Writer (`SPELL.DCT`, `THES.DCT`): gramática de pares, lista ortográfica, thesaurus; alternativa livre |
 | [`animacao.md`](animacao.md) | Pasta `animacao-…/` gravada pelo Ateliê Livre (desenho animado): PNGs, `animacao.json` e GIF animado |
 
 ## Mapa dos arquivos
@@ -43,7 +44,7 @@ leitores sem consultar o código original.
 | `SHARED/STUFF/WORKSHOP.CHK` | `CHNK` (Oficina de Idéias do Writer) | `workshop.md` |
 | `SHARED/STUFF/MAG100.SND`, `MAX100.SND` | `CHNK` com sons WAV | `chnk.md`, `sons.md` |
 | `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | `fontes.md` |
-| `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO) | fora do escopo |
+| `WRITER/SPELL.DCT`, `THES.DCT` | dicionários licenciados (INSO; Houghton Mifflin), comprimidos com gramática de pares | `dct.md` |
 | `WRITER/PICTIMP.FLT` | filtro de importação de figuras do Mac (DLL NE) | `pictimp.md` (só o necessário; o filtro não é usado pelo port) |
 
 Os arquivos que o próprio Ateliê Livre grava ao lado dos desenhos

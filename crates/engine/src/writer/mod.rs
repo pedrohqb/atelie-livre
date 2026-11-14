@@ -22,6 +22,7 @@
 //! O modelo provisório que a cena `scenes/writer` usa hoje fica em
 //! [`legacy`] e é reexportado aqui com os nomes antigos até a integração.
 
+pub mod dict;
 pub mod doc;
 pub mod fonts;
 pub mod ideas;

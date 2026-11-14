@@ -17,6 +17,7 @@ pub enum Format {
     What,
     Pict,
     MacPaint,
+    Dct,
 }
 
 impl fmt::Display for Format {
@@ -36,6 +37,7 @@ impl fmt::Display for Format {
             Format::What => "what",
             Format::Pict => "pict",
             Format::MacPaint => "macpaint",
+            Format::Dct => "dct",
         };
         f.write_str(s)
     }
