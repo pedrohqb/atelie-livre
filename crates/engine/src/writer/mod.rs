@@ -24,10 +24,15 @@
 //!   "Salvar como texto".
 //! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
 
+pub mod assistant;
+pub mod assistant_banner;
+pub mod assistant_card;
+pub mod assistant_news;
 pub mod borders;
 pub mod convert;
 pub mod dict;
 pub mod doc;
+pub mod fold_figure;
 pub mod fonts;
 pub mod ideas;
 pub mod layout;
