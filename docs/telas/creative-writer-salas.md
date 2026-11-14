@@ -85,8 +85,8 @@ seta.
 
 - Máquina de Idéias `[44]` (Ignorar → `[45]`) e Quadro de Figuras `[49]`
   (→ `[50]`); a primeira bolinha (ou Ctrl+clique) abre
-  `CwScene::IdeaMachine` / `CwScene::PictureBoard` (telas de outra tarefa;
-  enquanto não existem, `run.rs` abre a área de escrita); a segunda, a pasta
+  os close-ups `CwScene::IdeaMachine` / `CwScene::PictureBoard`
+  (`writer_ideas`); a segunda, a pasta
   (no original já filtrada pela área; o port ainda não filtra).
 - Chegada `[42]`: Máquina, Quadro e `[70]` (mastro, com "Tecla de atalho"
   `[71]`).

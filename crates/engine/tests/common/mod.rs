@@ -165,11 +165,23 @@ impl<'a> Director<'a> {
                         self.animal(),
                         assets,
                     )),
-                    // a Máquina de Idéias e o Quadro de Figuras ainda são a
-                    // área de escrita (como em `run.rs`)
-                    CwScene::NewDocument | CwScene::IdeaMachine | CwScene::PictureBoard => {
-                        Box::new(Writer::new(Some(self.texts()), assets))
+                    CwScene::NewDocument => Box::new(Writer::new(Some(self.texts()), assets)),
+                    CwScene::IdeaMachine => {
+                        Box::new(engine::scenes::writer_ideas::IdeaMachine::new(
+                            Some(&self.users()),
+                            &user,
+                            assets,
+                        ))
                     }
+                    CwScene::PictureBoard => {
+                        Box::new(engine::scenes::writer_ideas::PictureBoard::new(
+                            Some(&self.users()),
+                            &user,
+                            assets,
+                        ))
+                    }
+                    // o editor ainda não pega o conteúdo da Oficina (TODO(office))
+                    CwScene::IdeaStory(_) => Box::new(Writer::new(Some(self.texts()), assets)),
                 }
             }
         }

@@ -40,10 +40,12 @@ pub mod writer;
 // (um arquivo por tarefa; ver docs/arquitetura.md, "Creative Writer: specs
 // por programa").
 pub mod writer_attic;
+pub mod writer_easel;
 pub mod writer_elevator;
 pub mod writer_entry;
 pub mod writer_floors;
 pub mod writer_gags;
+pub mod writer_ideas;
 pub mod writer_library;
 pub mod writer_lobby;
 pub mod writer_office_room;

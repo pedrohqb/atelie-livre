@@ -14,8 +14,7 @@
 //!   [`PROJECT_START`] abre a área de escrita com um documento novo
 //!   (`CwScene::NewDocument`), o *placeholder* combinado.
 //! - **Idéias**: a Máquina de Idéias e o Quadro de Figuras são as telas
-//!   `CwScene::IdeaMachine` e `CwScene::PictureBoard` (feitas por outra
-//!   tarefa; enquanto não existem, `run.rs` abre nelas a área de escrita).
+//!   `CwScene::IdeaMachine` e `CwScene::PictureBoard` (`writer_ideas`).
 //!
 //! A segunda bolinha abre a pasta (no original, já filtrada pela área:
 //! "Máquina de Idéias", `STR#03ac[9]`; a pasta do port ainda não filtra).
