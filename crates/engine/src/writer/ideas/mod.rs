@@ -5,5 +5,6 @@
 
 pub mod machine;
 pub mod rebus;
+pub mod store;
 
 pub use machine::{Grammar, Machine, Mode, Piece, RemoveError, SPIN_MS, Slot, WINDOWS};
