@@ -229,6 +229,11 @@ pub enum Effect {
     RecordCancel,
     /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
     SetUser(String),
+    /// Troca para a área de escrita do Creative Writer com este documento
+    /// (`.MAX` ou o `.txt` do Escritório): clique duplo numa moldura da
+    /// Biblioteca. Como `ChangeScene(SceneId::Writer)`, mas o `SceneId` é
+    /// `Copy` e não leva o caminho.
+    OpenDocument(std::path::PathBuf),
     Log(String),
     Quit,
 }

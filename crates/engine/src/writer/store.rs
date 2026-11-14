@@ -83,6 +83,24 @@ pub fn load(path: &Path) -> Option<Document> {
     Some(from_text(&text))
 }
 
+/// Abre um documento da Biblioteca: o `.txt` deste formato ou um `.MAX`
+/// do original (só o texto, parágrafo por parágrafo; os estilos e objetos
+/// ficam para o modelo rico). Devolve também o título do `.MAX`.
+pub fn load_any(path: &Path) -> Option<(Document, Option<String>)> {
+    let is_max = path
+        .extension()
+        .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case("max"));
+    if !is_max {
+        return Some((load(path)?, None));
+    }
+    let d = formats::max::read(&std::fs::read(path).ok()?).ok()?;
+    // `plain_text` separa os parágrafos com `\n`; aqui eles vão com uma
+    // linha vazia entre eles
+    let text = d.plain_text().replace('\n', "\n\n");
+    let title = Some(d.add.title.trim().to_string()).filter(|t| !t.is_empty());
+    Some((from_text(&text), title))
+}
+
 /// Grava `ultimo.txt` e, se o texto mudou, também uma cópia com data e hora.
 pub fn save(dir: &Path, doc: &Document, changed: bool, now: u64) -> Result<(), String> {
     let fail = |e: io::Error, p: &Path| format!("não consegui gravar {}: {e}", p.display());
@@ -128,6 +146,25 @@ mod tests {
         assert_eq!(d.para().text(), "[adesivo:1:2");
         let d = from_text("a\tb\r\n");
         assert_eq!(d.para().text(), "ab");
+    }
+
+    #[test]
+    fn load_any_reads_txt_and_rejects_bad_max() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("texto-20261101-100000.txt");
+        std::fs::write(&p, "um\n\ndois\n").unwrap();
+        let (d, title) = load_any(&p).unwrap();
+        assert_eq!((d.paras.len(), title), (2, None));
+        let m = dir.path().join("x.MAX");
+        std::fs::write(&m, "não é MAX").unwrap();
+        assert!(load_any(&m).is_none());
+        // um .MAX de verdade: o texto em parágrafos e o título
+        let mut doc = formats::max::Document::from_text("Oi\nTchau");
+        doc.add.title = "Bilhete".into();
+        std::fs::write(&m, formats::max::write(&doc)).unwrap();
+        let (d, title) = load_any(&m).unwrap();
+        assert_eq!(title.as_deref(), Some("Bilhete"));
+        assert_eq!(to_text(&d), "Oi\n\nTchau\n");
     }
 
     #[test]

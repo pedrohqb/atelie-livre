@@ -63,15 +63,20 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(texts: Option<PathBuf>, assets: &Assets) -> Editor {
+        let doc = texts
+            .as_ref()
+            .and_then(|d| load(&d.join(LAST_NAME)))
+            .unwrap_or_default();
+        Editor::with_doc(texts, doc, assets)
+    }
+
+    /// Editor com o documento dado (aberto pela Biblioteca).
+    pub fn with_doc(texts: Option<PathBuf>, doc: Document, assets: &Assets) -> Editor {
         let pal = assets.palettes(Program::Writer).pal256.clone();
         let rolls = load_rolls(assets)
             .into_iter()
             .filter(|r| LIBRARIES.contains(&r.library))
             .collect();
-        let doc = texts
-            .as_ref()
-            .and_then(|d| load(&d.join(LAST_NAME)))
-            .unwrap_or_default();
         let mut ed = Editor {
             texts,
             doc,

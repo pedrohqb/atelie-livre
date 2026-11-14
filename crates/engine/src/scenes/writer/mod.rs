@@ -129,6 +129,25 @@ impl Writer {
         }
     }
 
+    /// A área de escrita com um documento da Biblioteca (`.MAX` ou o `.txt`
+    /// do Escritório; ver `crate::writer::store::load_any`), com o título
+    /// dele na barra de baixo. Sem conseguir ler, abre como [`Writer::new`].
+    pub fn open_document(
+        texts: Option<PathBuf>,
+        path: &std::path::Path,
+        assets: &Assets,
+    ) -> Writer {
+        let Some((doc, title)) = crate::writer::store::load_any(path) else {
+            return Writer::new(texts, assets);
+        };
+        let mut w = Writer::new(None, assets);
+        w.ed = Editor::with_doc(texts, doc, assets);
+        if let Some(t) = title {
+            w.title = t;
+        }
+        w
+    }
+
     pub fn doc(&self) -> &Document {
         &self.ed.doc
     }

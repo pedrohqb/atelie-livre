@@ -153,7 +153,7 @@ impl<'a> Director<'a> {
                         Room::for_program(p, floor, None, None, assets).with_user(&user, assets),
                     ),
                     CwScene::Library => Box::new(
-                        GalleryRoom::for_program(p, None, None, assets)
+                        GalleryRoom::for_program(p, None, Some(self.texts()), assets)
                             .with_user(&user, self.animal()),
                     ),
                     CwScene::Portfolio => Box::new(
@@ -243,6 +243,13 @@ impl<'a> Director<'a> {
             Effect::RecordStart => self.trace.push("TRACE gravar".into()),
             Effect::RecordStop(p) => self.trace.push(format!("TRACE gravar-fim {}", p.display())),
             Effect::RecordCancel => self.trace.push("TRACE gravar-cancela".into()),
+            Effect::OpenDocument(path) => {
+                self.trace
+                    .push(format!("TRACE abrir-documento {}", path.display()));
+                self.apply(Effect::ChangeScene(SceneId::Writer));
+                let s = Writer::open_document(Some(self.texts()), &path, self.assets);
+                *self.stack.last_mut().expect("cena") = Box::new(s);
+            }
             Effect::SetUser(u) => self.user = Some(u),
             Effect::Log(s) => self.trace.push(format!("log {s}")),
             Effect::Quit => {
