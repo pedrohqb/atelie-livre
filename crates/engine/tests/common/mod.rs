@@ -8,8 +8,8 @@
 #![allow(dead_code)]
 
 use engine::Frame;
-use engine::assets::{Assets, CursorRef};
-use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
+use engine::assets::{Assets, CursorRef, Program};
+use engine::scene::{CwScene, Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::{
@@ -138,6 +138,31 @@ impl<'a> Director<'a> {
             SceneId::Browser => Box::new(Browser::new()),
             SceneId::WriterSplash => Box::new(Splash::writer(None)),
             SceneId::Writer => Box::new(Writer::new(Some(self.texts()), assets)),
+            SceneId::Cw(c) => {
+                // as mesmas cenas, com os dados do Writer (sem os desenhos do FA)
+                let p = Program::Writer;
+                match c {
+                    CwScene::Entry => {
+                        Box::new(Entry::for_program(p, Some(self.users()), None, assets))
+                    }
+                    CwScene::Story => Box::new(Story::for_program(p, None, assets)),
+                    CwScene::BookStory => Box::new(Story::for_program(p, None, assets).over_room()),
+                    CwScene::Imaginopolis => Box::new(Imaginopolis::for_program(p, None)),
+                    CwScene::Street => Box::new(Street::for_program(p, None)),
+                    CwScene::Building(floor) => Box::new(
+                        Room::for_program(p, floor, None, None, assets).with_user(&user, assets),
+                    ),
+                    CwScene::Library => Box::new(
+                        GalleryRoom::for_program(p, None, None, assets)
+                            .with_user(&user, self.animal()),
+                    ),
+                    CwScene::Portfolio => Box::new(
+                        GalleryRoom::portfolio_for_program(p, None, None, assets)
+                            .with_user(&user, self.animal()),
+                    ),
+                    CwScene::NewDocument => Box::new(Writer::new(Some(self.texts()), assets)),
+                }
+            }
         }
     }
 

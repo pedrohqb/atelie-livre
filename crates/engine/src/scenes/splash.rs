@@ -1,12 +1,12 @@
-//! Abertura: tela de título do Fine Artist (clique ou 5 s levam à Entrada) ou do
-//! Creative Writer (leva ao Escritório). Enquanto espera, no Fine Artist
+//! Abertura: tela de título do Fine Artist ou do Creative Writer (clique ou
+//! 5 s levam à Entrada do programa). Enquanto espera, no Fine Artist
 //! tocam as animações do título: o pássaro atravessa a tela e depois os
 //! demais roteiros (McZee saindo do buraco com chapéus, porco, gafanhoto...)
 //! em ordem sorteada.
 
 use super::gags::{GagPlayer, TITLE_BIRD, TITLE_SCRIPTS};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
-use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{CwScene, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 
 #[cfg(test)]
@@ -43,12 +43,14 @@ impl Splash {
         }
     }
 
-    /// Abertura do Creative Writer: vai direto ao Escritório, sem animações.
+    /// Abertura do Creative Writer: vai à Entrada do Writer, sem animações
+    /// (no original o título é estático: não há roteiros de título no
+    /// `WRITER.EXE`).
     pub fn writer(click: Option<SoundRef>) -> Splash {
         Splash {
             program: Program::Writer,
             title: WRITER_TITLE,
-            next: SceneId::Writer,
+            next: SceneId::Cw(CwScene::Entry),
             gags: GagPlayer::new(&[], (0.3, 0.3), (0.5, 1.5)),
             ..Splash::new(click)
         }
@@ -166,12 +168,12 @@ mod tests {
     }
 
     #[test]
-    fn writer_splash_goes_to_writer() {
+    fn writer_splash_goes_to_writer_entry() {
         let (_d, a) = empty_assets();
         let mut s = Splash::writer(None);
         assert!(
             s.update(&[click()], 0.016, &a)
-                .contains(&Effect::ChangeScene(SceneId::Writer))
+                .contains(&Effect::ChangeScene(SceneId::Cw(CwScene::Entry)))
         );
     }
 

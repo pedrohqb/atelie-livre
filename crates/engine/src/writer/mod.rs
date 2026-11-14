@@ -9,6 +9,9 @@
 //!   mesmos nomes e semânticas do formato `.MAX`;
 //! - [`object`]: objetos flutuantes (adesivo, desenho, palavra com forma)
 //!   com posição, tamanho, Flutua-texto, som e borda;
+//! - [`fonts`]: as 6 famílias do Seleciona-letras resolvidas para as
+//!   originais instaladas ou substitutas livres, com as métricas de linha
+//!   medidas no original; implementa [`layout::Measure`] e desenha trechos;
 //! - [`layout`]: diagramação em folhas, margens e colunas, contornando os
 //!   objetos, com quebra de página e número de página, sobre uma medição
 //!   de texto abstrata ([`layout::Measure`]);
@@ -19,7 +22,9 @@
 //! O modelo provisório que a cena `scenes/writer` usa hoje fica em
 //! [`legacy`] e é reexportado aqui com os nomes antigos até a integração.
 
+pub mod dict;
 pub mod doc;
+pub mod fonts;
 pub mod ideas;
 pub mod layout;
 pub mod legacy;

@@ -3,8 +3,8 @@
 use crate::audio::Mixer;
 use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, texts_dir, users_dir};
 use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
-use engine::assets::{Assets, CursorRef};
-use engine::scene::{Effect, Input, Key, MouseButton, Scene, SceneId};
+use engine::assets::{Assets, CursorRef, Program};
+use engine::scene::{CwScene, Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::{
@@ -53,22 +53,37 @@ impl UserContext {
 fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) -> Box<dyn Scene> {
     // o nome da sessão é o texto inicial das palavras com forma
     engine::scenes::paint::set_user_name(user.name());
+    // as cenas compartilhadas são montadas com os dados do programa da tela
+    let p = id.program();
+    // os desenhos do Fine Artist não aparecem nas telas do Writer
+    let pictures = || match p {
+        Program::Artist => drawings_dir(),
+        Program::Writer => None,
+    };
     let room = |floor| {
         Box::new(
-            Room::new(floor, cfg.click_sound.clone(), drawings_dir(), assets)
+            Room::for_program(p, floor, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), assets),
         )
+    };
+    let entry = || {
+        let e = Entry::for_program(p, users_dir(), cfg.click_sound.clone(), assets);
+        Box::new(match &cfg.user {
+            Some(u) => e.with_user(u),
+            None => e,
+        })
     };
     match id {
         SceneId::Paint => Box::new(Paint::new(drawings_dir(), assets).with_user(user.name())),
         SceneId::PaintNew => {
             Box::new(Paint::new_blank(drawings_dir(), assets).with_user(user.name()))
         }
-        SceneId::Gallery => Box::new(
-            GalleryRoom::new(cfg.click_sound.clone(), drawings_dir(), assets)
+        SceneId::Gallery | SceneId::Cw(CwScene::Library) => Box::new(
+            GalleryRoom::for_program(p, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), user.animal()),
         ),
         SceneId::Building => room(Floor::Lobby),
+        SceneId::Cw(CwScene::Building(floor)) => room(floor),
         SceneId::Studio => room(Floor::Studio),
         SceneId::TricksFloor => room(Floor::Tricks),
         SceneId::Projects => room(Floor::Projects),
@@ -80,24 +95,29 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::FlipbookFigure => Box::new(Paint::new_flipbook_figure(drawings_dir(), assets)),
         SceneId::Chooser => Box::new(Chooser::new()),
         SceneId::Splash => Box::new(Splash::new(cfg.click_sound.clone())),
-        SceneId::Entry => {
-            let e = Entry::new(users_dir(), cfg.click_sound.clone(), assets);
-            Box::new(match &cfg.user {
-                Some(u) => e.with_user(u),
-                None => e,
-            })
+        SceneId::Entry | SceneId::Cw(CwScene::Entry) => entry(),
+        SceneId::Story | SceneId::Cw(CwScene::Story) => {
+            Box::new(Story::for_program(p, cfg.click_sound.clone(), assets))
         }
-        SceneId::Story => Box::new(Story::new(cfg.click_sound.clone(), assets)),
-        SceneId::BookStory => Box::new(Story::new(cfg.click_sound.clone(), assets).over_room()),
-        SceneId::Portfolio => Box::new(
-            GalleryRoom::portfolio(cfg.click_sound.clone(), drawings_dir(), assets)
+        SceneId::BookStory | SceneId::Cw(CwScene::BookStory) => {
+            Box::new(Story::for_program(p, cfg.click_sound.clone(), assets).over_room())
+        }
+        SceneId::Portfolio | SceneId::Cw(CwScene::Portfolio) => Box::new(
+            GalleryRoom::portfolio_for_program(p, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), user.animal()),
         ),
-        SceneId::Imaginopolis => Box::new(Imaginopolis::new(cfg.click_sound.clone())),
-        SceneId::Street => Box::new(Street::new(cfg.click_sound.clone())),
+        SceneId::Imaginopolis | SceneId::Cw(CwScene::Imaginopolis) => {
+            Box::new(Imaginopolis::for_program(p, cfg.click_sound.clone()))
+        }
+        SceneId::Street | SceneId::Cw(CwScene::Street) => {
+            Box::new(Street::for_program(p, cfg.click_sound.clone()))
+        }
         SceneId::Browser => Box::new(Browser::new()),
         SceneId::WriterSplash => Box::new(Splash::writer(cfg.click_sound.clone())),
         SceneId::Writer => Box::new(Writer::new(texts_dir(), assets)),
+        // TODO(office): abrir com um documento em branco quando o Escritório
+        // tiver o construtor; por enquanto o editor abre o último documento
+        SceneId::Cw(CwScene::NewDocument) => Box::new(Writer::new(texts_dir(), assets)),
     }
 }
 
@@ -132,6 +152,24 @@ fn scene_by_name(name: &str) -> Option<SceneId> {
             SceneId::TricksStudio(TrickKind::ThreeD, TrickKind::ThreeD.studio_step())
         }
         _ => return None,
+    })
+}
+
+/// Cena pedida por `--scene` no programa escolhido: com `--program writer`,
+/// `street` é a rua do Writer, `studio` o Escritório, `paint` a área de
+/// escrita etc. (`SceneId::in_program`).
+fn scene_for(name: &str, program: ProgramChoice) -> Option<SceneId> {
+    let id = match name {
+        "writer" => SceneId::Writer,
+        "writer-new" | "new-document" => SceneId::Cw(CwScene::NewDocument),
+        "library" => SceneId::Cw(CwScene::Library),
+        "office" => SceneId::Cw(CwScene::Building(Floor::Studio)),
+        "ideas" => SceneId::Cw(CwScene::Building(Floor::Tricks)),
+        _ => scene_by_name(name)?,
+    };
+    Some(match program {
+        ProgramChoice::Writer => id.in_program(Program::Writer),
+        ProgramChoice::Artist | ProgramChoice::Ask => id,
     })
 }
 
@@ -272,7 +310,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     let mut user = UserContext {
         user: cfg.user.clone(),
     };
-    let first = match args.scene.as_deref().map(scene_by_name) {
+    let first = match args.scene.as_deref().map(|n| scene_for(n, cfg.program)) {
         Some(Some(id)) => id,
         Some(None) => return fail("cena desconhecida em --scene"),
         None => first_scene(args.browser, cfg.program),
@@ -525,5 +563,30 @@ mod tests {
         );
         assert_eq!(first_scene(true, ProgramChoice::Writer), SceneId::Browser);
         assert_eq!(first_scene(false, ProgramChoice::Ask), SceneId::Chooser);
+    }
+
+    #[test]
+    fn scene_names_follow_the_program() {
+        assert_eq!(
+            scene_for("street", ProgramChoice::Artist),
+            Some(SceneId::Street)
+        );
+        assert_eq!(
+            scene_for("street", ProgramChoice::Writer),
+            Some(SceneId::Cw(CwScene::Street))
+        );
+        assert_eq!(
+            scene_for("studio", ProgramChoice::Writer),
+            Some(SceneId::Cw(CwScene::Building(Floor::Studio)))
+        );
+        assert_eq!(
+            scene_for("paint", ProgramChoice::Writer),
+            Some(SceneId::Writer)
+        );
+        assert_eq!(
+            scene_for("entry", ProgramChoice::Writer),
+            Some(SceneId::Cw(CwScene::Entry))
+        );
+        assert_eq!(scene_for("nada", ProgramChoice::Writer), None);
     }
 }

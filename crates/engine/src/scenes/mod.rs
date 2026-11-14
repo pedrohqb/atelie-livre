@@ -5,6 +5,7 @@ pub mod browser;
 pub mod chooser;
 pub mod elevator;
 pub mod entry;
+pub mod entry_spec;
 pub mod finder_dialog;
 pub mod gags;
 pub mod gallery;
@@ -18,6 +19,7 @@ pub mod printing;
 pub mod projects;
 pub mod room;
 pub mod room_objects;
+pub mod room_spec;
 pub mod room_talk;
 pub mod rooms_data;
 pub mod sounds;
@@ -34,6 +36,21 @@ pub mod tricks_basic;
 pub mod tricks_board;
 pub mod wizard;
 pub mod writer;
+// Dados do Creative Writer para as cenas compartilhadas com o Fine Artist
+// (um arquivo por tarefa; ver docs/arquitetura.md, "Creative Writer: specs
+// por programa").
+pub mod writer_attic;
+pub mod writer_elevator;
+pub mod writer_entry;
+pub mod writer_floors;
+pub mod writer_gags;
+pub mod writer_library;
+pub mod writer_lobby;
+pub mod writer_office_room;
+pub mod writer_portfolio;
+pub mod writer_rooms;
+pub mod writer_story;
+pub mod writer_street;
 
 pub use browser::Browser;
 pub use chooser::Chooser;

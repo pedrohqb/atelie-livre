@@ -59,16 +59,29 @@ pub const TRASH_RECT: (i32, i32, i32, i32) = (69, 333, 65, 70);
 /// imagens adiante no `.PIC`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Character {
+    /// De que `.PIC` é a figura.
+    pub program: Program,
     pub image: u16,
     pub x: i32,
     pub y: i32,
 }
 
 impl Character {
-    /// Sorteia a fantasia (ou pose) entre `choices`.
+    /// Sorteia a fantasia (ou pose) entre `choices` (`ARTIST.PIC`).
     pub fn pick(choices: &[u16], pos: (i32, i32), rng: &mut XorShift) -> Option<Character> {
+        Character::pick_in(Program::Artist, choices, pos, rng)
+    }
+
+    /// Como [`Character::pick`], com figuras do `.PIC` do programa `p`.
+    pub fn pick_in(
+        program: Program,
+        choices: &[u16],
+        pos: (i32, i32),
+        rng: &mut XorShift,
+    ) -> Option<Character> {
         let image = *choices.get(rng.below(choices.len()))?;
         Some(Character {
+            program,
             image,
             x: pos.0,
             y: pos.1,
@@ -78,14 +91,15 @@ impl Character {
     /// O ponto (x, y) da tela cai no personagem: na parte opaca da máscara,
     /// ou no retângulo da figura quando ela não tem máscara.
     pub fn hit(&self, assets: &Assets, x: i32, y: i32) -> bool {
-        let img = assets.image(&ImageRef::Pic(Program::Artist, self.image));
+        let p = self.program;
+        let img = assets.image(&ImageRef::Pic(p, self.image));
         let (dx, dy) = (x - self.x, y - self.y);
         if dx < 0 || dy < 0 || dx >= img.width as i32 || dy >= img.height as i32 {
             return false;
         }
         let mask = assets
-            .pic_next_id(Program::Artist, self.image, 2)
-            .map(|m| assets.image(&ImageRef::Pic(Program::Artist, m)))
+            .pic_next_id(p, self.image, 2)
+            .map(|m| assets.image(&ImageRef::Pic(p, m)))
             .filter(|m| m.height == img.height && m.width.abs_diff(img.width) <= 1);
         match mask {
             Some(m) if (dx as u32) < m.width => {
@@ -98,10 +112,11 @@ impl Character {
     }
 
     pub fn draw(&self, frame: &mut Frame, assets: &Assets) {
-        let img = assets.image(&ImageRef::Pic(Program::Artist, self.image));
+        let p = self.program;
+        let img = assets.image(&ImageRef::Pic(p, self.image));
         let mask = assets
-            .pic_next_id(Program::Artist, self.image, 2)
-            .map(|m| assets.image(&ImageRef::Pic(Program::Artist, m)))
+            .pic_next_id(p, self.image, 2)
+            .map(|m| assets.image(&ImageRef::Pic(p, m)))
             .filter(|m| m.height == img.height && m.width.abs_diff(img.width) <= 1);
         match mask {
             Some(m) => blit_masked(frame, &img, &m, self.x, self.y),
@@ -149,6 +164,12 @@ impl GagPlayer {
             next: None,
             started: 0,
         }
+    }
+
+    /// Toca os roteiros `ATAG` do programa `p` (o Fine Artist por padrão).
+    pub fn in_program(mut self, p: Program) -> GagPlayer {
+        self.program = p;
+        self
     }
 
     /// Alguém mexeu (clique ou tecla): as animações de passagem são do tempo

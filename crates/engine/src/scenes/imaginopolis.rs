@@ -29,11 +29,21 @@ pub struct Imaginopolis {
     /// O carrinho já começou (passa uma vez só).
     cart_started: bool,
     cart: Option<Animator>,
+    /// Programa: o clique leva à rua dele.
+    program: Program,
 }
 
 impl Imaginopolis {
+    /// Imaginópolis do Fine Artist.
     pub fn new(click: Option<SoundRef>) -> Imaginopolis {
+        Imaginopolis::for_program(Program::Artist, click)
+    }
+
+    /// Imaginópolis do programa `p`. Por enquanto a do Fine Artist nos
+    /// dois; a do Writer vem com o `ImaginopolisSpec` (`writer_street`, T3).
+    pub fn for_program(p: Program, click: Option<SoundRef>) -> Imaginopolis {
         Imaginopolis {
+            program: p,
             common: KidCommon::new(click),
             clock: 0.0,
             cart_started: false,
@@ -86,7 +96,9 @@ impl Scene for Imaginopolis {
             })
         {
             fx.push(Effect::PlaySound(SoundRef::Snd(Program::Artist, SND_ENTER)));
-            fx.push(Effect::ChangeScene(SceneId::Street));
+            fx.push(Effect::ChangeScene(
+                SceneId::Street.in_program(self.program),
+            ));
         }
         fx
     }

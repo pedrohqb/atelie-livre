@@ -55,6 +55,28 @@ pub fn snd(id: u16) -> SoundRef {
     SoundRef::Snd(Program::Artist, id)
 }
 
+/// Figuras da bolsa e do que sai dela, num programa (cada sala diz onde
+/// ficam, com [`BagLayout`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BagPics {
+    pub program: Program,
+    pub closed: Pic,
+    pub open: Pic,
+    pub suitcase: Pic,
+    pub book: Pic,
+    pub wand: Pic,
+}
+
+/// As do `ARTIST.PIC`.
+pub const ARTIST_BAG_PICS: BagPics = BagPics {
+    program: Program::Artist,
+    closed: BAG_CLOSED,
+    open: BAG_OPEN,
+    suitcase: SUITCASE,
+    book: BOOK,
+    wand: WAND,
+};
+
 /// Onde ficam a bolsa e o que sai dela, em cada sala (medido no original).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BagLayout {
@@ -113,6 +135,7 @@ pub enum BagPart {
 /// A Bolsa Mágica de uma sala.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MagicBag {
+    pub pics: &'static BagPics,
     pub layout: BagLayout,
     pub open: bool,
     /// A varinha está com a criança (fora da bolsa, no cursor).
@@ -125,7 +148,13 @@ fn rect_at(pos: (i32, i32), img: Pic) -> Rect {
 
 impl MagicBag {
     pub fn new(layout: BagLayout, open: bool) -> MagicBag {
+        MagicBag::with_pics(&ARTIST_BAG_PICS, layout, open)
+    }
+
+    /// Bolsa com as figuras de outro programa.
+    pub fn with_pics(pics: &'static BagPics, layout: BagLayout, open: bool) -> MagicBag {
         MagicBag {
+            pics,
             layout,
             open,
             holding_wand: false,
@@ -134,17 +163,17 @@ impl MagicBag {
 
     /// Partes visíveis, de baixo para cima (ordem de desenho).
     fn parts(&self) -> Vec<(BagPart, (i32, i32), Pic)> {
-        let l = &self.layout;
+        let (l, p) = (&self.layout, self.pics);
         if !self.open {
-            return vec![(BagPart::Bag, l.closed, BAG_CLOSED)];
+            return vec![(BagPart::Bag, l.closed, p.closed)];
         }
         let mut v = vec![
-            (BagPart::Bag, l.open, BAG_OPEN),
-            (BagPart::Suitcase, l.suitcase, SUITCASE),
-            (BagPart::Book, l.book, BOOK),
+            (BagPart::Bag, l.open, p.open),
+            (BagPart::Suitcase, l.suitcase, p.suitcase),
+            (BagPart::Book, l.book, p.book),
         ];
         if !self.holding_wand {
-            v.push((BagPart::Wand, l.wand, WAND));
+            v.push((BagPart::Wand, l.wand, p.wand));
         }
         v
     }
@@ -159,10 +188,11 @@ impl MagicBag {
     }
 
     pub fn draw(&self, frame: &mut Frame, assets: &Assets) {
+        let p = self.pics.program;
         for (_, (x, y), (img, mask, _, _)) in self.parts() {
             frame.blit_masked(
-                &assets.image(&ImageRef::Pic(Program::Artist, img)),
-                &assets.image(&ImageRef::Pic(Program::Artist, mask)),
+                &assets.image(&ImageRef::Pic(p, img)),
+                &assets.image(&ImageRef::Pic(p, mask)),
                 x,
                 y,
             );
@@ -237,12 +267,23 @@ pub enum Target {
 impl Surprises {
     /// Sorteia e carrega a surpresa do alvo, já com o ponto da sala somado.
     pub fn start(&self, target: Target, rng: &mut XorShift, assets: &Assets) -> Option<Animator> {
+        self.start_in(Program::Artist, target, rng, assets)
+    }
+
+    /// Como [`Surprises::start`], com os roteiros `ATAG` do programa `p`.
+    pub fn start_in(
+        &self,
+        p: Program,
+        target: Target,
+        rng: &mut XorShift,
+        assets: &Assets,
+    ) -> Option<Animator> {
         let (list, anchor) = match target {
             Target::Pole => (self.pole, self.pole_anchor),
             Target::Hole => (self.hole, self.hole_anchor),
         };
         let id = *list.get(rng.below(list.len().max(1)))?;
-        anim::load_exe(assets, Program::Artist, id).map(|a| a.with_offset(anchor))
+        anim::load_exe(assets, p, id).map(|a| a.with_offset(anchor))
     }
 }
 

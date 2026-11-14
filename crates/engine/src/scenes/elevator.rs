@@ -122,11 +122,29 @@ pub struct Elevator {
 }
 
 impl Elevator {
+    /// Elevador do programa `p` parado em `at`, com o McZee da sala
+    /// (`costume`; sem ele, sorteia). Por enquanto o do Fine Artist nos
+    /// dois programas: o do Writer vem com o `ElevatorSpec` (`writer_elevator`),
+    /// escolhido aqui sem mudar quem chama.
+    pub fn for_program(
+        _p: Program,
+        at: Floor,
+        costume: Option<&Character>,
+        assets: &Assets,
+        user: &str,
+    ) -> Elevator {
+        let image = costume
+            .filter(|c| c.program == Program::Artist)
+            .map(|c| c.image);
+        Elevator::new(at, image, assets, user)
+    }
+
     /// Elevador parado em `at`; `costume` é a fantasia do McZee (ou sorteia).
     pub fn new(at: Floor, costume: Option<u16>, assets: &Assets, user: &str) -> Elevator {
         let mut rng = XorShift::from_clock();
         let character = match costume {
             Some(image) => Some(Character {
+                program: Program::Artist,
                 image,
                 x: MCZEE_POS.0,
                 y: MCZEE_POS.1,
