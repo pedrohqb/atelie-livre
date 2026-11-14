@@ -174,6 +174,8 @@ pub struct Room {
     bag: MagicBag,
     /// Surpresa da Varinha Mágica em curso (mastro ou buraco do rato).
     surprise: Option<Animator>,
+    /// Sótão: o objeto aceso pelo clique no escuro (Writer).
+    dark: attic::Dark,
     /// Dentro do elevador.
     elevator: Option<Elevator>,
     /// O cursor atual é o da varinha.
@@ -246,6 +248,7 @@ impl Room {
             user: DEFAULT_USER.to_string(),
             bag: new_bag(spec),
             surprise: None,
+            dark: attic::Dark::default(),
             elevator: None,
             wand_cursor: false,
             users: None,
@@ -822,8 +825,8 @@ impl Room {
         }
         let Some(action) = self.hotspot_at(x, y) else {
             if self.floor == Floor::Attic {
-                let id = attic::dark_sound_in(self.program, &mut self.rng);
-                fx.push(self.snd(id));
+                let id = self.dark.click(self.program, x, y, &mut self.rng);
+                fx.extend(id.map(|id| self.snd(id)));
                 return true;
             }
             return false;
@@ -1151,6 +1154,7 @@ impl Scene for Room {
                 .into_iter()
                 .map(Effect::PlaySound),
         );
+        self.dark.update(dt);
         if let Some(a) = &mut self.surprise {
             fx.extend(a.update(dt).into_iter().map(Effect::PlaySound));
             if a.is_finished() {
@@ -1256,7 +1260,7 @@ impl Scene for Room {
             return;
         }
         if self.floor == Floor::Attic {
-            attic::draw_in(self.program, frame, assets);
+            attic::draw_in(self.program, &self.dark, frame, assets);
             return;
         }
         let spec = self.spec;
