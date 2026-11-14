@@ -66,6 +66,13 @@ pub enum Item {
         signature: bool,
     },
     Newline,
+    /// Mudança de recuo (`06`) ou de alinhamento à direita (`04`), com os
+    /// valores que passam a valer: as figuras seguintes (que não guardam
+    /// formatação) ficam com eles.
+    Format {
+        indent: u8,
+        right: bool,
+    },
     /// Figura embutida: id do `.PIC` e parâmetro (índice da opção, registro).
     Picture {
         id: u16,
@@ -92,6 +99,7 @@ impl Record {
                 Item::Text { text, .. } => s.push_str(text),
                 Item::Newline => s.push('\n'),
                 Item::Picture { .. } => s.push(' '),
+                Item::Format { .. } => {}
             }
         }
         s
@@ -119,7 +127,7 @@ impl Record {
                         out.push(c);
                     }
                 }
-                Item::Picture { .. } => {}
+                Item::Picture { .. } | Item::Format { .. } => {}
             }
         }
         if let Some(c) = current.take() {
@@ -161,7 +169,7 @@ impl Record {
                         out.push(c);
                     }
                 }
-                Item::Picture { .. } => {}
+                Item::Picture { .. } | Item::Format { .. } => {}
             }
         }
         if let Some(c) = current.take() {
@@ -283,13 +291,29 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
                     0x01 => r.height = v as u16,
                     0x02 => r.style = v as u16,
                     0x03 => color = (v & 0xff) as u8,
-                    0x04 => signature = v != 0,
+                    0x04 => {
+                        if signature != (v != 0) {
+                            signature = v != 0;
+                            r.items.push(Item::Format {
+                                indent,
+                                right: signature,
+                            });
+                        }
+                    }
                     0x05 if shown => r.items.push(Item::Picture {
                         id: (v >> 16) as u16,
                         param: (v & 0xffff) as u16,
                     }),
                     0x05 => {}
-                    0x06 => indent = (v & 0xff) as u8,
+                    0x06 => {
+                        if indent != (v & 0xff) as u8 {
+                            indent = (v & 0xff) as u8;
+                            r.items.push(Item::Format {
+                                indent,
+                                right: signature,
+                            });
+                        }
+                    }
                     _ => {
                         key = v != 0;
                         if !key {

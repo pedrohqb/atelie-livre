@@ -522,6 +522,7 @@ impl GalleryRoom {
                 ],
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
             Ask::Welcome2 => Balloon {
                 x: 0,
@@ -534,6 +535,7 @@ impl GalleryRoom {
                 ],
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
             Ask::WorkOn(_) => Balloon {
                 x: 0,
@@ -546,6 +548,7 @@ impl GalleryRoom {
                 ],
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
             Ask::HelpOff | Ask::HelpOn => {
                 // o mesmo menu do McZee das salas
@@ -562,6 +565,7 @@ impl GalleryRoom {
                 options: Vec::new(),
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
         };
         let records = assets.dialogs(Program::Artist, WHAT);

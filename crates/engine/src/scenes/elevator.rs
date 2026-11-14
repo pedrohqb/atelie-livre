@@ -141,6 +141,7 @@ impl Elevator {
             options: Vec::new(),
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         };
         let mut balloon = Balloon::from_block(
             &assets.dialogs(Program::Artist, ROOMS_WHAT),

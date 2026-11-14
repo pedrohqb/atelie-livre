@@ -1,9 +1,11 @@
-//! Balões de fala do McZee e da Maggie: caixa amarela pontilhada com borda
-//! preta de 2 pixels, texto na "Pablo Graphos" e opções clicáveis com uma
-//! bolinha preta na frente (aparência medida no original).
+//! Balões de fala do McZee e da Maggie, como no original: caixa com o fundo
+//! pontilhado amarelo (padrão 40 do `PAT#`), borda preta de 2 pixels, cantos
+//! arredondados nos balões de fala e retos nas dicas e avisos, rabicho curvo
+//! até quem fala e o texto formatado do registro `WHAT` (ver [`crate::rich`]).
 
 use crate::Frame;
-use crate::assets::{Assets, ImageRef, Program};
+use crate::assets::Assets;
+use crate::rich::{self, Ctx, Laid, Rect};
 use formats::fnt::Font;
 use formats::what::{
     Item, PIC_GLOSSARY, PIC_OPTION, PIC_OPTION_PICTURE, PIC_TIP, PIC_TIP_MAX, Record,
@@ -14,9 +16,31 @@ const YELLOW: [u8; 3] = [255, 238, 76];
 const WHITE: [u8; 3] = [255, 255, 255];
 const BLACK: [u8; 3] = [0, 0, 0];
 const GRAY: [u8; 3] = [120, 120, 120];
-pub const PAD: i32 = 8;
+/// Da borda de fora da caixa até o texto (2 de borda + 3).
+pub const PAD: i32 = 5;
+/// A caixa tem a largura do registro mais 2.
+pub const BOX_EXTRA: i32 = 2;
+/// Do pé da última linha até a borda de fora (4 + 2 de borda).
+pub const PAD_BOTTOM: i32 = 6;
+/// A largura de quebra é a do registro menos 8.
+pub const WRAP_LESS: i32 = 8;
 const LINE_GAP: i32 = 2;
-const BULLET: i32 = 14;
+
+/// Registro `WHAT` de onde o balão saiu, para desenhá-lo com a formatação;
+/// vale enquanto o texto, as opções e as ligações do balão forem os dele.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RichSource {
+    pub items: Vec<Item>,
+    /// Palavras do glossário: (registro, palavra).
+    pub glossary: Vec<(usize, String)>,
+    /// Índice do registro no bloco.
+    pub own: Option<usize>,
+    /// Nome do usuário (troca o `@`).
+    pub name: String,
+    text: String,
+    options: Vec<String>,
+    links: Vec<(usize, String)>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Balloon {
@@ -31,12 +55,14 @@ pub struct Balloon {
     /// Figuras do `.PIC` no meio do texto ("clique até ver [ícone]"): cada
     /// uma ocupa, na ordem, uma linha [`FIGURE`] de `text`.
     pub figures: Vec<u16>,
+    /// Registro original, com a formatação (negrito, cores, ícones).
+    pub rich: Option<Rc<RichSource>>,
+    /// Ponta do rabicho (boca de quem fala); `None` = sem rabicho.
+    pub tail: Option<(i32, i32)>,
 }
 
 /// Linha de `Balloon::text` que é o lugar de uma figura.
 pub const FIGURE: char = '\u{1}';
-/// Espaço acima e abaixo da figura no balão.
-const FIGURE_GAP: i32 = 2;
 
 impl Balloon {
     /// Balão a partir de um registro `WHAT` do original: o texto antes da
@@ -47,36 +73,39 @@ impl Balloon {
     /// que elas apontam ("Dê um *clique duplo* na imagem").
     pub fn from_block(records: &[Record], k: usize, x: i32, y: i32, name: &str) -> Option<Balloon> {
         let r = records.get(k)?;
-        let mut r = r.clone();
-        r.items = r
+        let mut glossary = Vec::new();
+        let mut plain = r.clone();
+        plain.items = r
             .items
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|i| match i {
-                Item::Picture { id, param } if id == formats::what::PIC_GLOSSARY => {
-                    match records.get((param & 0x7fff) as usize) {
-                        Some(t) => Item::Text {
-                            text: t.title.trim().to_string(),
-                            bold: true,
-                            color: 0xf,
-                            indent: 0,
-                            key: false,
-                            signature: false,
-                        },
-                        None => Item::Text {
-                            text: String::new(),
-                            bold: false,
-                            color: 0xf,
-                            indent: 0,
-                            key: false,
-                            signature: false,
-                        },
+                Item::Picture { id, param } if id == PIC_GLOSSARY => {
+                    let t = (param & 0x7fff) as usize;
+                    let word = records.get(t).map(|r| r.title.trim().to_string());
+                    if let Some(w) = &word {
+                        glossary.push((t, w.clone()));
+                    }
+                    Item::Text {
+                        text: word.unwrap_or_default(),
+                        bold: true,
+                        color: 0xf,
+                        indent: 0,
+                        key: false,
+                        signature: false,
                     }
                 }
                 other => other,
             })
             .collect();
-        let mut b = Balloon::from_record_in(&r, x, y, name, Some(k));
+        let mut b = Balloon::from_record_in(&plain, x, y, name, Some(k));
         b.links.retain(|(t, _)| *t < records.len());
+        if let Some(src) = b.rich.as_mut() {
+            let src = Rc::make_mut(src);
+            src.items = r.items.clone();
+            src.glossary = glossary;
+            src.links = b.links.clone();
+        }
         Some(b)
     }
 
@@ -127,21 +156,32 @@ impl Balloon {
             }
         }
         let text = text.replace('@', name).trim().to_string();
-        let options: Vec<(u16, String)> = r.options();
-        let links = r
+        let options: Vec<String> = r.options().into_iter().map(|o| o.1).collect();
+        let links: Vec<(usize, String)> = r
             .links()
             .into_iter()
             .filter(|(t, s)| !s.is_empty() && !is_title(*t))
             .map(|(t, s)| (t as usize, s))
             .collect();
+        let rich = RichSource {
+            items: r.items.clone(),
+            glossary: Vec::new(),
+            own,
+            name: name.to_string(),
+            text: text.clone(),
+            options: options.clone(),
+            links: links.clone(),
+        };
         Balloon {
             x,
             y,
             w: r.width.max(120) as i32,
             text,
-            options: options.into_iter().map(|o| o.1).collect(),
+            options,
             links,
             figures,
+            rich: Some(Rc::new(rich)),
+            tail: None,
         }
     }
 }
@@ -186,73 +226,132 @@ pub fn wrap_opt(font: Option<&Font>, text: &str, width: u32) -> Vec<String> {
     }
 }
 
-/// Caixa do balão: fundo pontilhado amarelo com borda preta e cantos arredondados.
-pub fn draw_box(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
-    // fundo pontilhado: amarelo nas posições (x + y) ímpares de 1 em 3
-    f.rect(x, y, w, h, BLACK);
-    for yy in y + 2..y + h - 2 {
-        for xx in x + 2..x + w - 2 {
-            let c = if (xx + 2 * yy) % 3 == 0 {
-                YELLOW
+/// Fundo dos balões: o padrão 40 do `PAT#` do `ARTIST.EXE`, invertido
+/// (amarelo onde o bit está ligado), alinhado à tela como um pincel do
+/// Windows.
+const DOTS: [u8; 8] = [0x09, 0xa0, 0x09, 0x40, 0x12, 0x84, 0x21, 0x88];
+
+/// Cor do fundo pontilhado no pixel (x, y) da tela.
+pub fn dot(x: i32, y: i32) -> [u8; 3] {
+    if (DOTS[(y & 7) as usize] >> (7 - (x & 7))) & 1 == 1 {
+        YELLOW
+    } else {
+        WHITE
+    }
+}
+
+/// Borda inteira (linha de cima ou de baixo).
+const ALL: i32 = i32::MAX;
+/// Canto arredondado, medido no original: por linha a partir do topo (e do
+/// pé), até onde é transparente e até onde é borda preta.
+const CORNER_TOP: [(i32, i32); 7] = [(5, ALL), (4, ALL), (2, 7), (2, 6), (1, 4), (0, 4), (0, 3)];
+const CORNER_BOTTOM: [(i32, i32); 6] = [(4, ALL), (3, ALL), (2, 6), (1, 5), (0, 4), (0, 3)];
+
+/// Caixa do balão em (x, y) com `w`×`h` pixels (borda incluída).
+pub fn draw_frame(f: &mut Frame, x: i32, y: i32, w: i32, h: i32, rounded: bool) {
+    for dy in 0..h {
+        let from_bottom = h - 1 - dy;
+        let (out, border) = if rounded && dy < CORNER_TOP.len() as i32 {
+            CORNER_TOP[dy as usize]
+        } else if rounded && from_bottom < CORNER_BOTTOM.len() as i32 {
+            CORNER_BOTTOM[from_bottom as usize]
+        } else if dy < 2 || from_bottom < 2 {
+            (0, ALL)
+        } else {
+            (0, 2)
+        };
+        for dx in 0..w {
+            let d = dx.min(w - 1 - dx);
+            if d < out {
+                continue;
+            }
+            let c = if border == ALL || d < border {
+                BLACK
             } else {
-                WHITE
+                dot(x + dx, y + dy)
             };
-            f.put(xx, yy, c);
+            f.put(x + dx, y + dy, c);
         }
     }
-    // cantos arredondados (tira um pixel de cada canto)
-    for (cx, cy) in [
-        (x, y),
-        (x + w - 1, y),
-        (x, y + h - 1),
-        (x + w - 1, y + h - 1),
-    ] {
-        f.put(cx, cy, WHITE);
-    }
 }
 
-/// Caixa dos avisos "EPA!": fundo branco com a mesma borda preta.
-pub fn draw_box_white(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
-    f.rect(x, y, w, h, BLACK);
-    f.rect(x + 2, y + 2, w - 4, h - 4, WHITE);
-    for (cx, cy) in [
-        (x, y),
-        (x + w - 1, y),
-        (x, y + h - 1),
-        (x + w - 1, y + h - 1),
-    ] {
-        f.put(cx, cy, WHITE);
-    }
+/// Caixa do balão de fala (cantos arredondados).
+pub fn draw_box(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
+    draw_frame(f, x, y, w, h, true);
 }
 
-/// Rabicho do balão: triângulo do topo do balão (perto de `x_base`, em `top`)
-/// até a ponta `tip`, com contorno preto e o amarelo pontilhado por dentro.
-pub fn draw_tail(f: &mut Frame, x_base: i32, top: i32, tip: (i32, i32)) {
-    let (b0, b1) = (x_base - 7, x_base + 7);
-    let rows = top - tip.1;
-    if rows <= 0 {
+/// Caixa das dicas e dos avisos "EPA!" (cantos retos, mesmo fundo).
+pub fn draw_box_square(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
+    draw_frame(f, x, y, w, h, false);
+}
+
+/// Rabicho curvo de uma caixa (x, y, w, h) até a ponta `tip`, que fica fora
+/// dela: sai do lado mais perto da ponta, com 12 px na base e 8 na ponta,
+/// curvado para o lado de quem fala (como o do original), contorno de 2 px
+/// e o fundo pontilhado por dentro, abrindo a borda da caixa.
+pub fn draw_tail_box(f: &mut Frame, b: (i32, i32, i32, i32), tip: (i32, i32)) {
+    let (x, y, w, h) = b;
+    // lado e sistema (u para fora, v ao longo do lado)
+    let side = if tip.1 < y {
+        0
+    } else if tip.0 >= x + w {
+        1
+    } else if tip.0 < x {
+        3
+    } else if tip.1 >= y + h {
+        2
+    } else {
+        return;
+    };
+    // (u, v) -> tela
+    let to_xy = |u: i32, v: i32| match side {
+        0 => (v, y + 1 - u),
+        1 => (x + w - 2 + u, v),
+        2 => (v, y + h - 2 + u),
+        _ => (x + 1 - u, v),
+    };
+    let (ut, vt, v_lo, v_hi) = match side {
+        0 => (y + 1 - tip.1, tip.0, x + 10, x + w - 11),
+        1 => (tip.0 - (x + w - 2), tip.1, y + 10, y + h - 11),
+        2 => (tip.1 - (y + h - 2), tip.0, x + 10, x + w - 11),
+        _ => (x + 1 - tip.0, tip.1, y + 10, y + h - 11),
+    };
+    if ut < 4 || v_lo > v_hi {
         return;
     }
-    for i in 0..=rows {
-        let y = top - i;
-        let t = i as f32 / rows as f32;
-        let l = (b0 as f32 + (tip.0 - b0) as f32 * t).round() as i32;
-        let r = (b1 as f32 + (tip.0 - b1) as f32 * t).round() as i32;
-        let (l, r) = (l.min(r), l.max(r));
-        for x in l..=r {
-            let edge = x <= l + 1 || x >= r - 1;
-            let c = if edge {
+    // a base fica um pouco atrás da ponta, do lado do centro da caixa
+    let center = (v_lo + v_hi) / 2;
+    let lean = if vt >= center { 1 } else { -1 };
+    let base = (vt - lean * 6).clamp(v_lo, v_hi);
+    let (b0, b1) = (base - 6, base + 6);
+    let (t0, t1) = (vt - 4, vt + 4);
+    for u in -1..=ut {
+        let t = (u.max(0) as f32 / ut as f32).clamp(0.0, 1.0);
+        // a borda do lado para onde ele se curva fica reta perto da caixa
+        let (e0, e1) = if lean > 0 { (t, t * t) } else { (t * t, t) };
+        let l = (b0 as f32 + (t0 - b0) as f32 * e0).round() as i32;
+        let r = (b1 as f32 + (t1 - b1) as f32 * e1).round() as i32;
+        for v in l..=r {
+            let (px, py) = to_xy(u, v);
+            let edge = v <= l + 1 || v >= r - 1 || u >= ut - 1;
+            let c = if u <= 0 {
+                // a borda da caixa se abre entre os dois lados
+                if edge { BLACK } else { dot(px, py) }
+            } else if edge {
                 BLACK
-            } else if (x + 2 * y) % 3 == 0 {
-                YELLOW
             } else {
-                WHITE
+                dot(px, py)
             };
-            f.put(x, y, c);
+            f.put(px, py, c);
         }
     }
-    // abre a passagem na borda de cima do balão
-    f.rect(b0 + 2, top, b1 - b0 - 3, 2, WHITE);
+}
+
+/// Rabicho saindo do topo de uma caixa (perto de `x_base`, com a borda de
+/// cima em `top`) até a ponta `tip`.
+pub fn draw_tail(f: &mut Frame, x_base: i32, top: i32, tip: (i32, i32)) {
+    // caixa larga o bastante em volta da base (só o topo importa)
+    draw_tail_box(f, (x_base - 40, top, 80, 40), tip);
 }
 
 /// Bolinha preta com brilho branco (marca das opções), 10×10 a partir de (x, y).
@@ -272,8 +371,7 @@ pub fn draw_bullet(f: &mut Frame, bx: i32, by: i32) {
     f.put(bx + 7, by + 3, WHITE);
 }
 
-/// Lâmpada das dicas (14×14 a partir de (x, y)): bulbo amarelo com contorno
-/// e base cinza (o ícone do original não está no `.PIC`).
+/// Lâmpada das dicas (14×14 a partir de (x, y)) para quando o `.PIC` falta.
 pub fn draw_lamp(f: &mut Frame, x: i32, y: i32) {
     for dy in 0..9 {
         for dx in 0..9 {
@@ -288,23 +386,6 @@ pub fn draw_lamp(f: &mut Frame, x: i32, y: i32) {
     f.rect(x + 5, y + 11, 3, 2, GRAY);
 }
 
-/// A linha é o lugar de uma figura.
-fn is_figure_line(line: &str) -> bool {
-    line.trim() == FIGURE.to_string()
-}
-
-/// Linhas já quebradas do balão.
-struct Layout {
-    lines: Vec<String>,
-    /// Altura de cada linha do texto (a das figuras é a da figura).
-    line_hs: Vec<i32>,
-    /// Soma de `line_hs`.
-    text_h: i32,
-    links: Vec<Vec<String>>,
-    opts: Vec<Vec<String>>,
-    h: i32,
-}
-
 /// Texto numa linha: na fonte do balão ou na 8×8.
 pub fn draw_line(f: &mut Frame, font: Option<&Font>, x: i32, y: i32, s: &str) {
     match font {
@@ -315,109 +396,151 @@ pub fn draw_line(f: &mut Frame, font: Option<&Font>, x: i32, y: i32, s: &str) {
     }
 }
 
+/// Itens equivalentes a um texto simples: parágrafos em preto, as figuras
+/// nos lugares de [`FIGURE`], as ligações com a gema e as opções em
+/// negrito com a bolinha, como os balões do original.
+pub fn plain_items(
+    text: &str,
+    figures: &[u16],
+    links: &[(usize, String)],
+    options: &[String],
+) -> Vec<Item> {
+    let t = |s: &str, bold: bool, indent: u8| Item::Text {
+        text: s.to_string(),
+        bold,
+        color: 0xf,
+        indent,
+        key: false,
+        signature: false,
+    };
+    let mut items = Vec::new();
+    let mut figs = figures.iter();
+    for line in text.split('\n') {
+        if line.trim() == FIGURE.to_string() {
+            if let Some(&id) = figs.next() {
+                items.push(Item::Picture { id, param: 0 });
+                items.push(Item::Newline);
+            }
+            continue;
+        }
+        items.push(t(line, false, 0));
+        items.push(Item::Newline);
+    }
+    for (target, s) in links {
+        items.push(Item::Format {
+            indent: 1,
+            right: false,
+        });
+        items.push(Item::Picture {
+            id: PIC_TIP,
+            param: *target as u16,
+        });
+        items.push(t(&format!("  {s}"), false, 1));
+        items.push(Item::Newline);
+    }
+    for (k, o) in options.iter().enumerate() {
+        items.push(Item::Format {
+            indent: 2,
+            right: false,
+        });
+        items.push(Item::Picture {
+            id: PIC_OPTION,
+            param: k as u16,
+        });
+        items.push(t(&format!(" {o}"), true, 2));
+        items.push(Item::Newline);
+    }
+    items
+}
+
 impl Balloon {
     fn font(a: &Assets) -> Option<Rc<Font>> {
         balloon_font(a)
     }
 
-    fn line_h(font: Option<&Font>) -> i32 {
-        line_height(font)
+    /// Itens a desenhar: os do registro se o balão ainda é o dele; senão,
+    /// os do texto simples.
+    fn items(&self) -> (std::borrow::Cow<'_, [Item]>, Option<&RichSource>) {
+        match &self.rich {
+            Some(src)
+                if src.text == self.text
+                    && src.options == self.options
+                    && src.links == self.links =>
+            {
+                (std::borrow::Cow::Borrowed(&src.items[..]), Some(src))
+            }
+            _ => (
+                std::borrow::Cow::Owned(plain_items(
+                    &self.text,
+                    &self.figures,
+                    &self.links,
+                    &self.options,
+                )),
+                None,
+            ),
+        }
     }
 
-    fn wrap_any(font: Option<&Font>, text: &str, width: u32) -> Vec<String> {
-        wrap_opt(font, text, width)
+    /// Disposição do texto (coordenadas relativas à origem do texto).
+    fn layout(&self, a: &Assets) -> Laid {
+        let font = Self::font(a);
+        let (items, src) = self.items();
+        let glossary = |k: usize| {
+            src.and_then(|s| s.glossary.iter().find(|(t, _)| *t == k))
+                .map(|(_, w)| w.clone())
+        };
+        let ctx = Ctx {
+            assets: a,
+            font: font.as_deref(),
+            name: src.map_or("", |s| s.name.as_str()),
+            glossary: &glossary,
+            own: src.and_then(|s| s.own),
+        };
+        rich::layout(&items, self.w - WRAP_LESS, &ctx)
     }
 
-    fn figure(id: u16) -> ImageRef {
-        ImageRef::Pic(Program::Artist, id)
+    fn origin(&self) -> (i32, i32) {
+        (self.x + PAD, self.y + PAD)
     }
 
-    /// Linhas do texto, linhas de cada ligação, linhas de cada opção e
-    /// altura total; sem fonte, usa a 8×8.
-    fn layout(&self, a: &Assets, font: Option<&Font>) -> Layout {
-        let inner = (self.w - 2 * PAD) as u32;
-        let lines = Self::wrap_any(font, &self.text, inner);
-        let lh = Self::line_h(font);
-        let mut figs = self.figures.iter();
-        let line_hs: Vec<i32> = lines
-            .iter()
-            .map(|l| {
-                if !is_figure_line(l) {
-                    return lh;
-                }
-                // figura que o port não tem não ocupa lugar (como na ajuda)
-                match figs.next().map(|&id| Self::figure(id)) {
-                    Some(r) if a.has_image(&r) => {
-                        (a.image(&r).height as i32 + 2 * FIGURE_GAP).max(lh)
-                    }
-                    _ => 0,
-                }
-            })
-            .collect();
-        let text_h = line_hs.iter().sum::<i32>();
-        let item_w = inner.saturating_sub((BULLET + 4) as u32);
-        let links: Vec<Vec<String>> = self
-            .links
-            .iter()
-            .map(|(_, t)| Self::wrap_any(font, t, item_w))
-            .collect();
-        let opts: Vec<Vec<String>> = self
-            .options
-            .iter()
-            .map(|o| Self::wrap_any(font, o, item_w))
-            .collect();
-        let mut h = 2 * PAD + text_h;
-        if !links.is_empty() {
-            h += 4 + links.iter().map(|o| o.len() as i32 * lh + 4).sum::<i32>();
-        }
-        if !opts.is_empty() {
-            h += 4 + opts.iter().map(|o| o.len() as i32 * lh + 4).sum::<i32>();
-        }
-        Layout {
-            lines,
-            line_hs,
-            text_h,
-            links,
-            opts,
-            h,
-        }
+    /// Largura da caixa desenhada.
+    pub fn box_width(&self) -> i32 {
+        self.w + BOX_EXTRA
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
-        self.layout(a, Self::font(a).as_deref()).h
+        PAD + self.layout(a).height + PAD_BOTTOM
+    }
+
+    fn abs(&self, r: Rect) -> Rect {
+        let (ox, oy) = self.origin();
+        (ox + r.0, oy + r.1, r.2, r.3)
     }
 
     /// Retângulo (x, y, w, h) da ligação `k`.
     pub fn link_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
-        let font = Self::font(a);
-        let lay = self.layout(a, font.as_deref());
-        let lh = Self::line_h(font.as_deref());
-        let mut y0 = self.y + PAD + lay.text_h + 4;
-        for o in lay.links.iter().take(k) {
-            y0 += o.len() as i32 * lh + 4;
-        }
-        let n = lay.links.get(k).map_or(1, |o| o.len() as i32);
-        (self.x + PAD, y0 - 2, self.w - 2 * PAD, n * lh + 4)
+        let lay = self.layout(a);
+        let tips = lay.tips();
+        let Some((target, _)) = self.links.get(k) else {
+            return (self.x, self.y, 0, 0);
+        };
+        // a mesma ligação pode aparecer antes: conta as ocorrências
+        let nth = self.links[..k].iter().filter(|(t, _)| t == target).count();
+        tips.iter()
+            .filter(|(_, t)| t == target)
+            .nth(nth)
+            .or_else(|| tips.get(k))
+            .map_or((self.x, self.y, 0, 0), |(r, _)| self.abs(*r))
     }
 
-    /// Retângulo (x, y, w, h) da opção `k`.
+    /// Retângulo (x, y, w, h) da opção `k` (com metade do espaço entre as
+    /// opções em cima e embaixo).
     pub fn option_rect(&self, a: &Assets, k: usize) -> (i32, i32, i32, i32) {
-        let font = Self::font(a);
-        let lay = self.layout(a, font.as_deref());
-        let lh = Self::line_h(font.as_deref());
-        let mut y0 = self.y + PAD + lay.text_h + 4;
-        if !lay.links.is_empty() {
-            y0 += 4 + lay
-                .links
-                .iter()
-                .map(|o| o.len() as i32 * lh + 4)
-                .sum::<i32>();
-        }
-        for o in lay.opts.iter().take(k) {
-            y0 += o.len() as i32 * lh + 4;
-        }
-        let n = lay.opts.get(k).map_or(1, |o| o.len() as i32);
-        (self.x + PAD, y0 - 2, self.w - 2 * PAD, n * lh + 4)
+        let lay = self.layout(a);
+        lay.options.get(k).map_or((self.x, self.y, 0, 0), |r| {
+            let (x, y, w, h) = self.abs(*r);
+            (x, y - rich::PARA / 2, w, h + rich::PARA)
+        })
     }
 
     /// Retângulo da palavra `word` dentro da opção `k`, como foi quebrada
@@ -430,78 +553,48 @@ impl Balloon {
         word: &str,
     ) -> Option<(i32, i32, i32, i32)> {
         let font = Self::font(a);
-        let lay = self.layout(a, font.as_deref());
-        let lh = Self::line_h(font.as_deref());
-        let r = self.option_rect(a, k);
-        let width = |s: &str| match font.as_deref() {
-            Some(f) => f.width(s) as i32,
-            None => 8 * s.chars().count() as i32,
-        };
-        lay.opts.get(k)?.iter().enumerate().find_map(|(j, line)| {
-            let at = line.find(word)?;
-            let x = r.0 + BULLET + 4 + width(&line[..at]);
-            Some((x, r.1 + 2 + j as i32 * lh, width(word), lh))
+        let lay = self.layout(a);
+        let opt = *lay.options.get(k)?;
+        lay.runs.iter().find_map(|r| match r {
+            rich::Run::Text {
+                x, y, text, bold, ..
+            } if *y >= opt.1 && *y < opt.1 + opt.3 && text.contains(word) => {
+                let at = text.find(word)?;
+                let x = x + rich::text_width(font.as_deref(), &text[..at], *bold);
+                let w = rich::text_width(font.as_deref(), word, *bold);
+                Some(self.abs((x, *y, w, rich::LINE)))
+            }
+            _ => None,
         })
     }
 
     /// Índice da opção clicada em (x, y), se houver.
     pub fn hit(&self, a: &Assets, x: i32, y: i32) -> Option<usize> {
-        (0..self.options.len()).find(|&k| {
-            let r = self.option_rect(a, k);
-            x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-        })
+        (0..self.options.len()).find(|&k| rich::inside(self.option_rect(a, k), x, y))
     }
 
     /// Registro da ligação (dica) clicada em (x, y), se houver.
     pub fn link_hit(&self, a: &Assets, x: i32, y: i32) -> Option<usize> {
         (0..self.links.len())
-            .find(|&k| {
-                let r = self.link_rect(a, k);
-                x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-            })
+            .find(|&k| rich::inside(self.link_rect(a, k), x, y))
             .map(|k| self.links[k].0)
     }
 
     pub fn contains(&self, a: &Assets, x: i32, y: i32) -> bool {
         let h = self.height(a);
-        x >= self.x && y >= self.y && x < self.x + self.w && y < self.y + h
+        x >= self.x && y >= self.y && x < self.x + self.box_width() && y < self.y + h
     }
 
     pub fn draw(&self, f: &mut Frame, a: &Assets) {
         let font = Self::font(a);
-        let lay = self.layout(a, font.as_deref());
-        let lh = Self::line_h(font.as_deref());
-        draw_box(f, self.x, self.y, self.w, lay.h);
-        let mut ty = self.y + PAD;
-        let mut figs = self.figures.iter();
-        for (line, h) in lay.lines.iter().zip(&lay.line_hs) {
-            if !is_figure_line(line) {
-                draw_line(f, font.as_deref(), self.x + PAD, ty, line);
-            } else if let Some(r) = figs.next().map(|&id| Self::figure(id))
-                && a.has_image(&r)
-            {
-                let img = a.image(&r);
-                let fx = self.x + (self.w - img.width as i32) / 2;
-                f.blit(&img, fx, ty + FIGURE_GAP);
-            }
-            ty += h;
+        let lay = self.layout(a);
+        let h = PAD + lay.height + PAD_BOTTOM;
+        draw_box(f, self.x, self.y, self.box_width(), h);
+        if let Some(tip) = self.tail {
+            draw_tail_box(f, (self.x, self.y, self.box_width(), h), tip);
         }
-        for (k, link) in lay.links.iter().enumerate() {
-            let r = self.link_rect(a, k);
-            draw_lamp(f, r.0, r.1 + 1 + (lh - 12) / 2);
-            for (j, line) in link.iter().enumerate() {
-                let ly = r.1 + 2 + j as i32 * lh;
-                draw_line(f, font.as_deref(), r.0 + BULLET + 4, ly, line);
-            }
-        }
-        for (k, opt) in lay.opts.iter().enumerate() {
-            let r = self.option_rect(a, k);
-            draw_bullet(f, r.0, r.1 + 2 + (lh - 10) / 2);
-            for (j, line) in opt.iter().enumerate() {
-                let ly = r.1 + 2 + j as i32 * lh;
-                draw_line(f, font.as_deref(), r.0 + BULLET + 4, ly, line);
-            }
-        }
+        let (ox, oy) = self.origin();
+        rich::draw(f, a, font.as_deref(), &lay, ox, oy, None, &mut |_, _, _| {});
     }
 }
 
@@ -544,6 +637,7 @@ mod tests {
             options: vec!["um".into(), "dois".into()],
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         };
         let r0 = b.option_rect(&a, 0);
         let r1 = b.option_rect(&a, 1);
@@ -655,6 +749,7 @@ mod tests {
             options: Vec::new(),
             links: Vec::new(),
             figures: vec![0x1021],
+            ..Default::default()
         };
         let without = Balloon {
             text: "ver\ndepois".into(),

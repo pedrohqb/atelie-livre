@@ -142,6 +142,7 @@ fn fallback(w: i32, text: &str, options: &[&str], links: &[(usize, &str)]) -> Ba
         options: options.iter().map(|o| o.to_string()).collect(),
         links: links.iter().map(|(k, t)| (*k, t.to_string())).collect(),
         figures: Vec::new(),
+        ..Default::default()
     }
 }
 

@@ -58,6 +58,7 @@ fn print_record(k: usize, r: &Record) {
             Item::Picture { id, param } => {
                 line.push_str(&format!("[{id:x}:{param:x}]"));
             }
+            Item::Format { .. } => {}
         }
     }
     if !line.trim().is_empty() {

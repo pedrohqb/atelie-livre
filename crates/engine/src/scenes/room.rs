@@ -316,6 +316,7 @@ impl Floor {
             options: options.iter().map(|o| o.to_string()).collect(),
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -443,6 +444,7 @@ impl Floor {
             options: Vec::new(),
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         };
         let mut b = Balloon::from_block(
             &assets.dialogs(Program::Artist, talk::ROOMS_WHAT),
@@ -883,6 +885,7 @@ impl Room {
                         options: vec!["Um botão".into(), "Um adesivo".into()],
                         links: Vec::new(),
                         figures: Vec::new(),
+                        ..Default::default()
                     },
                     Talk::AskButton,
                 );

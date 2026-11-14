@@ -173,6 +173,7 @@ pub fn balloon(assets: &Assets, user: &str) -> crate::balloon::Balloon {
             options: Vec::new(),
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         },
     )
 }

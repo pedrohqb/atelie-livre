@@ -419,6 +419,7 @@ impl Wizard {
                 },
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
         };
         if !self.stopping && !self.quitting && !self.step().icons.is_empty() {

@@ -12,6 +12,7 @@ pub mod help;
 pub mod help_icons;
 pub mod paint;
 pub mod paths;
+pub mod rich;
 pub mod rng;
 pub mod scene;
 pub mod scenes;
