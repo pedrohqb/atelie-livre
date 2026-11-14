@@ -1,6 +1,6 @@
 //! História do McZee: o álbum de fotos (`4201`, 495×314, com o McZee
-//! espiando por trás, recortado pela máscara `4209`) sobre as nuvens
-//! (`4200`), as 9 falas do `WHAT 4200` (os registros 2 e 3 repetem o 1) em 7
+//! espiando por trás, recortado pela máscara `4209`) sobre o céu da Entrada
+//! (`4139`, com a prancha; conferido pixel a pixel no original), as 9 falas do `WHAT 4200` (os registros 2 e 3 repetem o 1) em 7
 //! páginas duplas com duas fotos e as legendas escritas à mão, como no
 //! original (`studio_o_book_6.png`, `studio_o_bookpg_*.png`). Segue (ou
 //! Enter, →, um clique no balão ou na página direita do álbum) passa a
@@ -18,8 +18,10 @@ use crate::{Frame, SCREEN_H, SCREEN_W};
 
 /// Álbum aberto com o McZee espiando por trás (máscara `4209`).
 pub const ALBUM: u16 = 0x4201;
-/// Fundo de nuvens próprio da história (sem o quadro-negro da Entrada).
-pub const STORY_BACKGROUND: u16 = 0x4200;
+/// `4200` é a versão monocromática (preto e branco) do fundo `4139`, com os
+/// mesmos pixels pretos: no original a história é desenhada sobre o `4139`
+/// (céu azul e a prancha), igual à Entrada.
+pub const STORY_MASK: u16 = 0x4200;
 /// Posição do álbum na tela (medida em `studio_o_book_6.png`) e das fotos
 /// (169×119; as de 167×117 vão um pixel para dentro) dentro dele.
 pub const ALBUM_POS: (i32, i32) = (76, 114);
@@ -281,16 +283,7 @@ impl Scene for Story {
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         if !self.over_room {
             frame.fill([136, 136, 230]);
-            let id = if assets
-                .pic_ids(Program::Artist)
-                .binary_search(&STORY_BACKGROUND)
-                .is_ok()
-            {
-                STORY_BACKGROUND
-            } else {
-                BACKGROUND
-            };
-            let bg = assets.image(&ImageRef::Pic(Program::Artist, id));
+            let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
             frame.blit(
                 &bg,
                 (SCREEN_W as i32 - bg.width as i32) / 2,
@@ -435,6 +428,19 @@ mod tests {
         let fx = s.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
         assert!(fx.contains(&Effect::Back));
         assert!(!fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+    }
+
+    #[test]
+    fn background_is_the_entry_sky_with_the_diving_board() {
+        let Some(a) = assets() else { return };
+        let s = Story::new(None, &a);
+        let mut f = Frame::new(640, 480);
+        s.draw(&mut f, &a);
+        // a prancha cinza do `4139` (o `4200` é só preto e branco)
+        assert_eq!(f.pixel(600, 400)[..3], [100, 100, 100]);
+        let bg = a.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+        let k = (40 * bg.width as usize + 5) * 4;
+        assert_eq!(f.pixel(5, 40)[..3], bg.rgba[k..k + 3]);
     }
 
     #[test]
