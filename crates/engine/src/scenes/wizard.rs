@@ -11,6 +11,7 @@
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::balloon::Balloon;
+use crate::guide::{Answer, Ask, Guide, QUIT_ANSWERS, STOP_ANSWERS};
 use crate::scene::SceneId;
 pub use crate::ui::Rect;
 use crate::ui::inside;
@@ -65,7 +66,7 @@ pub const BTN_BACK: (u16, u16) = (0x040f, 0x0410);
 pub const BTN_STOP: (u16, u16) = (0x0417, 0x0418);
 pub const BTN_NEXT: (u16, u16) = (0x0413, 0x0414);
 /// Bloco das saídas dos assistentes (`WHAT 3803`).
-pub const QUIT_BLOCK: u16 = 0x3803;
+pub use crate::guide::QUIT_BLOCK;
 /// `3803[0]`: "O que você quer que eu faça agora?" (Maggie fora de hora).
 pub const QUIT_WIZARD: usize = 0;
 /// `3803[4]`: "O que você quer fazer?" (botão Pára).
@@ -220,28 +221,21 @@ pub enum WizardEvent {
 #[derive(Debug, Clone)]
 pub struct Wizard {
     steps: Vec<Step>,
-    current: usize,
+    /// Passo atual, histórico do Volta, balões `3803` e pausa (comuns com
+    /// o assistente do Max: `crate::guide`).
+    guide: Guide,
     /// Formas já achadas num passo `FindShapes`.
     found: Vec<usize>,
     /// A Maggie mostrou as formas (`FindShapes`).
     hint: bool,
     /// Já pintou num passo `PaintThenNext` (só informativo).
     painted: bool,
-    /// Balão de saída (`3803[4]`) aberto por Pára.
-    stopping: bool,
-    /// Balão `3803[0]` aberto por um clique na Maggie fora de hora.
-    quitting: bool,
-    /// "Deixar você trabalhar por conta própria um pouco": balão e painel
-    /// escondidos até o próximo clique no McZee.
-    paused: bool,
     /// Botão de rádio escolhido num passo `Pictures`.
     picture: Option<usize>,
     /// Nome digitado num passo `TypeName`.
     typed: String,
     /// Animação do painel em curso e o tempo decorrido.
     anim: Option<(PanelAnim, f32)>,
-    /// Passos visitados, para o Volta.
-    history: Vec<usize>,
     /// Retângulo da figura da Maggie na tela que hospeda o assistente.
     panel: Rect,
     /// Lugar padrão do balão e os lugares próprios de alguns registros
@@ -264,17 +258,13 @@ impl Wizard {
     pub fn new(steps: Vec<Step>) -> Wizard {
         Wizard {
             steps,
-            current: 0,
+            guide: Guide::new(0),
             found: Vec::new(),
             hint: false,
             painted: false,
-            stopping: false,
-            quitting: false,
-            paused: false,
             picture: None,
             typed: String::new(),
             anim: None,
-            history: Vec::new(),
             panel: MAGGIE_PANEL,
             place: BalloonPlace::At(BALLOON_POS.0, BALLOON_POS.1),
             places: &[],
@@ -301,7 +291,8 @@ impl Wizard {
     /// Começa no passo `s` (sem histórico: o Volta não volta antes dele).
     pub fn starting_at(mut self, s: usize) -> Wizard {
         if s < self.steps.len() {
-            self.enter(s);
+            self.guide.replace(s);
+            self.enter();
         }
         self
     }
@@ -312,25 +303,26 @@ impl Wizard {
     }
 
     pub fn current(&self) -> usize {
-        self.current
+        self.guide.current()
     }
 
     pub fn step(&self) -> &Step {
-        &self.steps[self.current]
+        &self.steps[self.guide.current()]
     }
 
+    /// O balão `3803[4]` (Pára) está aberto.
     pub fn stopping(&self) -> bool {
-        self.stopping
+        self.guide.asking() == Some(Ask::Stop)
     }
 
     /// O balão `3803[0]` está aberto.
     pub fn quitting(&self) -> bool {
-        self.quitting
+        self.guide.asking() == Some(Ask::Quit)
     }
 
     /// Trabalhando por conta própria: sem balão nem painel até clicar no McZee.
     pub fn paused(&self) -> bool {
-        self.paused
+        self.guide.paused()
     }
 
     /// Nome digitado até agora (passo `TypeName`).
@@ -352,17 +344,17 @@ impl Wizard {
     }
 
     pub fn has_back(&self) -> bool {
-        !self.history.is_empty()
+        self.guide.has_back()
     }
 
     /// O passo atual espera um nome digitado.
     pub fn typing(&self) -> bool {
-        !self.paused && !self.stopping && !self.quitting && self.step().advance == Advance::TypeName
+        self.guide.active() && self.step().advance == Advance::TypeName
     }
 
     /// Alvo a destacar, se o passo pede um clique.
     pub fn target(&self) -> Option<Target> {
-        if self.paused || self.stopping || self.quitting {
+        if !self.guide.active() {
             return None;
         }
         match self.step().advance {
@@ -375,12 +367,12 @@ impl Wizard {
     /// Balão do passo (ou o de saída), com os textos do `WHAT` quando há
     /// dados; nenhum enquanto o usuário trabalha por conta própria.
     pub fn balloon(&self, assets: &Assets, fallback: &str) -> Option<Balloon> {
-        if self.paused {
+        if self.paused() {
             return None;
         }
-        let (block, k) = if self.stopping {
+        let (block, k) = if self.stopping() {
             (QUIT_BLOCK, QUIT_TRICKS)
-        } else if self.quitting {
+        } else if self.quitting() {
             (QUIT_BLOCK, QUIT_WIZARD)
         } else {
             self.step().record
@@ -403,12 +395,12 @@ impl Wizard {
                 y: by,
                 w: 240,
                 text: fallback.to_string(),
-                options: if self.stopping {
+                options: if self.stopping() {
                     vec![
                         "Parar de trabalhar aqui".into(),
                         "Ignore isso, vou ficar!".into(),
                     ]
-                } else if self.quitting {
+                } else if self.quitting() {
                     vec![
                         "Deixar você trabalhar por conta própria um pouco.".into(),
                         "Parar de trabalhar aqui".into(),
@@ -422,7 +414,7 @@ impl Wizard {
                 ..Default::default()
             },
         };
-        if !self.stopping && !self.quitting && !self.step().icons.is_empty() {
+        if self.guide.asking().is_none() && !self.step().icons.is_empty() {
             b.figures = self.step().icons.to_vec();
         }
         if self.typing() {
@@ -438,7 +430,7 @@ impl Wizard {
 
     /// Figura do painel da Maggie no passo atual.
     pub fn maggie_panel(&self) -> Option<u16> {
-        if self.stopping || self.quitting || self.paused {
+        if !self.guide.active() {
             return None;
         }
         if let (Advance::Pictures(pics), Some(k)) = (&self.step().advance, self.picture)
@@ -458,8 +450,8 @@ impl Wizard {
         }
     }
 
-    fn enter(&mut self, s: usize) {
-        self.current = s;
+    /// Limpa o estado do passo em que se entra (o `guide` já está nele).
+    fn enter(&mut self) {
         self.found.clear();
         self.hint = false;
         self.painted = false;
@@ -470,9 +462,9 @@ impl Wizard {
     fn goto(&mut self, g: Goto) -> WizardOutcome {
         match g {
             Goto::Step(s) if s < self.steps.len() => {
-                self.anim = self.steps[self.current].anim.map(|a| (a, 0.0));
-                self.history.push(self.current);
-                self.enter(s);
+                self.anim = self.step().anim.map(|a| (a, 0.0));
+                self.guide.forward(s);
+                self.enter();
                 WizardOutcome::Entered(s)
             }
             Goto::Step(_) => WizardOutcome::Stay,
@@ -491,7 +483,7 @@ impl Wizard {
     }
 
     fn next(&mut self) -> WizardOutcome {
-        self.goto(Goto::Step(self.current + 1))
+        self.goto(Goto::Step(self.current() + 1))
     }
 
     /// O passo atual não espera a Maggie: clicar nela (ou no McZee) abre
@@ -506,64 +498,48 @@ impl Wizard {
     }
 
     pub fn on_event(&mut self, ev: WizardEvent) -> WizardOutcome {
-        if self.paused {
+        if self.paused() {
             if ev == WizardEvent::McZee {
-                self.paused = false;
-                return WizardOutcome::Entered(self.current);
+                self.guide.resume();
+                return WizardOutcome::Entered(self.current());
             }
             return WizardOutcome::Stay;
         }
-        if self.stopping {
-            return match ev {
-                // `3803[4]`: a primeira opção na tela é "parar" (índice 1 do original)
-                WizardEvent::Option(0) => {
-                    self.stopping = false;
-                    WizardOutcome::FreePaint
-                }
-                WizardEvent::Option(_) | WizardEvent::Stop | WizardEvent::McZee => {
-                    self.stopping = false;
-                    WizardOutcome::Stay
-                }
-                _ => WizardOutcome::Stay,
+        if let Some(ask) = self.guide.asking() {
+            let option = match ev {
+                WizardEvent::Option(k) => Some(k),
+                WizardEvent::Stop | WizardEvent::McZee => None,
+                _ => return WizardOutcome::Stay,
             };
-        }
-        if self.quitting {
-            return match ev {
-                // "Deixar você trabalhar por conta própria um pouco"
-                WizardEvent::Option(0) => {
-                    self.quitting = false;
-                    self.paused = true;
-                    WizardOutcome::Stay
-                }
-                // "Parar de trabalhar aqui": volta ao andar
-                WizardEvent::Option(1) => {
-                    self.quitting = false;
-                    WizardOutcome::Leave(SceneId::TricksFloor)
-                }
-                WizardEvent::Option(_) | WizardEvent::Stop | WizardEvent::McZee => {
-                    self.quitting = false;
-                    WizardOutcome::Stay
-                }
-                _ => WizardOutcome::Stay,
+            // `3803[4]` (Pára): a primeira opção na tela é "parar"; `3803[0]`
+            // (Maggie fora de hora): trabalhar sozinho / voltar ao andar / ignorar
+            let answers = match ask {
+                Ask::Stop => STOP_ANSWERS,
+                Ask::Quit => QUIT_ANSWERS,
+            };
+            return match self.guide.answer(option, answers) {
+                Answer::Finish => WizardOutcome::FreePaint,
+                Answer::Leave => WizardOutcome::Leave(SceneId::TricksFloor),
+                Answer::Pause | Answer::Close => WizardOutcome::Stay,
             };
         }
         match ev {
             WizardEvent::Stop => {
-                self.stopping = true;
+                self.guide.ask(Ask::Stop);
                 return WizardOutcome::Stay;
             }
             WizardEvent::Back => {
-                return match self.history.pop() {
+                return match self.guide.back() {
                     Some(s) => {
                         self.anim = None;
-                        self.enter(s);
+                        self.enter();
                         WizardOutcome::Entered(s)
                     }
                     None => WizardOutcome::Stay,
                 };
             }
             WizardEvent::McZee | WizardEvent::Panel(..) if self.maggie_out_of_turn() => {
-                self.quitting = true;
+                self.guide.ask(Ask::Quit);
                 return WizardOutcome::Stay;
             }
             _ => {}
