@@ -8,6 +8,7 @@
 pub mod atag;
 pub mod chnk;
 pub mod cp1252;
+pub mod dct;
 pub mod error;
 pub mod fnt;
 pub mod gif;
