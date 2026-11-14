@@ -13,7 +13,9 @@ use crate::balloon::{balloon_font, draw_line};
 #[cfg(test)]
 use crate::scene::CwScene;
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
-use crate::text_balloon::{Button, PIC_ALERT, PIC_ANIMAL0, Part, TextBalloon, blit_pic};
+use crate::text_balloon::{
+    Button, PIC_ALERT, PIC_ANIMAL0, Part, TextBalloon, blit_pic, blit_pic_in,
+};
 use crate::ui::SoundQueue;
 use crate::ui::{Rect, inside};
 use crate::users::{self, ANIMALS, Profile};
@@ -1102,10 +1104,7 @@ impl Scene for Entry {
             (SCREEN_H as i32 - bg.height as i32) / 2,
         );
         let (id, x, y) = self.spec.mczee;
-        match self.spec.program {
-            Program::Artist => blit_pic(frame, assets, id, x, y, true),
-            p => blit_masked_pic(frame, assets, p, id, x, y),
-        }
+        blit_pic_in(frame, assets, self.spec.program, id, x, y, true);
         if self.board_visible(self.step) {
             self.draw_board(frame, assets);
         }
@@ -1116,20 +1115,6 @@ impl Scene for Entry {
         if let Some(b) = &self.quit {
             b.draw(frame, assets);
         }
-    }
-}
-
-/// Figura colorida do `.PIC` do programa `p` com a máscara duas imagens
-/// adiante (o McZee da Entrada do Writer); sem máscara, inteira.
-fn blit_masked_pic(f: &mut Frame, a: &Assets, p: Program, id: u16, x: i32, y: i32) {
-    let img = a.image(&ImageRef::Pic(p, id));
-    let mask = a
-        .pic_next_id(p, id, 2)
-        .map(|m| a.image(&ImageRef::Pic(p, m)))
-        .filter(|m| m.height == img.height && m.width.abs_diff(img.width) <= 1);
-    match mask {
-        Some(m) => crate::anim::blit_masked(f, &img, &m, x, y),
-        None => f.blit(&img, x, y),
     }
 }
 
