@@ -62,7 +62,7 @@ const TIRA: PressButton = PressButton::new(
 );
 /// Seta ▲ da lista (normal e apertada = silhueta, `N+2`).
 const LIST_BUTTON: PressButton =
-    PressButton::new(203, 381, 18, 20, Art::opaque(0x02db), Art::opaque(0x02dd));
+    PressButton::new(203, 381, 18, 20, Art::keyed(0x02db), Art::keyed(0x02dd));
 const LIST_ARROW_POS: (i32, i32) = (206, 386);
 /// Campo do título.
 pub const TITLE: Rect = (222, 381, 96, 19);
@@ -469,8 +469,8 @@ impl PictureBoard {
         let (x, y, w, h) = Self::list_rect();
         f.rect(x - 1, y - 1, w + 2, h + 2, [0, 0, 0]);
         f.rect(x, y, w, h, [255, 255, 255]);
-        super::buttons::Art::opaque(0x02db).draw(f, a, LIST_UP.0, LIST_UP.1);
-        super::buttons::Art::opaque(0x02df).draw(f, a, LIST_DOWN.0, LIST_DOWN.1);
+        super::buttons::Art::keyed(0x02db).draw(f, a, LIST_UP.0, LIST_UP.1);
+        super::buttons::Art::keyed(0x02df).draw(f, a, LIST_DOWN.0, LIST_DOWN.1);
         for k in 0..LIST_ROWS {
             let i = first + k;
             if i >= self.board.len() {

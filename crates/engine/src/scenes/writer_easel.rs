@@ -92,7 +92,7 @@ pub enum Tool {
 const BUTTONS: [(Tool, Art, (i32, i32), Rect); 9] = [
     (
         Tool::Crayon,
-        Art::masked(0x0bb8, 0x0bb9),
+        Art::masked(0x095b, 0x0bb9),
         (163, 316),
         (140, 310, 70, 40),
     ),
@@ -108,27 +108,22 @@ const BUTTONS: [(Tool, Art, (i32, i32), Rect); 9] = [
         (313, 314),
         (295, 310, 70, 40),
     ),
-    (
-        Tool::Up,
-        Art::opaque(0x02db),
-        (405, 313),
-        (403, 311, 16, 14),
-    ),
+    (Tool::Up, Art::keyed(0x02db), (405, 313), (403, 311, 16, 14)),
     (
         Tool::Down,
-        Art::opaque(0x02df),
+        Art::keyed(0x02df),
         (405, 335),
         (403, 333, 16, 14),
     ),
     (
         Tool::Left,
-        Art::opaque(0x0819),
+        Art::keyed(0x0819),
         (393, 324),
         (391, 322, 14, 16),
     ),
     (
         Tool::Right,
-        Art::opaque(0x0871),
+        Art::keyed(0x0871),
         (417, 324),
         (417, 322, 14, 16),
     ),

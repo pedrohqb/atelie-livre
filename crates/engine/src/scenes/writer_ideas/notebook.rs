@@ -22,7 +22,7 @@ use super::{Owner, max_balloon, outline, play, rex_alert, snd};
 use crate::Frame;
 use crate::Image;
 use crate::assets::Assets;
-use crate::balloon::{Balloon, draw_bullet, line_height};
+use crate::balloon::{Balloon, line_height};
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::TextBalloon;
 use crate::ui::{Pen, Rect, inside};
@@ -63,8 +63,11 @@ const CAMERA: (Art, Rect) = (Art::opaque(0x7927), (53, 286, 32, 32));
 const TITLE: Rect = (89, 286, 95, 31);
 const NO: (Art, Rect) = (Art::masked(0x0271, 0x0273), (198, 289, 28, 28));
 const OK: (Art, Rect) = (Art::masked(0x026d, 0x026f), (230, 289, 26, 27));
+/// Setas ▶ (página seguinte) e ◀ (anterior): `0871`/`0819`, 12×12.
 const NEXT: Rect = (265, 284, 20, 17);
 const PREV: Rect = (265, 301, 20, 18);
+const NEXT_ART: (Art, (i32, i32)) = (Art::keyed(0x0871), (268, 286));
+const PREV_ART: (Art, (i32, i32)) = (Art::keyed(0x0819), (268, 304));
 /// Faixas por onde se arrasta o caderno (em cima e embaixo).
 const GRIP_TOP: Rect = (0, 0, 290, 12);
 const GRIP_BOTTOM: Rect = (0, 322, 290, 13);
@@ -527,7 +530,8 @@ impl NotebookView {
         match self.tab {
             Tab::Machine => {
                 for (k, y0, _) in self.sentence_rows(a) {
-                    draw_bullet(f, r.0 + 2, y0 + 3);
+                    // marcador "•" do parágrafo (quadradinho no original)
+                    f.rect(r.0 + 4, y0 + lh / 2 - 2, 4, 4, BLACK);
                     let mut y = y0;
                     for line in layout_pieces(&self.data.sentences[k], r.2 - 22, &pen, a) {
                         let h = line.height.max(lh);
@@ -585,12 +589,13 @@ impl NotebookView {
             outline(f, self.at(r), 2, [255, 238, 76]);
         }
         let t = self.at(TITLE);
-        let title = pen.clip(&self.title(), t.2 - 6);
-        pen.centered(f, t.0 + t.2 / 2, t.1 + (t.3 - lh) / 2, &title, BLACK);
+        let title = pen.clip(&self.title(), t.2 - 3);
+        pen.text(f, t.0 + 2, t.1 + (t.3 - lh) / 2, &title, BLACK);
         NO.0.draw(f, a, ox + NO.1.0, oy + NO.1.1);
         OK.0.draw(f, a, ox + OK.1.0, oy + OK.1.1);
-        draw_arrow(f, self.at(NEXT), true);
-        draw_arrow(f, self.at(PREV), false);
+        for (art, (dx, dy)) in [NEXT_ART, PREV_ART] {
+            art.draw(f, a, ox + dx, oy + dy);
+        }
         if self.warn {
             let (n, k) = (self.at(NO.1), self.at(OK.1));
             outline(
@@ -610,23 +615,6 @@ impl NotebookView {
             b.draw(f, a);
         }
     }
-}
-
-/// Seta → (laranja) ou ← (verde) das páginas da aba Figuras, desenhada
-/// (a figura do original não foi identificada no `WRITER.PIC`).
-fn draw_arrow(f: &mut Frame, r: Rect, right: bool) {
-    let color = if right { ORANGE } else { [92, 203, 83] };
-    let (cx, cy) = (r.0 + r.2 / 2, r.1 + r.3 / 2);
-    for dy in -5i32..=5 {
-        let half = 5 - dy.abs();
-        for dx in 0..=half {
-            let x = if right { cx + dx } else { cx - dx };
-            f.put(x, cy + dy, if dx == half { BLACK } else { color });
-        }
-    }
-    let (x0, x1) = if right { (cx - 6, cx) } else { (cx, cx + 6) };
-    f.rect(x0, cy - 2, x1 - x0, 5, BLACK);
-    f.rect(x0 + 1, cy - 1, x1 - x0 - 1, 3, color);
 }
 
 /// Vídeo inverso (seleção nos Lembretes).

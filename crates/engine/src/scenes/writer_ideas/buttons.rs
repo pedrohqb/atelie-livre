@@ -8,11 +8,13 @@ use crate::Frame;
 use crate::assets::Assets;
 use crate::ui::{Rect, inside};
 
-/// Figura do `WRITER.PIC` com a máscara (`None` = opaca).
+/// Figura do `WRITER.PIC` com a máscara (`None` = opaca, ou com o branco
+/// transparente se `keyed`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Art {
     pub id: u16,
     pub mask: Option<u16>,
+    pub keyed: bool,
 }
 
 impl Art {
@@ -20,17 +22,42 @@ impl Art {
         Art {
             id,
             mask: Some(mask),
+            keyed: false,
         }
     }
 
     pub const fn opaque(id: u16) -> Art {
-        Art { id, mask: None }
+        Art {
+            id,
+            mask: None,
+            keyed: false,
+        }
+    }
+
+    /// Sem máscara no `.PIC` (as setas de 12×12): o branco fica transparente.
+    pub const fn keyed(id: u16) -> Art {
+        Art {
+            id,
+            mask: None,
+            keyed: true,
+        }
     }
 
     pub fn draw(&self, f: &mut Frame, a: &Assets, x: i32, y: i32) {
         let img = a.image(&wpic(self.id));
         match self.mask {
             Some(m) => f.blit_masked(&img, &a.image(&wpic(m)), x, y),
+            None if self.keyed => {
+                for dy in 0..img.height {
+                    for dx in 0..img.width {
+                        let i = ((dy * img.width + dx) * 4) as usize;
+                        let p = &img.rgba[i..i + 4];
+                        if p[3] != 0 && p[..3] != [255, 255, 255] {
+                            f.put(x + dx as i32, y + dy as i32, [p[0], p[1], p[2]]);
+                        }
+                    }
+                }
+            }
             None => f.blit(&img, x, y),
         }
     }
