@@ -20,8 +20,8 @@ pub const PROJECTS: &RoomSpec = &rooms_data::PROJECTS_ROOM;
 /// Oficina de Ideias do Writer (até T7, os Truques do Fine Artist).
 pub const IDEAS: &RoomSpec = &rooms_data::TRICKS_ROOM;
 
-/// Enquanto os projetos e a Máquina de Ideias do Writer não existem, a
-/// primeira opção abre a área de escrita com um documento novo.
+/// Enquanto os projetos do Writer não existem, a primeira opção abre a
+/// área de escrita com um documento novo.
 const START: Start = Start::Scene(SceneId::Cw(CwScene::NewDocument));
 
 /// Balão de escolha dos objetos do Writer (`WHAT 0bb8`; posições medidas,
@@ -84,6 +84,12 @@ pub fn pick(p: Pick) -> PickSpec {
             50,
         ),
     };
+    // a Máquina de Idéias e o Quadro de Figuras abrem os close-ups
+    let start = match p {
+        Pick::IdeaMachine => Start::Scene(SceneId::Cw(CwScene::IdeaMachine)),
+        Pick::PictureBoard => Start::Scene(SceneId::Cw(CwScene::PictureBoard)),
+        _ => START,
+    };
     PickSpec {
         record,
         pos,
@@ -91,6 +97,6 @@ pub fn pick(p: Pick) -> PickSpec {
         text,
         options,
         skip,
-        start: START,
+        start,
     }
 }

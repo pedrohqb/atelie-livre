@@ -7,6 +7,7 @@ use engine::assets::{Assets, CursorRef, Program};
 use engine::scene::{CwScene, Effect, Input, Key, MouseButton, Scene, SceneId};
 use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::tricks_board::TricksBoard;
+use engine::scenes::writer_ideas::{IdeaMachine, PictureBoard};
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
     Writer,
@@ -118,6 +119,21 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         // TODO(office): abrir com um documento em branco quando o Escritório
         // tiver o construtor; por enquanto o editor abre o último documento
         SceneId::Cw(CwScene::NewDocument) => Box::new(Writer::new(texts_dir(), assets)),
+        SceneId::Cw(CwScene::IdeaMachine) => Box::new(IdeaMachine::new(
+            users_dir().as_deref(),
+            user.name(),
+            assets,
+        )),
+        SceneId::Cw(CwScene::PictureBoard) => Box::new(PictureBoard::new(
+            users_dir().as_deref(),
+            user.name(),
+            assets,
+        )),
+        // TODO(office): o Escritório integrado pega o conteúdo com
+        // `writer::ideas::session::take_story(user)` (sentença ou figura,
+        // barra de status "Oficina de Idéias", balão 0faa[13]/[16], volta à
+        // Oficina); por enquanto o editor atual abre sem ele
+        SceneId::Cw(CwScene::IdeaStory(_)) => Box::new(Writer::new(texts_dir(), assets)),
     }
 }
 
@@ -165,6 +181,8 @@ fn scene_for(name: &str, program: ProgramChoice) -> Option<SceneId> {
         "library" => SceneId::Cw(CwScene::Library),
         "office" => SceneId::Cw(CwScene::Building(Floor::Studio)),
         "ideas" => SceneId::Cw(CwScene::Building(Floor::Tricks)),
+        "idea-machine" => SceneId::Cw(CwScene::IdeaMachine),
+        "picture-board" => SceneId::Cw(CwScene::PictureBoard),
         _ => scene_by_name(name)?,
     };
     Some(match program {
