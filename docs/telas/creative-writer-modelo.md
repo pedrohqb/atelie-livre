@@ -1,10 +1,9 @@
 # Creative Writer: o modelo do documento (Escritório)
 
 Biblioteca do Escritório em `crates/engine/src/writer/`, tarefas W2, W3, W8 e
-W9 do plano (`office.md` §10 da pesquisa). Ainda **não está ligada à cena**
-`scenes/writer`, que continua usando o modelo provisório de
-`writer/legacy/` (reexportado como `crate::writer::{Document, Item, Style,
-Layout, History, …}`). A troca é a próxima onda; depois dela, `legacy/` sai.
+W9 do plano (`office.md` §10 da pesquisa), usada pela cena `scenes/writer`
+(o `Editor`; API em [`creative-writer.md`](creative-writer.md)). A conversão
+para o `.MAX` fica em `writer/convert.rs` e os arquivos em `writer/store.rs`.
 
 | módulo | o quê | tarefa |
 |---|---|---|
@@ -221,15 +220,16 @@ em dois passos — o 1º desfazer apaga tudo menos a 1ª letra, o 2º apaga a 1�
 letra. A pilha faz igual: a 1ª tecla é uma ação e as seguintes formam outra,
 até uma pausa de `TYPING_PAUSE` (1 s, provisório), `close()` ou outra ação.
 
-## Para a integração (próxima onda)
+## Integração (feita)
 
-1. Trocar `scenes/writer` para `doc::Document` + `selection::Selection` +
-   `undo::UndoStack<Snapshot>` + `layout::Layout`, com uma `Measure` sobre as
-   fontes do W4 e a escala da vista (Visão normal ≈ 1 px/pt).
-2. Os adesivos da cena (rolo, índice) viram `FloatObject` com `ObjRef::pict`
-   (o número do `PICT` na biblioteca de clip-art) colados com
-   `FloatObject::centered`.
-3. Conversão `doc::Document` ↔ `formats::max::Document` (W22): juntar itens
-   iguais em trechos `FDPC`, um `FDPP` por parágrafo, o `\r` final a mais,
-   `PGD ` de `Layout::page_starts`, `0x2a` ligado nas molduras.
-4. Apagar `writer/legacy/` e as reexportações antigas de `writer/mod.rs`.
+1. A cena usa `doc::Document` + `selection::Selection` +
+   `undo::UndoStack<Snapshot>` + `layout::Layout`, medida com `WriterFonts`
+   (e o tamanho de verdade das figuras do Maçã: 4 + largura + 4).
+2. Os adesivos viram `FloatObject`s com a cópia do `PICT` da biblioteca
+   (`Editor::add_sticker`), com o contorno `TWPB` calculado.
+3. Conversão `doc::Document` ↔ `formats::max::Document` em `convert.rs`
+   (trechos `FDPC` juntando itens iguais, um `FDPP` por parágrafo, o `\r`
+   final a mais, `PGD ` de `Layout::page_starts`, `0x2a` ligado; o que o
+   modelo não representa vai e volta em `MaxExtra`). Os 21 exemplos do Max
+   voltam iguais (`tests/writer_samples.rs`).
+4. `writer/legacy/` e as reexportações antigas saíram.

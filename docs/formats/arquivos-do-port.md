@@ -125,3 +125,27 @@ gravado num `.tmp` e renomeado). Correspondem aos arquivos `~MAXUSER.INF`
 Nas listas de figuras só valem nomes `NNN.png` (dígitos), sem caminho. Ao
 gravar, figuras novas ou modificadas recebem o próximo número livre e os
 PNGs que saíram da lista são apagados.
+
+## Documentos do Creative Writer (`<usuarios>/<apelido>/*.MAX`)
+
+O Escritório grava os documentos no formato do original (`.MAX`, ver
+`max.md`), na pasta do usuário — a mesma do cadastro (`perfil.toml`), como
+o `C:\MSKIDS\USERS\<APELIDO>\` do original. Um `.MAX` do port abre no
+Creative Writer original (conferido no Wine, com a miniatura na pasta) e
+vice-versa. Código: `crates/engine/src/writer/{convert,store}.rs`.
+
+| Arquivo | Quando |
+|---|---|
+| `<NOME8>.MAX` | salvar (Saída → "Salvar este trabalho", SALVAR do McZee, Ctrl+S, clique no título). O nome sai do título: maiúsculas, sem acentos, `_` no lugar de espaços e pontuação, até 8 caracteres ("Gato Teste" → `GATO_TES.MAX`; "!" do começo, que esconde o documento, fica de fora). Se o nome já existe e é de outro arquivo, os últimos caracteres viram um número a partir de 11 (`GATO_T11.MAX`). "Salvar a versão antiga e a nova" grava num nome novo e deixa o antigo; "Salvar só a nova" substitui o arquivo do documento |
+| `KIDSnnnn.MAX` | o documento mudou e a cena foi fechada sem passar pelo "Epa!" (janela fechada): gravado no arquivo do documento, ou num `KIDSnnnn.MAX` novo, como o original depois de uma queda |
+| `<NOME8>.TXT` | "Salvar como texto" (`Editor::save_text`): texto puro UTF-8, um parágrafo por linha, sem as figuras do Maçã |
+
+Ao gravar, o port regera a miniatura (`THMB`: a folha 1 reduzida com o lado
+maior de 144 pixels, 4 bits, paleta `THUMB_PALETTE`), a tabela de folhas
+(`PGD `, da diagramação) e a seleção (`SELN`); o resto do que veio no
+arquivo aberto (cópias dos objetos, sons em palavras, impressora, `ADD `,
+molduras que o port ainda não representa) é regravado como veio
+(`convert::MaxExtra`). Um `.MAX` de fora da pasta do usuário (os exemplos do
+Max em `SHARED/USERS/MAX`) abre como cópia: salvar grava na pasta do usuário.
+Os arquivos internos do original (`~NOTESID.MAX` etc.) não aparecem na
+lista de documentos.

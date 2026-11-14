@@ -114,7 +114,7 @@ Tela de pintura e ferramentas:
 | `wizard`, `tricks_basic`, `tricks_3d` | Assistente da Maggie e os roteiros dos Truques. |
 | `projects` (`button`, `comics`, `flipbook`, `dialogs`) | Oficina de Projetos. |
 | `paint_sfx` | Sons da pintura. |
-| `writer` | Escritório do Creative Writer (início). Núcleo em `crate::writer`: modelo rico `doc`, `object`, `layout`, `selection`, `undo` (`docs/telas/creative-writer-modelo.md`; ainda não ligado à cena) e o provisório `legacy` + `store`, que a cena usa hoje. |
+| `writer` | Escritório do Creative Writer: `Editor` (documento, vista, arquivos) e uma ferramenta por arquivo (`docs/telas/creative-writer.md`, com a API do `Editor`). Núcleo em `crate::writer`: `doc`, `object`, `layout`, `selection`, `undo`, `fonts`, `convert` (↔ `.MAX`) e `store` (`.MAX` na pasta do usuário) (`docs/telas/creative-writer-modelo.md`). |
 
 ### Componentes compartilhados entre cenas
 
@@ -411,8 +411,6 @@ impl Street {
 - As salas, a rua, a Imaginópolis, a história, o elevador, o sótão, a
   Biblioteca e a pasta do Writer ainda mostram os dados do FA (com a
   navegação do Writer) até as tarefas acima.
-- `CwScene::NewDocument` abre o editor com o último documento até o
-  Escritório ganhar um construtor de documento em branco (`run.rs`).
 - O cursor padrão (`DEFAULT_CURSOR`) é a mão do `ARTIST.EXE`.
 
 ## Convenções
