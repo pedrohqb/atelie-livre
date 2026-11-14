@@ -139,20 +139,30 @@ fn inside(r: Rect, x: i32, y: i32) -> bool {
 
 /// A imagem existe no `ARTIST.PIC` (senão vem o marcador de 32×32).
 fn has_pic(a: &Assets, id: u16) -> bool {
-    a.pic_ids(Program::Artist).binary_search(&id).is_ok()
+    has_pic_in(a, Program::Artist, id)
+}
+
+/// A imagem existe no `.PIC` do programa `p`.
+fn has_pic_in(a: &Assets, p: Program, id: u16) -> bool {
+    a.pic_ids(p).binary_search(&id).is_ok()
 }
 
 /// Desenha uma figura colorida do `ARTIST.PIC`: com a máscara duas imagens
 /// adiante quando ela tem o mesmo tamanho, senão tratando branco como
 /// transparente. Sem a figura, não desenha nada.
 pub fn blit_pic(f: &mut Frame, a: &Assets, id: u16, x: i32, y: i32, masked: bool) {
-    if !has_pic(a, id) {
+    blit_pic_in(f, a, Program::Artist, id, x, y, masked);
+}
+
+/// Como [`blit_pic`], com uma figura do `.PIC` do programa `p`.
+pub fn blit_pic_in(f: &mut Frame, a: &Assets, p: Program, id: u16, x: i32, y: i32, masked: bool) {
+    if !has_pic_in(a, p, id) {
         return;
     }
-    let img = a.image(&ImageRef::Pic(Program::Artist, id));
+    let img = a.image(&ImageRef::Pic(p, id));
     let mask = if masked {
-        a.pic_next_id(Program::Artist, id, 2)
-            .map(|m| a.image(&ImageRef::Pic(Program::Artist, m)))
+        a.pic_next_id(p, id, 2)
+            .map(|m| a.image(&ImageRef::Pic(p, m)))
             .filter(|m| m.height == img.height && m.width.abs_diff(img.width) <= 1)
     } else {
         None

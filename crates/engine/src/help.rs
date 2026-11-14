@@ -77,10 +77,8 @@ pub struct HelpBalloon {
     records: Rc<Vec<Record>>,
     /// Ponta do rabicho (quem fala), acima do balão; `None` = sem rabicho.
     pub tail: Option<(i32, i32)>,
-}
-
-fn pic(id: u16) -> ImageRef {
-    ImageRef::Pic(Program::Artist, id)
+    /// Programa dos registros: de que `.PIC` vêm as figuras embutidas.
+    pub program: Program,
 }
 
 fn inside(r: Rect, x: i32, y: i32) -> bool {
@@ -112,13 +110,21 @@ impl HelpBalloon {
             index,
             records,
             tail: None,
+            program: Program::Artist,
         })
+    }
+
+    /// Mesmo balão, com as figuras embutidas de outro programa (o Writer).
+    pub fn in_program(mut self, program: Program) -> HelpBalloon {
+        self.program = program;
+        self
     }
 
     /// Mesmo balão com outro registro do bloco (ligação), se existir.
     pub fn follow(&self, index: usize) -> Option<HelpBalloon> {
         HelpBalloon::new(self.records.clone(), self.block, index, self.x, self.y).map(|mut h| {
             h.tail = self.tail;
+            h.program = self.program;
             h
         })
     }
@@ -321,13 +327,14 @@ impl HelpBalloon {
                         ));
                         x += ICON + space;
                     }
-                    id if (0x1000..0x2000).contains(&id) => {
-                        let shown =
-                            crate::help_icons::icon(id).map_or(id, crate::help_icons::Icon::pic);
-                        if !a.has_image(&pic(shown)) {
+                    id if crate::help_icons::embedded(self.program, id) => {
+                        let shown = crate::help_icons::icon_for(self.program, id)
+                            .map_or(id, crate::help_icons::Icon::pic);
+                        let pic = ImageRef::Pic(self.program, shown);
+                        if !a.has_image(&pic) {
                             continue;
                         }
-                        let img = a.image(&pic(shown));
+                        let img = a.image(&pic);
                         let (w, h) = (img.width as i32, (img.height as i32).min(MAX_PIC_H));
                         if x + w > inner && x > indent_x {
                             flush(&mut line, &mut y, lh, PAD, &mut pieces, &mut links, font);
@@ -407,7 +414,7 @@ impl HelpBalloon {
                     }
                 }
                 Piece::Picture { x, y, id } => {
-                    crate::help_icons::draw(f, a, *id, bx + PAD + x, by + y);
+                    crate::help_icons::draw_for(f, a, self.program, *id, bx + PAD + x, by + y);
                 }
                 Piece::Icon { x, y, kind, .. } => draw_icon(f, bx + PAD + x, by + y, *kind),
             }
