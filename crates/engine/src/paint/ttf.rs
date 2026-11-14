@@ -58,18 +58,33 @@ pub fn installed() -> &'static [FontFace] {
 /// Procura as famílias nas pastas (recursivamente), sem repetir nomes, em
 /// ordem alfabética.
 pub fn scan(dirs: &[PathBuf]) -> Vec<FontFace> {
+    scan_styles(dirs, false)
+}
+
+/// Como [`scan`], mas aceitando famílias que só têm faces inclinadas ou de
+/// outro peso (ex.: "Lucida Handwriting", que só existe em itálico); quando a
+/// família tem a face normal, é ela que fica.
+pub fn scan_any_style(dirs: &[PathBuf]) -> Vec<FontFace> {
+    scan_styles(dirs, true)
+}
+
+fn scan_styles(dirs: &[PathBuf], any_style: bool) -> Vec<FontFace> {
     let mut files = Vec::new();
     for d in dirs {
         collect(d, &mut files, 0);
     }
     files.sort();
-    let mut by_name: HashMap<String, FontFace> = HashMap::new();
+    let mut by_name: HashMap<String, (FontFace, bool)> = HashMap::new();
     for path in files {
-        for face in faces_in(&path) {
-            by_name.entry(face.name.to_lowercase()).or_insert(face);
+        for (face, regular) in faces_in(&path, any_style) {
+            let slot = by_name.entry(face.name.to_lowercase());
+            let e = slot.or_insert((face.clone(), regular));
+            if regular && !e.1 {
+                *e = (face, true);
+            }
         }
     }
-    let mut out: Vec<FontFace> = by_name.into_values().collect();
+    let mut out: Vec<FontFace> = by_name.into_values().map(|(f, _)| f).collect();
     out.sort_by_key(|f| f.name.to_lowercase());
     out
 }
@@ -113,8 +128,9 @@ fn read_at(f: &mut File, at: u64, len: usize) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-/// Faces normais de um arquivo (uma; várias numa coleção).
-fn faces_in(path: &Path) -> Vec<FontFace> {
+/// Faces de um arquivo (uma; várias numa coleção), com a indicação de face
+/// normal; sem `any_style`, só as normais.
+fn faces_in(path: &Path, any_style: bool) -> Vec<(FontFace, bool)> {
     let Ok(mut f) = File::open(path) else {
         return Vec::new();
     };
@@ -134,19 +150,21 @@ fn faces_in(path: &Path) -> Vec<FontFace> {
         .iter()
         .enumerate()
         .filter_map(|(k, &off)| {
-            let name = face_name(&mut f, off as u64)?;
-            Some(FontFace {
+            let (name, regular) = face_name(&mut f, off as u64, any_style)?;
+            let face = FontFace {
                 name,
                 path: path.to_path_buf(),
                 index: k as u32,
-            })
+            };
+            Some((face, regular))
         })
         .collect()
 }
 
-/// Nome da família, se a face no deslocamento `off` é normal (peso 400,
-/// largura normal, não inclinada) e tem contornos (`glyf` ou `CFF `).
-fn face_name(f: &mut File, off: u64) -> Option<String> {
+/// Nome da família e se a face no deslocamento `off` é normal (peso 400,
+/// largura normal, não inclinada); `None` sem contornos (`glyf` ou `CFF `)
+/// ou, sem `any_style`, quando a face não é a normal.
+fn face_name(f: &mut File, off: u64, any_style: bool) -> Option<(String, bool)> {
     let dir = read_at(f, off, 12)?;
     let n = be16(&dir, 4)? as usize;
     let recs = read_at(f, off + 12, 16 * n)?;
@@ -162,10 +180,10 @@ fn face_name(f: &mut File, off: u64) -> Option<String> {
     let (o, l) = *tables.get(b"OS/2")?;
     let os2 = read_at(f, o, l)?;
     let os2 = ttf_parser::os2::Table::parse(&os2)?;
-    if os2.weight() != ttf_parser::Weight::Normal
-        || os2.width() != ttf_parser::Width::Normal
-        || os2.style() != ttf_parser::Style::Normal
-    {
+    let regular = os2.weight() == ttf_parser::Weight::Normal
+        && os2.width() == ttf_parser::Width::Normal
+        && os2.style() == ttf_parser::Style::Normal;
+    if !regular && !any_style {
         return None;
     }
     let (o, l) = *tables.get(b"name")?;
@@ -191,7 +209,9 @@ fn face_name(f: &mut File, off: u64) -> Option<String> {
         }
         found
     };
-    pick(ttf_parser::name_id::TYPOGRAPHIC_FAMILY).or_else(|| pick(ttf_parser::name_id::FAMILY))
+    pick(ttf_parser::name_id::TYPOGRAPHIC_FAMILY)
+        .or_else(|| pick(ttf_parser::name_id::FAMILY))
+        .map(|n| (n, regular))
 }
 
 /// Fontes já lidas, por arquivo e face (`None` = arquivo inválido).
@@ -220,6 +240,15 @@ pub fn load(face: &FontFace) -> Option<Rc<FontVec>> {
 /// Família pelo nome (sem diferença de maiúsculas).
 pub fn find(name: &str) -> Option<&'static FontFace> {
     installed()
+        .iter()
+        .find(|f| f.name.eq_ignore_ascii_case(name))
+}
+
+/// Família pelo nome em qualquer estilo (lista lida uma vez por execução,
+/// só quando pedida).
+pub fn find_any_style(name: &str) -> Option<&'static FontFace> {
+    static LIST: OnceLock<Vec<FontFace>> = OnceLock::new();
+    LIST.get_or_init(|| scan_any_style(&font_dirs()))
         .iter()
         .find(|f| f.name.eq_ignore_ascii_case(name))
 }
@@ -668,5 +697,36 @@ mod tests {
         // negrito e inclinado não entram como famílias próprias
         assert!(!list.iter().any(|f| f.name.contains("Bold")));
         assert!(load(sans).is_some());
+    }
+
+    #[test]
+    fn any_style_scan_keeps_italic_only_families() {
+        let src = PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf");
+        if !src.exists() {
+            eprintln!("aviso: DejaVu Sans Oblique não instalada; teste pulado");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(&src, dir.path().join("so-inclinada.ttf")).unwrap();
+        let dirs = [dir.path().to_path_buf()];
+        assert!(
+            scan(&dirs).is_empty(),
+            "a lista do cavalete só tem faces normais"
+        );
+        let any = scan_any_style(&dirs);
+        assert_eq!(any.len(), 1);
+        assert_eq!(any[0].name, "DejaVu Sans");
+    }
+
+    #[test]
+    fn any_style_scan_prefers_the_regular_face() {
+        let dir = PathBuf::from("/usr/share/fonts/truetype/dejavu");
+        if !dir.join("DejaVuSans.ttf").exists() {
+            eprintln!("aviso: DejaVu não instalada; teste pulado");
+            return;
+        }
+        let any = scan_any_style(&[dir]);
+        let sans = any.iter().find(|f| f.name == "DejaVu Sans").unwrap();
+        assert!(sans.path.ends_with("DejaVuSans.ttf"), "{:?}", sans.path);
     }
 }
