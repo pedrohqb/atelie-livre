@@ -8,6 +8,7 @@ use crate::assets::{Assets, ImageRef, Program};
 use crate::clipart::{ClipRoll, load_rolls};
 use crate::paint::stamp::Stamp;
 use crate::paint::{Cell, ORIGIN, Objects, Shape};
+use crate::ui::{Rect, inside};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
 use std::path::Path;
@@ -68,12 +69,6 @@ const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
 const GREEN: [u8; 3] = [71, 140, 80];
 const YELLOW: [u8; 3] = [255, 238, 76];
-
-type Rect = (i32, i32, i32, i32);
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn pic(id: u16) -> ImageRef {
     ImageRef::Pic(Program::Artist, id)

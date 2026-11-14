@@ -10,6 +10,7 @@ use crate::balloon::{balloon_font, draw_line};
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::{Button, PIC_ALERT, PIC_ANIMAL0, Part, TextBalloon, blit_pic};
 use crate::ui::SoundQueue;
+use crate::ui::{Rect, inside};
 use crate::users::{self, ANIMALS, Profile};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::what::Record;
@@ -79,12 +80,6 @@ pub mod snd {
     pub const NEXT: u16 = 0x2eb;
     /// Botão Volta.
     pub const BACK: u16 = 0x2f5;
-}
-
-type Rect = (i32, i32, i32, i32);
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
 }
 
 fn pic_rect(p: (u16, i32, i32), w: i32, h: i32) -> Rect {

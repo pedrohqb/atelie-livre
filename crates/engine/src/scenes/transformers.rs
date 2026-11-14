@@ -8,8 +8,7 @@ use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::paint::objects::MIN_SIZE;
 use crate::paint::{Canvas, History, ORIGIN, Objects};
-
-type Rect = (i32, i32, i32, i32);
+use crate::ui::{Rect, inside};
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -88,10 +87,6 @@ pub const PAGE2: [Button; 7] = [
     b(Op::FlipV, 0x14d1, 0x14d4),
     b(Op::AddSticker, 0x14d9, 0x14da),
 ];
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn pic(id: u16) -> ImageRef {
     ImageRef::Pic(Program::Artist, id)

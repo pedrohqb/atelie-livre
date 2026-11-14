@@ -15,11 +15,10 @@ use crate::paint::store::{
     save_mag_titled, save_png,
 };
 use crate::scene::{Input, Key};
+use crate::ui::Rect;
 use formats::fnt::Font;
 use formats::palette::Rgb;
 use std::path::Path;
-
-type Rect = (i32, i32, i32, i32);
 
 /// Plaqueta (área clicável) e a parte branca onde o nome é escrito.
 pub const LABEL: Rect = (283, 186, 158, 21);

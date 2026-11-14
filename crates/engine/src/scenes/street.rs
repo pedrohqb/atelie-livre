@@ -16,6 +16,7 @@ use super::gags::{HYDRANT_RECT, STREET_HYDRANT, STREET_TRASH, TRASH_RECT};
 use crate::anim::{self, Animator};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::ui::inside;
 use crate::{Frame, SCREEN_H, SCREEN_W};
 
 pub const BACKGROUND: u16 = 0x6d01;
@@ -39,10 +40,6 @@ pub const BALL_SCRIPT: u16 = 0x5aa;
 pub const SND_FACADE: u16 = 0x301;
 /// Som da troca para o saguão (1068 bytes; 0x2c0–0x2c5 são o mesmo som).
 pub const SND_ENTER: u16 = 0x253;
-
-fn inside(r: (i32, i32, i32, i32), x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 /// O que um clique na rua faz.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

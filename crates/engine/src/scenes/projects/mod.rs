@@ -11,6 +11,7 @@ use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::paint::store::{compose_unclipped, save_objects, save_png, timestamp};
 use crate::paint::{Canvas, History, Objects};
+pub(crate) use crate::ui::inside;
 use formats::palette::Rgb;
 use std::path::Path;
 
@@ -28,10 +29,6 @@ pub(crate) const DARK: [u8; 3] = [100, 100, 100];
 /// Limpa o nicho (fundo escuro) antes de mostrar o estado do projeto nele.
 pub(crate) fn clear_niche(f: &mut Frame) {
     f.rect(NICHE.0, NICHE.1, NICHE.2, NICHE.3, DARK);
-}
-
-pub(crate) fn inside(r: (i32, i32, i32, i32), x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
 }
 
 pub(crate) fn pic(id: u16) -> ImageRef {

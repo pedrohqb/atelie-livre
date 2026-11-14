@@ -4,9 +4,8 @@
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::scene::Key;
+pub use crate::ui::{Rect, inside};
 use formats::fnt::Font;
-
-pub type Rect = (i32, i32, i32, i32);
 
 pub const BLACK: [u8; 3] = [0, 0, 0];
 pub const WHITE: [u8; 3] = [255, 255, 255];
@@ -24,10 +23,6 @@ pub const BTN_NO: (u16, u16) = (0x0271, 0x0273);
 const ARROW_UP: (u16, u16) = (0x02db, 0x02dd);
 const ARROW_DOWN: (u16, u16) = (0x02df, 0x02e1);
 const CHECK: u16 = 0x0295;
-
-pub fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn pic(id: u16) -> ImageRef {
     ImageRef::Pic(Program::Artist, id)

@@ -17,23 +17,18 @@
 
 use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
+use crate::paint::drawings::{list_drawings, list_samples, shrink};
 use crate::paint::store::{load_picture, load_png, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas, ORIGIN, WHITE};
 use crate::scene::{Effect, Key, SceneId};
-use crate::ui::{DoubleClick, blit_canvas};
-use crate::paint::drawings::{list_drawings, list_samples, shrink};
 use crate::scenes::sounds::{Category, load_categories};
+use crate::ui::{DoubleClick, blit_canvas};
+use crate::ui::{Rect, inside};
 use formats::fnt::Font;
 use formats::gif;
 use formats::palette::Rgb;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-
-type Rect = (i32, i32, i32, i32);
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn pic(id: u16) -> ImageRef {
     ImageRef::Pic(Program::Artist, id)

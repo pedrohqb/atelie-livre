@@ -19,17 +19,16 @@ use crate::Frame;
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
-use crate::ui::{DoubleClick, SoundQueue, blit_canvas, clip_text};
+use crate::paint::Canvas;
 use crate::paint::drawings;
 use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
-use crate::paint::Canvas;
 use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::{PIC_ALERT, Part, TextBalloon};
+use crate::ui::{DoubleClick, SoundQueue, blit_canvas, clip_text};
+use crate::ui::{Rect, inside};
 use formats::palette::Rgb;
 use std::path::{Path, PathBuf};
-
-type Rect = (i32, i32, i32, i32);
 
 /// Molduras da parede (`6c79`, máscara `6c7d`, 200×140).
 pub const FRAMES: [(i32, i32); 3] = [(95, 50), (323, 50), (211, 195)];
@@ -127,10 +126,6 @@ const WALL_A: [u8; 3] = [136, 136, 230];
 const WALL_B: [u8; 3] = [71, 140, 80];
 const FLOOR_A: [u8; 3] = [100, 100, 100];
 const BASEBOARD: (i32, i32) = (375, 395);
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn frame_rect(k: usize) -> Rect {
     (FRAMES[k].0, FRAMES[k].1, 200, 140)

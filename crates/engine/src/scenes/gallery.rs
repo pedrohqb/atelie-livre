@@ -32,10 +32,6 @@ const WHITE: [u8; 3] = [255, 255, 255];
 const ORANGE: [u8; 3] = [255, 140, 50];
 const BLUE: [u8; 3] = [40, 80, 200];
 
-fn inside(r: (i32, i32, i32, i32), x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
-
 struct Entry {
     path: PathBuf,
     thumb: Canvas,
@@ -53,6 +49,7 @@ pub struct Gallery {
 }
 
 pub use crate::paint::drawings::{list_drawings, list_samples};
+use crate::ui::inside;
 
 impl Gallery {
     pub fn new(dir: Option<PathBuf>, assets: &Assets) -> Gallery {

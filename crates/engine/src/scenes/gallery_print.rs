@@ -19,9 +19,8 @@ use crate::{Frame, paint::store::save_png};
 use formats::palette::Rgb;
 use std::path::PathBuf;
 
-type Rect = (i32, i32, i32, i32);
-
 use crate::paint::print::machine::*;
+use crate::ui::Rect;
 
 /// Janela: moldura preta/laranja, faixa cinza em cima, área branca.
 const WINDOW: Rect = (16, 28, 610, 434);

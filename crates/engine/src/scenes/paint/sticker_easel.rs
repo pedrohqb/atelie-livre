@@ -15,8 +15,7 @@ use crate::paint::brush::Stroke;
 use crate::paint::store::{save_stamp_png, timestamp};
 use crate::paint::{Canvas, History, Objects, WHITE as WHITE_IX};
 use crate::scenes::stickers::USER_PREFIX;
-
-type Rect = (i32, i32, i32, i32);
+use crate::ui::Rect;
 
 /// Moldura externa do cavalete (5 px de banda) e área branca.
 const FRAME: Rect = (149, 172, 341, 221);

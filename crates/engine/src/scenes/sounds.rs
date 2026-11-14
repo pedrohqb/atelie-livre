@@ -17,11 +17,11 @@ pub use recorder::Recorder;
 use crate::assets::{Assets, ItemKind, Program, SoundRef};
 use crate::paint::{CANVAS_H, CANVAS_W, ORIGIN};
 use crate::scene::Effect;
+use crate::ui::Rect;
+pub(crate) use crate::ui::inside;
 use crate::{Frame, Image};
 use formats::chnk;
 use std::path::Path;
-
-type Rect = (i32, i32, i32, i32);
 
 /// Bibliotecas de sons de `SHARED/STUFF`; os ids dos carrosséis continuam
 /// de um arquivo para o outro (Grave 0, Agudo 1, Dinossauro 2…).
@@ -181,10 +181,6 @@ const BANNER_SHADE: [(i32, i32); 17] = [
     (66, 13),
     (65, 16),
 ];
-
-pub(crate) fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn canvas_rect() -> Rect {
     (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32)

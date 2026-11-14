@@ -15,13 +15,8 @@ use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
 use crate::rng::XorShift;
 use crate::scene::{Effect, Input, MouseButton};
+use crate::ui::{Rect, inside};
 use crate::{Frame, SCREEN_H, SCREEN_W};
-
-type Rect = (i32, i32, i32, i32);
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 pub const BACKGROUND: u16 = 0x6dd3;
 /// Portas (cor, máscara) e onde ficam; os roteiros da escotilha são

@@ -11,9 +11,9 @@ use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::paint::objects::{MIN_SIZE, segment_distance};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas, History, ORIGIN, Objects};
+use crate::ui::{Rect, inside};
 use std::path::Path;
 
-type Rect = (i32, i32, i32, i32);
 type Point = (i32, i32);
 
 pub const GUIDES_NAME: &str = "ultimo.guias.json";
@@ -313,10 +313,6 @@ pub const BUTTONS: [Button; 9] = [
     b(Op::Axis, 9, 0x147d, 0x1480),
     b(Op::Eraser, 10, 0x14d7, 0x14d8),
 ];
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn pic(id: u16) -> ImageRef {
     ImageRef::Pic(Program::Artist, id)

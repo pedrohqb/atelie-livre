@@ -12,6 +12,8 @@ use crate::Frame;
 use crate::assets::{Assets, ImageRef, Program};
 use crate::balloon::Balloon;
 use crate::scene::SceneId;
+pub use crate::ui::Rect;
+use crate::ui::inside;
 
 /// Qual lição dos Truques de Desenho.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,8 +35,6 @@ impl TrickKind {
 }
 
 /// Retângulo (x, y, w, h) em coordenadas da tela.
-pub type Rect = (i32, i32, i32, i32);
-
 /// Painel "Área de Desenho da Maggie": 313×272 no canto inferior direito do quadro.
 pub const MAGGIE_PANEL: Rect = (300, 180, 313, 272);
 /// Posição padrão do balão do passo.
@@ -221,10 +221,6 @@ pub struct Wizard {
     anim: Option<(PanelAnim, f32)>,
     /// Passos visitados, para o Volta.
     history: Vec<usize>,
-}
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
 }
 
 /// `(x, y)` dentro da elipse inscrita em `r`.

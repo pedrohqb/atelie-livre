@@ -15,10 +15,9 @@ use crate::balloon::{Balloon, balloon_font};
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::{PIC_ANIMAL0, Part, TextBalloon, blit_pic};
 use crate::ui::{DoubleClick, blit_canvas_fit, clip_text};
+use crate::ui::{Rect, inside};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
-
-type Rect = (i32, i32, i32, i32);
 
 /// Fichário inteiro (borda preta) e o miolo verde.
 pub const BINDER: Rect = (115, 111, 406, 257);
@@ -87,10 +86,6 @@ const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
 const GREEN: [u8; 3] = [71, 140, 80];
 const GRAY: [u8; 3] = [190, 190, 190];
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
 
 fn sound(id: u16) -> Effect {
     Effect::PlaySound(super::room_objects::snd(id))

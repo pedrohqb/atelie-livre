@@ -32,6 +32,7 @@ use crate::rng::XorShift;
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::TextBalloon;
 use crate::ui::DoubleClick;
+use crate::ui::{Rect, inside};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::palette::Rgb;
 use std::path::PathBuf;
@@ -45,8 +46,6 @@ pub enum Floor {
     /// Sótão escuro acima dos Truques (só pelo mastro).
     Attic,
 }
-
-type Rect = (i32, i32, i32, i32);
 
 /// O que um clique numa área faz.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,10 +112,6 @@ enum Talk {
 struct Hotspot {
     rect: Rect,
     action: Action,
-}
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
 }
 
 /// As cinco posições do mastro, na ordem em que ele sobe.

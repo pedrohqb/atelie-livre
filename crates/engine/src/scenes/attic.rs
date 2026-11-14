@@ -10,9 +10,8 @@
 
 use crate::assets::{Assets, ImageRef, Program};
 use crate::rng::XorShift;
+use crate::ui::Rect;
 use crate::{Frame, Image};
-
-type Rect = (i32, i32, i32, i32);
 
 /// Aro com o topo do mastro: a única área que leva a algum lugar.
 pub const RING: Rect = (368, 27, 94, 65);

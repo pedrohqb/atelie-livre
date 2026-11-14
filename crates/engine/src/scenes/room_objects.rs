@@ -20,12 +20,7 @@ use crate::Frame;
 use crate::anim::{self, Animator};
 use crate::assets::{Assets, CursorRef, ImageRef, Program, SoundRef};
 use crate::rng::XorShift;
-
-type Rect = (i32, i32, i32, i32);
-
-fn inside(r: Rect, x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
-}
+use crate::ui::{Rect, inside};
 
 /// Imagem colorida, máscara, largura e altura de um objeto (`ARTIST.PIC`).
 pub type Pic = (u16, u16, i32, i32);

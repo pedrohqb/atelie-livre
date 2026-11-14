@@ -8,10 +8,10 @@
 
 use super::sticker_easel::{canvas_to_stamp, gray_region};
 use super::*;
+use crate::paint::drawings::{list_drawings, list_samples, mag_meta, shrink};
 use crate::paint::store::{load_picture, save_stamp_png};
 use crate::paths::safe_component;
 use crate::scenes::finder_dialog::{self as dialog, Entry, FileList, Hit, Kind, stem};
-use crate::paint::drawings::{list_drawings, list_samples, mag_meta, shrink};
 use crate::scenes::stickers::USER_PREFIX;
 use crate::ui::{Pen, Rect, blit_canvas, inside};
 use std::path::{Path, PathBuf};

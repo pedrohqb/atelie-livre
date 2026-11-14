@@ -55,6 +55,7 @@ const SWATCHES: usize = COLORS.len();
 
 mod find_pictures;
 mod sticker_easel;
+use crate::ui::inside;
 use find_pictures::FindPictures;
 use sticker_easel::StickerEasel;
 
@@ -290,10 +291,6 @@ fn strip_sound(x: i32, y: i32, option: fn(usize) -> u16) -> Option<Effect> {
     (0..12)
         .find(|&k| inside(option_rect(25, k), x, y))
         .map(|k| sfx::play(option(k)))
-}
-
-fn inside(r: (i32, i32, i32, i32), x: i32, y: i32) -> bool {
-    x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3
 }
 
 fn pic(id: u16) -> ImageRef {
