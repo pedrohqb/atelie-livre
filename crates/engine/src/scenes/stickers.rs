@@ -81,9 +81,7 @@ pub fn is_user_sticker(dir: &Path, name: &str) -> bool {
         return true;
     }
     name.starts_with(LEGACY_USER_PREFIX)
-        && !dir
-            .join(crate::scenes::projects::meta_name(stem))
-            .exists()
+        && !dir.join(crate::scenes::projects::meta_name(stem)).exists()
 }
 /// Lado das miniaturas dos adesivos do usuário na tira.
 const USER_THUMB: u32 = 30;

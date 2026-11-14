@@ -26,4 +26,3 @@ fn every_listed_sample_opens() {
         samples.len()
     );
 }
-

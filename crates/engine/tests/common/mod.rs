@@ -306,8 +306,8 @@ impl<'a> Director<'a> {
             y,
         };
         self.step(&[Input::MouseMove { x, y }]);
-        self.step(&[c.clone()]);
-        self.step(&[u.clone()]);
+        self.step(std::slice::from_ref(&c));
+        self.step(std::slice::from_ref(&u));
         self.step(&[c]);
         self.step(&[u]);
         self.idle(3);

@@ -60,12 +60,22 @@ fn easel_double_click_on_slow_frames_opens_paint() {
 
 /// Um desenho com adesivo, guardado com nome ("A"), e depois um quadro novo
 /// como último desenho. Devolve a pasta de desenhos.
-fn drawing_with_sticker_then_another(a: &engine::assets::Assets, root: &std::path::Path) -> std::path::PathBuf {
+fn drawing_with_sticker_then_another(
+    a: &engine::assets::Assets,
+    root: &std::path::Path,
+) -> std::path::PathBuf {
     use engine::scene::Scene;
     let mut d = Director::new(a, root, SceneId::PaintNew, Some("bia"));
     let dir = d.drawings();
     d.idle(3);
-    for (x, y) in [(300, 455), (128, 28), (300, 455), (95, 78), (95, 123), (200, 300)] {
+    for (x, y) in [
+        (300, 455),
+        (128, 28),
+        (300, 455),
+        (95, 78),
+        (95, 123),
+        (200, 300),
+    ] {
         d.click(x, y);
     }
     d.click(300, 467); // nome do quadro
@@ -73,7 +83,10 @@ fn drawing_with_sticker_then_another(a: &engine::assets::Assets, root: &std::pat
     d.key(engine::scene::Key::Enter);
     d.idle(3);
     d.close();
-    assert!(dir.join("A.objetos.json").exists(), "o adesivo não foi guardado com o desenho");
+    assert!(
+        dir.join("A.objetos.json").exists(),
+        "o adesivo não foi guardado com o desenho"
+    );
     // um quadro novo, pintado e guardado como último desenho
     let mut p = engine::scenes::Paint::new_blank(Some(dir.clone()), a);
     for i in [
@@ -87,7 +100,11 @@ fn drawing_with_sticker_then_another(a: &engine::assets::Assets, root: &std::pat
     }
     p.leave();
     assert!(!dir.join("ultimo.objetos.json").exists());
-    std::fs::write(dir.join("galeria.txt"), format!("{}\n\n\n", dir.join("A.png").display())).unwrap();
+    std::fs::write(
+        dir.join("galeria.txt"),
+        format!("{}\n\n\n", dir.join("A.png").display()),
+    )
+    .unwrap();
     dir
 }
 
@@ -125,5 +142,8 @@ fn gallery_trash_removes_companion_files() {
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .filter(|n| n.starts_with("A."))
         .collect();
-    assert!(left.is_empty(), "sobraram arquivos do desenho jogado fora: {left:?}");
+    assert!(
+        left.is_empty(),
+        "sobraram arquivos do desenho jogado fora: {left:?}"
+    );
 }

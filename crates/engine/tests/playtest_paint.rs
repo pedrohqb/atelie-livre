@@ -132,7 +132,12 @@ fn tap(p: &mut engine::scenes::Paint, a: &engine::assets::Assets, x: i32, y: i32
 
 /// Coloca um adesivo de clip-art (rolo 2, o primeiro do filme) em `(x, y)` e
 /// devolve o centro dele na tela.
-fn place_clipart(p: &mut engine::scenes::Paint, a: &engine::assets::Assets, x: i32, y: i32) -> (i32, i32) {
+fn place_clipart(
+    p: &mut engine::scenes::Paint,
+    a: &engine::assets::Assets,
+    x: i32,
+    y: i32,
+) -> (i32, i32) {
     let n = p.objects().len();
     tap(p, a, 128, 28); // Seleciona-adesivos
     tap(p, a, 95, 78); // rolo 2
@@ -162,7 +167,10 @@ fn vacuum_removes_the_sound_of_a_sticker() {
     tap(&mut p, &a, 325, 25); // aspirador
     tap(&mut p, &a, 25 + 37 * 6 + 16, 79); // Remove-sons
     tap(&mut p, &a, x, y);
-    assert!(sound(&p).is_none(), "o Remove-sons não tirou o som do adesivo");
+    assert!(
+        sound(&p).is_none(),
+        "o Remove-sons não tirou o som do adesivo"
+    );
     tap(&mut p, &a, 275, 25); // ovo
     assert!(sound(&p).is_some(), "o ovo não devolveu o som");
 }
@@ -181,11 +189,34 @@ fn sticker_project_pages_are_not_user_stickers() {
     let mut p = engine::scenes::Paint::new_project(ProjectKind::Sticker, Some(dir.clone()), &a);
     tap(&mut p, &a, 300, 455);
     tap(&mut p, &a, 30, 25); // pincel
-    p.update(&[Input::Click { button: MouseButton::Left, x: 250, y: 250 }], common::DT, &a);
+    p.update(
+        &[Input::Click {
+            button: MouseButton::Left,
+            x: 250,
+            y: 250,
+        }],
+        common::DT,
+        &a,
+    );
     for k in 0..10 {
-        p.update(&[Input::MouseMove { x: 250 + 10 * k, y: 250 + 5 * k }], common::DT, &a);
+        p.update(
+            &[Input::MouseMove {
+                x: 250 + 10 * k,
+                y: 250 + 5 * k,
+            }],
+            common::DT,
+            &a,
+        );
     }
-    p.update(&[Input::MouseUp { button: MouseButton::Left, x: 350, y: 300 }], common::DT, &a);
+    p.update(
+        &[Input::MouseUp {
+            button: MouseButton::Left,
+            x: 350,
+            y: 300,
+        }],
+        common::DT,
+        &a,
+    );
     p.leave();
     let names: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()
@@ -207,9 +238,20 @@ fn sticker_project_pages_are_not_user_stickers() {
     engine::paint::store::save_stamp_png(&st, &pal, &dir.join(&user)).unwrap();
     engine::paint::store::save_stamp_png(&st, &pal, &dir.join("adesivo-velho.png")).unwrap();
     let p = engine::scenes::Paint::new_blank(Some(dir.clone()), &a);
-    let roll: Vec<String> = p.stickers().user_stickers().iter().map(|u| u.name.clone()).collect();
-    assert!(!roll.contains(&page), "a página do projeto entrou no rolo: {roll:?}");
-    assert!(roll.contains(&user) && roll.contains(&"adesivo-velho.png".to_string()), "{roll:?}");
+    let roll: Vec<String> = p
+        .stickers()
+        .user_stickers()
+        .iter()
+        .map(|u| u.name.clone())
+        .collect();
+    assert!(
+        !roll.contains(&page),
+        "a página do projeto entrou no rolo: {roll:?}"
+    );
+    assert!(
+        roll.contains(&user) && roll.contains(&"adesivo-velho.png".to_string()),
+        "{roll:?}"
+    );
     let listed = engine::scenes::gallery::list_drawings(&dir);
     assert!(listed.iter().any(|p| p.ends_with(&page)), "{listed:?}");
     assert!(!listed.iter().any(|p| p.ends_with(&user)), "{listed:?}");
@@ -236,4 +278,3 @@ fn add_sticker_transformer_puts_the_object_in_the_user_roll() {
     assert!(tmp.path().join(name).exists(), "{name} não foi gravado");
     assert_eq!(p.objects().len(), 1, "o quadro não deve mudar");
 }
-

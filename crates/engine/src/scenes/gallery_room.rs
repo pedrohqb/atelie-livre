@@ -734,7 +734,11 @@ impl GalleryRoom {
         if twin != it.path {
             let _ = std::fs::remove_file(twin);
         }
-        if let Some(stem) = it.path.file_stem().map(|s| s.to_string_lossy().into_owned()) {
+        if let Some(stem) = it
+            .path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+        {
             let [objects, background] = crate::paint::store::companions(&stem);
             for name in [objects, background, super::projects::meta_name(&stem)] {
                 let _ = std::fs::remove_file(it.path.with_file_name(name));
