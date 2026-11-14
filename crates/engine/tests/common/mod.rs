@@ -82,8 +82,9 @@ impl<'a> Director<'a> {
     pub fn users(&self) -> PathBuf {
         self.base().join("usuarios")
     }
+    /// Pasta do usuário: os documentos do Writer (`USERS\<APELIDO>`).
     pub fn texts(&self) -> PathBuf {
-        self.base().join("textos")
+        self.users().join(self.user_name())
     }
     fn user_name(&self) -> String {
         self.user
@@ -138,6 +139,7 @@ impl<'a> Director<'a> {
             SceneId::Browser => Box::new(Browser::new()),
             SceneId::WriterSplash => Box::new(Splash::writer(None)),
             SceneId::Writer => Box::new(Writer::new(Some(self.texts()), assets)),
+            // (o documento em branco do Escritório está no braço do Cw abaixo)
             SceneId::Cw(c) => {
                 // as mesmas cenas, com os dados do Writer (sem os desenhos do FA)
                 let p = Program::Writer;
@@ -160,7 +162,9 @@ impl<'a> Director<'a> {
                         GalleryRoom::portfolio_for_program(p, None, None, assets)
                             .with_user(&user, self.animal()),
                     ),
-                    CwScene::NewDocument => Box::new(Writer::new(Some(self.texts()), assets)),
+                    CwScene::NewDocument => {
+                        Box::new(Writer::new_blank(Some(self.texts()), assets))
+                    }
                     CwScene::IdeaMachine => {
                         Box::new(engine::scenes::writer_ideas::IdeaMachine::new(
                             Some(&self.users()),
@@ -175,8 +179,7 @@ impl<'a> Director<'a> {
                             assets,
                         ))
                     }
-                    // o editor ainda não pega o conteúdo da Oficina (TODO(office))
-                    CwScene::IdeaStory(_) => Box::new(Writer::new(Some(self.texts()), assets)),
+                    CwScene::IdeaStory(_) => Box::new(Writer::new_blank(Some(self.texts()), assets)),
                 }
             }
         }

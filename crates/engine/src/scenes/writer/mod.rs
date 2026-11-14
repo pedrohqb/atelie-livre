@@ -1122,6 +1122,11 @@ mod tests {
         assert_eq!(doc.paras[0].text(), "O gato");
         assert_eq!(extra.add.title, "Gato Teste");
         assert_eq!(extra.add.author, "Ana Teste");
+        // com a miniatura da primeira folha, como o original
+        let m = formats::max::read(&std::fs::read(&p).unwrap()).unwrap();
+        let t = m.thumbnail_bitmap().unwrap();
+        assert_eq!((t.width, t.height, t.depth), (108, 144, 4));
+        assert!(t.pixels.iter().any(|&c| c != 0));
         // aberto de novo (o último da pasta), com o nome na barra de baixo
         let mut w = Writer::new(Some(dir.path().to_path_buf()), &a);
         assert_eq!(w.title(), "Gato Teste");

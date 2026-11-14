@@ -27,13 +27,13 @@ use crate::ui::Rect;
 use crate::writer::convert::{self, MaxExtra};
 use crate::writer::doc::{CharChange, CharProps, Document, DopProps, Item, ParaChange};
 use crate::writer::fonts::{RunFont, WriterFonts};
-use crate::writer::layout::Layout;
+use crate::writer::layout::{FontKey, Layout, Measure};
 use crate::writer::object::{FloatObject, ObjRef, ObjectKind};
 use crate::writer::selection::{Clip, Clipboard, Motion, Selection};
 use crate::writer::store;
 use crate::writer::undo::{Snapshot, UndoStack};
 use formats::chnk::{self, OwnedChunk, OwnedPart};
-use formats::{twpb, wmf};
+use formats::{max, pkbm, twpb, wmf};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -109,18 +109,39 @@ fn to_owned(c: &chnk::Chunk) -> OwnedChunk {
     }
 }
 
-/// Imagem `w`×`h` por vizinho mais próximo.
+/// Imagem `w`×`h`. Ampliar repete pixels; encolher junta cada bloco pelo
+/// mínimo de cada canal, como o `StretchDIBits` do GDI no modo
+/// `BLACKONWHITE` (o traço preto não some ao encolher um adesivo).
 fn scaled(img: &Image, w: u32, h: u32) -> Image {
     if (img.width, img.height) == (w, h) || w == 0 || h == 0 || img.width == 0 {
         return img.clone();
     }
     let mut rgba = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
-        let sy = (y * img.height / h).min(img.height - 1);
+        let (sy0, sy1) = (
+            y * img.height / h,
+            ((y + 1) * img.height / h).max(y * img.height / h + 1),
+        );
         for x in 0..w {
-            let sx = (x * img.width / w).min(img.width - 1);
-            let i = ((sy * img.width + sx) * 4) as usize;
-            rgba.extend_from_slice(&img.rgba[i..i + 4]);
+            let (sx0, sx1) = (
+                x * img.width / w,
+                ((x + 1) * img.width / w).max(x * img.width / w + 1),
+            );
+            let mut px = [255u8, 255, 255, 0];
+            for sy in sy0..sy1.min(img.height) {
+                for sx in sx0..sx1.min(img.width) {
+                    let i = ((sy * img.width + sx) * 4) as usize;
+                    let p = &img.rgba[i..i + 4];
+                    if p[3] == 0 {
+                        continue;
+                    }
+                    for c in 0..3 {
+                        px[c] = px[c].min(p[c]);
+                    }
+                    px[3] = 255;
+                }
+            }
+            rgba.extend_from_slice(&px);
         }
     }
     Image {
@@ -134,6 +155,48 @@ fn scaled(img: &Image, w: u32, h: u32) -> Image {
 fn decode_pict(c: &OwnedChunk) -> Option<Image> {
     let meta = c.parts.iter().find(|p| p.tag.0 == *b"META")?;
     wmf::meta_dib(&meta.data).ok()
+}
+
+/// Folga de cada lado de uma figura do Maçã na linha (avanço = 4 + largura
+/// + 4, `office-complemento.md` §1).
+pub const REBUS_PAD: i32 = 4;
+
+/// A medição da diagramação: as fontes do Writer e o tamanho de verdade das
+/// figuras do Maçã (de pé na base da linha).
+struct DocMeasure<'a> {
+    fonts: &'a WriterFonts,
+    rebus: &'a HashMap<u8, (i32, i32)>,
+}
+
+impl Measure for DocMeasure<'_> {
+    fn advance(&self, font: &FontKey, c: char) -> i32 {
+        Measure::advance(self.fonts, font, c)
+    }
+
+    fn metrics(&self, font: &FontKey) -> (i32, i32) {
+        Measure::metrics(self.fonts, font)
+    }
+
+    fn rebus_size(&self, id: u8, font: &FontKey) -> (i32, i32) {
+        match self.rebus.get(&id) {
+            Some(&(w, h)) => (w + 2 * REBUS_PAD, h),
+            None => Measure::rebus_size(self.fonts, id, font),
+        }
+    }
+}
+
+/// Tamanho de cada figura do Maçã (as que existem no `WRITER.PIC`).
+fn rebus_sizes(a: &Assets) -> HashMap<u8, (i32, i32)> {
+    (1..=255u8)
+        .filter_map(|c| {
+            let (id, _) = crate::writer::ideas::rebus::image_ids(c)?;
+            let r = crate::assets::ImageRef::Pic(crate::assets::Program::Writer, id);
+            a.has_image(&r).then(|| {
+                let img = a.image(&r);
+                (c, (img.width as i32, img.height as i32))
+            })
+        })
+        .collect()
 }
 
 fn is_white(p: &[u8]) -> bool {
@@ -157,6 +220,8 @@ pub struct Editor {
     /// digitado em seguida no ponto de inserção.
     pending: Option<CharProps>,
     fonts: Rc<WriterFonts>,
+    /// Tamanho das figuras do Maçã.
+    rebus: HashMap<u8, (i32, i32)>,
     layout: RefCell<Option<Rc<Layout>>>,
     pictures: RefCell<HashMap<(ObjRef, u16, u16), Option<Rc<Image>>>>,
     /// Rolagem da vista, em pontos: (x, y) da pilha de folhas no canto.
@@ -206,6 +271,7 @@ impl Editor {
             clipboard: Clipboard::default(),
             pending: None,
             fonts: writer_fonts(assets),
+            rebus: rebus_sizes(assets),
             layout: RefCell::new(None),
             pictures: RefCell::new(HashMap::new()),
             scroll: (0, 0),
@@ -242,7 +308,11 @@ impl Editor {
         if let Some(l) = self.layout.borrow().as_ref() {
             return l.clone();
         }
-        let l = Rc::new(Layout::build(&self.doc, &*self.fonts));
+        let m = DocMeasure {
+            fonts: &self.fonts,
+            rebus: &self.rebus,
+        };
+        let l = Rc::new(Layout::build(&self.doc, &m));
         *self.layout.borrow_mut() = Some(l.clone());
         l
     }
@@ -771,34 +841,10 @@ impl Editor {
         for page in 0..l.page_count() {
             let (ox, oy) = self.page_origin(page);
             let (ox, oy) = (ox - vx, oy - vy);
-            if oy >= vh || oy + ph <= 0 {
+            if oy >= vh || oy + ph <= 0 || ox >= vw || ox + pw <= 0 {
                 continue;
             }
-            v.rect(ox, oy, pw, ph, WHITE);
-            for &k in &l.pages[page].objects {
-                self.draw_object(&mut v, &self.doc.objects[k], ox, oy);
-            }
-            self.draw_lines(&mut v, a, &l, page, ox, oy);
-            if let Some(n) = &l.pages[page].number {
-                let font = RunFont::default();
-                let w = self.fonts.text_width(&font, &n.text);
-                let (x0, y0, x1, _) = n.rect;
-                self.fonts.draw(
-                    &mut v,
-                    ox + (x0 + x1 - w) / 2,
-                    oy + y0,
-                    &font,
-                    &n.text,
-                    BLACK,
-                    false,
-                );
-            }
-            for r in l.selection_rects(self.sel.range()) {
-                if r.page == page {
-                    let (x0, y0, x1, y1) = r.rect;
-                    invert(&mut v, ox + x0, oy + y0, x1 - x0, y1 - y0);
-                }
-            }
+            self.draw_sheet(&mut v, a, page, ox, oy, true);
         }
         if self.caret_visible
             && self.sel.is_empty()
@@ -809,6 +855,80 @@ impl Editor {
             v.rect(x - vx, y - vy, 1, c.height.max(1), BLACK);
         }
         copy_into(f, &v, vx, vy);
+    }
+
+    /// A folha `page` inteira, em tamanho real (1 ponto = 1 pixel), com o
+    /// canto em `(ox, oy)` do quadro `v`: fundo branco, objetos, texto,
+    /// número de página e (com `selection`) a seleção em vídeo inverso.
+    /// O Visor de páginas e a impressão desenham por aqui.
+    pub fn draw_sheet(
+        &self,
+        v: &mut Frame,
+        a: &Assets,
+        page: usize,
+        ox: i32,
+        oy: i32,
+        selection: bool,
+    ) {
+        self.sheet(v, Some(a), page, ox, oy, selection);
+    }
+
+    /// [`Editor::draw_sheet`] sem os recursos (as figuras do Maçã ficam
+    /// como retângulos): a miniatura gravada no arquivo.
+    fn sheet(
+        &self,
+        v: &mut Frame,
+        a: Option<&Assets>,
+        page: usize,
+        ox: i32,
+        oy: i32,
+        selection: bool,
+    ) {
+        let l = self.layout();
+        let (pw, ph) = (
+            i32::from(self.doc.dop.page_width),
+            i32::from(self.doc.dop.page_height),
+        );
+        v.rect(ox, oy, pw, ph, WHITE);
+        let Some(sheet) = l.pages.get(page) else {
+            return;
+        };
+        for &k in &sheet.objects {
+            self.draw_object(v, &self.doc.objects[k], ox, oy);
+        }
+        self.draw_lines(v, a, &l, page, ox, oy);
+        if let Some(n) = &sheet.number {
+            let font = RunFont::default();
+            let w = self.fonts.text_width(&font, &n.text);
+            let (x0, y0, x1, _) = n.rect;
+            self.fonts.draw(
+                v,
+                ox + (x0 + x1 - w) / 2,
+                oy + y0,
+                &font,
+                &n.text,
+                BLACK,
+                false,
+            );
+        }
+        if selection {
+            for r in l.selection_rects(self.sel.range()) {
+                if r.page == page {
+                    let (x0, y0, x1, y1) = r.rect;
+                    invert(v, ox + x0, oy + y0, x1 - x0, y1 - y0);
+                }
+            }
+        }
+    }
+
+    /// A folha `page` num quadro do tamanho dela (sem seleção nem cursor).
+    pub fn render_page(&self, a: &Assets, page: usize) -> Frame {
+        let mut f = Frame::new(
+            u32::from(self.doc.dop.page_width),
+            u32::from(self.doc.dop.page_height),
+        );
+        self.draw_sheet(&mut f, a, page, 0, 0, false);
+        f
     }
 
     fn draw_object(&self, v: &mut Frame, o: &FloatObject, ox: i32, oy: i32) {
@@ -831,7 +951,15 @@ impl Editor {
         }
     }
 
-    fn draw_lines(&self, v: &mut Frame, a: &Assets, l: &Layout, page: usize, ox: i32, oy: i32) {
+    fn draw_lines(
+        &self,
+        v: &mut Frame,
+        a: Option<&Assets>,
+        l: &Layout,
+        page: usize,
+        ox: i32,
+        oy: i32,
+    ) {
         let vh = v.height() as i32;
         for line in l.lines_on(page) {
             if oy + line.top > vh || oy + line.top + line.height < 0 {
@@ -862,16 +990,25 @@ impl Editor {
                 };
                 match *item {
                     Item::Rebus(c) => {
-                        let (w, h) = (b.w, b.ascent);
-                        let x = ox + b.x;
+                        // de pé na base, com a folga dos dois lados
+                        let (w, h) = (b.w - 2 * REBUS_PAD, b.ascent);
+                        let x = ox + b.x + REBUS_PAD;
                         let y = oy + b.baseline - h;
-                        if crate::writer::ideas::rebus::draw(v, a, c, x, y).is_none() {
+                        let drawn =
+                            a.and_then(|a| crate::writer::ideas::rebus::draw(v, a, c, x, y));
+                        if drawn.is_none() {
                             v.frame_rect(x, y, w.max(1), h.max(1), 1, BACKDROP);
                         }
                         k += 1;
                     }
                     Item::Char(_, props) => {
+                        let mut font = RunFont::of(&self.doc, &props);
+                        font.points = b.size_pt;
+                        // o trecho segue enquanto cada item começa onde o
+                        // anterior acabou (o contorno dos objetos e o
+                        // justificado abrem buracos)
                         let mut text = String::new();
+                        let mut pen = b.x;
                         let mut j = k;
                         while j < line.boxes.len() {
                             let bj = line.boxes[j];
@@ -879,24 +1016,32 @@ impl Editor {
                                 Some(Item::Char(c, p))
                                     if *p == props
                                         && bj.size_pt == b.size_pt
-                                        && bj.baseline == b.baseline =>
+                                        && bj.baseline == b.baseline
+                                        && bj.x == pen =>
                                 {
                                     text.push(*c);
+                                    pen += self.fonts.advance(&font, *c);
                                     j += 1;
                                 }
                                 _ => break,
                             }
                         }
-                        let mut font = RunFont::of(&self.doc, &props);
-                        font.points = b.size_pt;
+                        if j == k {
+                            // item fora do lugar sozinho: desenha só ele
+                            if let Some(Item::Char(c, _)) = para.items.get(b.index) {
+                                text.push(*c);
+                            }
+                            j = k + 1;
+                        }
                         let lm = self.fonts.line_metrics(&font);
                         let last = line.boxes[j - 1];
                         if let Some(hl) = props.highlight {
+                            // o marca-texto cobre a linha inteira (SAMP18 "calor")
                             v.rect(
                                 ox + b.x,
-                                oy + b.baseline - b.ascent,
+                                oy + line.top,
                                 last.x + last.w - b.x,
-                                b.ascent + b.descent,
+                                line.height,
                                 Editor::rgb(hl),
                             );
                         }
@@ -957,7 +1102,64 @@ impl Editor {
         self.changed = false;
     }
 
+    /// Miniatura da primeira folha, como o original grava no `THMB`: o lado
+    /// maior com 144 pixels, 4 bits na paleta `THUMB_PALETTE` (a pasta e o
+    /// quadro da sala Escritório mostram).
+    pub fn thumbnail(&self) -> pkbm::Bitmap {
+        let dop = &self.doc.dop;
+        let (pw, ph) = (dop.page_width, dop.page_height);
+        let mut page = Frame::new(u32::from(pw), u32::from(ph));
+        self.sheet(&mut page, None, 0, 0, 0, false);
+        let (tw, th) = max::thumb_size(pw, ph);
+        let mut pixels = Vec::with_capacity(usize::from(tw) * usize::from(th));
+        for ty in 0..u32::from(th) {
+            let (y0, y1) = (
+                ty * u32::from(ph) / u32::from(th),
+                (ty + 1) * u32::from(ph) / u32::from(th),
+            );
+            for tx in 0..u32::from(tw) {
+                let (x0, x1) = (
+                    tx * u32::from(pw) / u32::from(tw),
+                    (tx + 1) * u32::from(pw) / u32::from(tw),
+                );
+                let mut sum = [0u32; 3];
+                let mut n = 0;
+                for y in y0..y1.max(y0 + 1) {
+                    for x in x0..x1.max(x0 + 1) {
+                        let p = page.pixel(x.min(u32::from(pw) - 1), y.min(u32::from(ph) - 1));
+                        for c in 0..3 {
+                            sum[c] += u32::from(p[c]);
+                        }
+                        n += 1;
+                    }
+                }
+                let avg = sum.map(|v| (v / n.max(1)) as i32);
+                let best = max::THUMB_PALETTE
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, c)| {
+                        let d = [
+                            i32::from(c.r) - avg[0],
+                            i32::from(c.g) - avg[1],
+                            i32::from(c.b) - avg[2],
+                        ];
+                        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+                    })
+                    .map_or(0, |(k, _)| k as u8);
+                pixels.push(best);
+            }
+        }
+        pkbm::Bitmap {
+            width: tw,
+            height: th,
+            depth: 4,
+            pixels,
+            palette: Some(max::THUMB_PALETTE.to_vec()),
+        }
+    }
+
     fn write(&mut self, path: &Path) -> Result<(), String> {
+        self.extra.thumbnail = Some(pkbm::encode_rows(&self.thumbnail(), (0, 0)));
         let l = self.layout();
         let pages = l.page_starts(&self.doc);
         store::save(path, &self.doc, &self.extra, &pages, Some(self.sel.range()))?;
@@ -1043,6 +1245,26 @@ fn copy_into(dst: &mut Frame, src: &Frame, x: i32, y: i32) {
 mod tests {
     use super::*;
     use crate::scenes::testutil::empty_assets;
+
+    #[test]
+    fn shrinking_keeps_thin_black_lines() {
+        // linha preta de 1 px numa imagem 8×8, reduzida a 2×2
+        let mut rgba = vec![255u8; 8 * 8 * 4];
+        for y in 0..8 {
+            let i = (y * 8 + 5) * 4;
+            rgba[i..i + 3].copy_from_slice(&[0, 0, 0]);
+        }
+        let img = Image {
+            width: 8,
+            height: 8,
+            rgba,
+        };
+        let s = scaled(&img, 2, 2);
+        assert_eq!(&s.rgba[4..8], &[0, 0, 0, 255]);
+        assert_eq!(&s.rgba[0..4], &[255, 255, 255, 255]);
+        let big = scaled(&img, 16, 16);
+        assert_eq!(&big.rgba[(10) * 4..(10) * 4 + 3], &[0, 0, 0]);
+    }
 
     #[test]
     fn view_maps_page_points_like_the_original() {
