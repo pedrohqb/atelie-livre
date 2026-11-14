@@ -78,14 +78,11 @@ pub enum ProjectKind {
 }
 
 impl ProjectKind {
-    /// Rótulo curto da caixa esquerda da barra inferior (no lugar de "Ateliê").
+    /// Rótulo da caixa esquerda da barra inferior (no lugar de "Ateliê"): o
+    /// andar de onde se veio, "Projetos", em todos os projetos (conferido
+    /// no original).
     pub fn label(self) -> &'static str {
-        match self {
-            ProjectKind::Comics => "Quadrinhos",
-            ProjectKind::Button => "Botão",
-            ProjectKind::Sticker => "Adesivo",
-            ProjectKind::Flipbook => "Animação",
-        }
+        "Projetos"
     }
 
     /// Texto da caixa central da barra inferior (títulos das `STR#` do `ARTIST.EXE`).

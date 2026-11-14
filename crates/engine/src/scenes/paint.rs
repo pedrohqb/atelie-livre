@@ -1206,6 +1206,8 @@ impl Paint {
     pub fn new_project(kind: ProjectKind, drawings: Option<PathBuf>, assets: &Assets) -> Paint {
         let mut p = Paint::new(None, assets);
         p.drawings = drawings;
+        // nos projetos a Maggie fica na porta (clicar nela é o fim guiado)
+        p.door = Door::Maggie;
         if kind == ProjectKind::Flipbook {
             p.project = Some(Project::Flipbook(Box::new(Flipbook::open(
                 p.drawings.as_deref(),
@@ -2119,7 +2121,7 @@ impl Paint {
             (_, Some(t)) => ("Truques", t.label().to_string()),
             (Some(p), None) => (p.kind().label(), p.display_name()),
             (None, None) if self.edit_file.is_some() => (
-                "Animação",
+                "Projetos",
                 "Modificando uma figura do Desenho Animado".to_string(),
             ),
             (None, None) => ("Ateliê", self.title.clone()),
