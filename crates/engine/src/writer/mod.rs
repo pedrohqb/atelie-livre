@@ -32,6 +32,7 @@ pub mod fonts;
 pub mod ideas;
 pub mod layout;
 pub mod object;
+pub mod prefs;
 pub mod selection;
 pub mod store;
 pub mod undo;

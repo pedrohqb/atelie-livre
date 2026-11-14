@@ -14,7 +14,7 @@ use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
-    Writer,
+    Writer, WriterPortfolio,
 };
 use std::path::{Path, PathBuf};
 
@@ -154,16 +154,21 @@ impl<'a> Director<'a> {
                     CwScene::Imaginopolis => Box::new(Imaginopolis::for_program(p, None)),
                     CwScene::Street => Box::new(Street::for_program(p, None)),
                     CwScene::Building(floor) => Box::new(
-                        Room::for_program(p, floor, None, None, assets).with_user(&user, assets),
+                        Room::for_program(p, floor, None, None, assets)
+                            .with_user(&user, assets)
+                            .with_users_dir(Some(self.users()), assets),
                     ),
                     CwScene::Library => Box::new(
                         GalleryRoom::for_program(p, None, None, assets)
                             .with_user(&user, self.animal()),
                     ),
-                    CwScene::Portfolio => Box::new(
-                        GalleryRoom::portfolio_for_program(p, None, None, assets)
-                            .with_user(&user, self.animal()),
-                    ),
+                    CwScene::Portfolio => Box::new(WriterPortfolio::new(
+                        None,
+                        Some(self.users()),
+                        &user,
+                        self.animal(),
+                        assets,
+                    )),
                     CwScene::NewDocument => {
                         Box::new(Writer::new_blank(Some(self.texts()), assets).with_user(&user))
                     }

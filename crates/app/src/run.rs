@@ -10,7 +10,7 @@ use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::writer_ideas::{IdeaMachine, PictureBoard};
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
-    Writer,
+    Writer, WriterPortfolio,
 };
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
@@ -78,7 +78,8 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     let room = |floor| {
         Box::new(
             Room::for_program(p, floor, cfg.click_sound.clone(), pictures(), assets)
-                .with_user(user.name(), assets),
+                .with_user(user.name(), assets)
+                .with_users_dir(users_dir(), assets),
         )
     };
     let entry = || {
@@ -117,7 +118,14 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::BookStory | SceneId::Cw(CwScene::BookStory) => {
             Box::new(Story::for_program(p, cfg.click_sound.clone(), assets).over_room())
         }
-        SceneId::Portfolio | SceneId::Cw(CwScene::Portfolio) => Box::new(
+        SceneId::Cw(CwScene::Portfolio) => Box::new(WriterPortfolio::new(
+            cfg.click_sound.clone(),
+            users_dir(),
+            user.name(),
+            user.animal(),
+            assets,
+        )),
+        SceneId::Portfolio => Box::new(
             GalleryRoom::portfolio_for_program(p, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), user.animal()),
         ),
@@ -236,6 +244,7 @@ fn map_key(k: Keycode) -> Key {
         Keycode::Backspace => Key::Backspace,
         Keycode::Delete => Key::Delete,
         Keycode::F12 => Key::F12,
+        Keycode::O => Key::O,
         Keycode::Q => Key::Q,
         Keycode::A => Key::A,
         Keycode::C => Key::C,

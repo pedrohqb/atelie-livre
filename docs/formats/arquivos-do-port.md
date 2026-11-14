@@ -149,3 +149,14 @@ molduras que o port ainda não representa) é regravado como veio
 Max em `SHARED/USERS/MAX`) abre como cópia: salvar grava na pasta do usuário.
 Os arquivos internos do original (`~NOTESID.MAX` etc.) não aparecem na
 lista de documentos.
+
+## Creative Writer: preferências e documentos (`<usuarios>/<apelido>/`)
+
+Gravados por `crates/engine/src/writer/prefs.rs`.
+
+| Arquivo | Conteúdo |
+|---|---|
+| `~MAXUSER.INF` | o mesmo formato do original (`maxprefs.md`): `FILR 0` = último documento (quadro do Escritório), `FILR 1..4` = molduras da Biblioteca; `STTB`/`SUDG`/`FNTL` guardados como vieram. Sem o arquivo valem os exemplos do Max (`SAMP18`, `SAMP9`, `SAMP16`, `SAMP5`, `SAMP6`). |
+| `*.MAX` | documentos do usuário; no `FILR` ficam como `USERS\<APELIDO>\ARQUIVO.MAX` (os outros caminhos são relativos à pasta `MSKIDS` dos dados) |
+| `predio-writer.txt` | estado das salas: `bolsa_aberta=0/1` e `ajuda_desligada=0/1` (o original também guarda, em bytes não localizados) |
+
