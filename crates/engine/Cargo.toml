@@ -14,5 +14,11 @@ png = "0.17"
 ab_glyph = "0.2"
 ttf-parser = "0.25"
 
+[features]
+default = ["embedded-fonts"]
+# Substitutas livres das fontes do Creative Writer embutidas no programa
+# (assets/fonts/); sem este recurso, só as do sistema.
+embedded-fonts = []
+
 [dev-dependencies]
 tempfile = "3"
