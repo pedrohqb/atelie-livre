@@ -9,12 +9,15 @@ use crate::Frame;
 use crate::assets::Assets;
 use crate::help::HelpBalloon;
 use crate::paint::shaped::{
-    self, Face, Inks, MAX_CHARS, Shadow, ShapedWords, WordShape, font_label, render,
+    self, Face, Inks, MAX_CHARS, Shadow, ShapedWords, WordShape, font_label, render, shape_icon,
 };
+use crate::paint::splot_res::SplotRes;
 use crate::paint::stamp::Stamp;
 use crate::scene::{Input, Key, MouseButton};
 use formats::fnt::Font;
 use formats::palette::Rgb;
+use formats::scrd::Scrd;
+use formats::splot_res::style;
 
 /// Moldura e painéis (x, y, w, h).
 pub const FRAME: Rect = (88, 72, 463, 335);
@@ -48,16 +51,6 @@ pub const HELP_ROTATE: usize = 3;
 const CLICK_DEG: i32 = 5;
 const SPIN_DELAY: f32 = 0.4;
 const SPIN_STEP: f32 = 0.05;
-
-/// Rótulos do menu AA (estilos).
-const STYLES: [&str; 6] = [
-    "Normal",
-    "Negrito",
-    "Inclinado",
-    "Contorno",
-    "MAIÚSCULAS",
-    "Vertical",
-];
 
 /// Botão de baixo `k` (ABC, FORMA, AA, cores, padrões, sombras).
 pub fn button_rect(k: usize) -> Rect {
@@ -97,6 +90,8 @@ pub struct Ctx<'a> {
     pub inks: Inks,
     /// Conjuntos da lista de cores (um índice, ou dois/três alternados).
     pub color_sets: &'a [Vec<u8>],
+    /// Formas, estilos e sombras do executável (`SCRD`, `TMEN`).
+    pub res: &'a SplotRes,
 }
 
 /// Resposta a uma entrada.
@@ -144,7 +139,7 @@ pub fn stamp_of(w: &ShapedWords, ctx: &Ctx) -> Stamp {
             .unwrap_or([0; 8]),
         ..ctx.inks
     };
-    render(w, face, &inks)
+    render(w, face, &inks, ctx.res.shape(w.shape))
 }
 
 impl ShapedEasel {
@@ -186,11 +181,11 @@ impl ShapedEasel {
         let cx = r.0 + r.2 / 2;
         let (w, row_h, n) = match m {
             Menu::Fonts => (190, 18, self.fonts.len()),
-            Menu::Shapes => (72, 46, WordShape::ALL.len()),
-            Menu::Styles => (150, 21, STYLES.len()),
+            Menu::Shapes => (70, 38, WordShape::ALL.len()),
+            Menu::Styles => (150, 21, ctx.res.styles.len()),
             Menu::Colors => (68, 22, ctx.color_sets.len()),
             Menu::Patterns => (62, 22, ctx.patterns.len()),
-            Menu::Shadows => (170, 21, Shadow::ALL.len()),
+            Menu::Shadows => (170, 21, Shadow::ALL.len().min(ctx.res.shadows.len())),
         };
         let mut l = List::above(cx, BUTTON_Y - 2, w, row_h, n, 4);
         let current = match m {
@@ -216,14 +211,7 @@ impl ShapedEasel {
                 }
             }
             Menu::Shapes => w.shape = WordShape::ALL[k.min(WordShape::ALL.len() - 1)],
-            Menu::Styles => match k {
-                0 => w.set_styles(""),
-                1 => w.bold = !w.bold,
-                2 => w.italic = !w.italic,
-                3 => w.outline = !w.outline,
-                4 => w.caps = !w.caps,
-                _ => w.vertical = !w.vertical,
-            },
+            Menu::Styles => w.toggle_style(k),
             Menu::Colors => {
                 if let Some(c) = ctx.color_sets.get(k) {
                     w.colors = c.clone();
@@ -384,7 +372,8 @@ impl ShapedEasel {
         ui::bar_v(f, 365, 301, 49);
         ui::bar_v(f, 445, 301, 101);
         if let Some(s) = &self.preview {
-            draw_fit(f, s, PREVIEW, ctx.pal);
+            // a prévia do original sempre enche a caixa (aumenta ou diminui)
+            draw_scaled(f, s, PREVIEW, ctx.pal, f32::INFINITY);
         }
         self.field.draw(f, ctx.ui_font, FIELD);
         ui::blit(f, a, (0x028d, 0x028f), PLUS.0, PLUS.1);
@@ -415,23 +404,18 @@ impl ShapedEasel {
                 ui::menu_row(f, a, font, r, font_label(name), *name == w.font, false);
             }
             Menu::Styles => {
-                let on = match k {
-                    0 => w.styles().is_empty(),
-                    1 => w.bold,
-                    2 => w.italic,
-                    3 => w.outline,
-                    4 => w.caps,
-                    _ => w.vertical,
-                };
-                ui::menu_row(f, a, font, r, STYLES[k], on, k == 1);
+                let item = &ctx.res.styles[k];
+                let bold = item.style & style::BOLD != 0;
+                ui::menu_row(f, a, font, r, &item.label, w.style_on(k), bold);
             }
             Menu::Shadows => {
                 let s = Shadow::ALL[k];
-                ui::menu_row(f, a, font, r, s.label(), s == w.shadow, false);
+                ui::menu_row(f, a, font, r, &ctx.res.shadows[k], s == w.shadow, false);
             }
             Menu::Shapes => {
                 let s = WordShape::ALL[k];
-                draw_shape_icon(f, s, (r.0 + 6, r.1 + 6, r.2 - 12, r.3 - 12));
+                let scrd = ctx.res.shape(s);
+                draw_shape_icon(f, scrd, (r.0 + 6, r.1 + 6, r.2 - 12, r.3 - 12));
                 if s == w.shape {
                     f.frame_rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, 1, [250, 0, 57]);
                 }
@@ -484,42 +468,15 @@ impl ShapedEasel {
     }
 }
 
-/// Silhueta de uma forma (preta) dentro de `r`, como os ícones da lista FORMA.
-pub fn draw_shape_icon(f: &mut Frame, s: WordShape, r: Rect) {
+/// Silhueta de uma forma (preta) dentro de `r`, como os ícones da lista
+/// FORMA: a forma do `SCRD` esticada na casa (`None` = retângulo cheio).
+pub fn draw_shape_icon(f: &mut Frame, s: Option<&Scrd>, r: Rect) {
     let (x0, y0, w, h) = r;
-    match s {
-        WordShape::ArcUp | WordShape::Circle => {
-            let full = s == WordShape::Circle;
-            let rad = if full {
-                h as f32 / 2.0
-            } else {
-                (w as f32 / 2.0).min(h as f32)
-            };
-            let (cx, cy) = (
-                x0 as f32 + w as f32 / 2.0,
-                if full {
-                    y0 as f32 + h as f32 / 2.0
-                } else {
-                    (y0 + h) as f32
-                },
-            );
-            let thick = rad * 0.45;
-            for y in y0..y0 + h {
-                for x in x0..x0 + w {
-                    let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
-                    let d = (dx * dx + dy * dy).sqrt();
-                    if d <= rad && d >= rad - thick && (full || dy <= 0.0) {
-                        f.put(x, y, ui::BLACK);
-                    }
-                }
-            }
-        }
-        _ => {
-            for x in 0..w {
-                let u = (x as f32 + 0.5) / w as f32;
-                let (t, b) = s.envelope(u);
-                let (t, b) = ((t * h as f32).round() as i32, (b * h as f32).round() as i32);
-                f.rect(x0 + x, y0 + t, 1, b - t, ui::BLACK);
+    let px = shape_icon(s, w, h);
+    for y in 0..h {
+        for x in 0..w {
+            if px[(y * w + x) as usize] {
+                f.put(x0 + x, y0 + y, ui::BLACK);
             }
         }
     }
@@ -528,10 +485,15 @@ pub fn draw_shape_icon(f: &mut Frame, s: WordShape, r: Rect) {
 /// Desenha o carimbo dentro de `r`: em tamanho real se couber; senão
 /// reduzido (vizinho mais próximo) para caber, centrado.
 pub fn draw_fit(f: &mut Frame, s: &Stamp, r: Rect, pal: &[Rgb]) {
+    draw_scaled(f, s, r, pal, 1.0);
+}
+
+/// Desenha o carimbo centrado em `r`, na maior escala (até `max_scale`) que cabe.
+pub fn draw_scaled(f: &mut Frame, s: &Stamp, r: Rect, pal: &[Rgb], max_scale: f32) {
     let (bw, bh) = (r.2 - 8, r.3 - 8);
     let scale = (bw as f32 / s.w as f32)
         .min(bh as f32 / s.h as f32)
-        .min(1.0);
+        .min(max_scale);
     let (dw, dh) = (
         ((s.w as f32 * scale) as i32).max(1),
         ((s.h as f32 * scale) as i32).max(1),

@@ -50,7 +50,9 @@ e de baixo.
 
 ## Como o original usa (conferido no Wine, nov/2026)
 
-Capturas: `sweep/splot_res/shots/o_*` e a folha `docs/telas/splot-formas.png`.
+Capturas (fora do repositório, derivadas dos dados originais):
+`/home/claude/sweep/splot_res/shots/o_*`; folhas comparativas original × port
+`folha_formas.png` e `folha_menus.png` na mesma pasta.
 
 - **Ordem da lista**: retângulo e depois os `SCRD` 1 a 14, por id. A lista
   mostra 9 casas e, ao abrir, rola para deixar a forma atual em cima (no
@@ -63,14 +65,22 @@ Capturas: `sweep/splot_res/shots/o_*` e a folha `docs/telas/splot-formas.png`.
   cima e o de baixo (passando pelo do meio), por isso as hastes inclinam no
   zigue-zague e no arco.
 - **Tamanho**: a largura do texto corresponde a `largura` unidades e a
-  altura da linha a `altura` unidades (escalas diferentes em x e y). O arco
-  (8000 × 2000, curvas de −2000 a 4000) sai com a largura do texto e 3 vezes
-  a altura da linha nas pontas.
+  altura das letras (da tinta: o alto do "P" encosta na curva de cima) a
+  `altura` unidades — escalas diferentes em x e y. O arco (8000 × 2000,
+  curvas de −2000 a 4000) sai com a largura do texto e 3 vezes a altura das
+  letras nas pontas. Os **contornos fechados** (coração, carro, peixe,
+  cabeça: `c1 = 0` e `c3 = c4`, a curva de baixo é o caminho de volta)
+  guardam a proporção da própria forma (mesma escala em x e y): medidas no
+  original, largura/altura 1,11, 1,54, 1,82 e 0,90, contra 1,15, 1,59, 1,87
+  e 0,92 das curvas.
+- **Prévia**: o cavalete sempre aumenta ou diminui a imagem para encher a
+  caixa da prévia.
 - **Estilos do `TMEN 1` que mexem na forma**: "Em cima/embaixo" espelha a
   forma na vertical e "Esquerda/direita" na horizontal (as letras continuam
-  de pé); "Preencher" faz o texto ocupar a forma toda, sem a folga de
-  acentos e descendentes da linha. Os três ligam e desligam a cada clique e
-  não mudam nada no retângulo.
+  de pé); "Preencher" faz as letras ocuparem um pouco mais a forma (no
+  original a diferença é pequena; o port tira também a folga dos lados do
+  texto — interpretação provável, não confirmada). Os três ligam e desligam
+  a cada clique e não mudam nada no retângulo.
 - O original transforma os vértices do contorno das letras (TrueType), o
   que deixa as bordas retas entre vértices; o port amostra a máscara
   pixel a pixel (bordas curvas) — mesma forma, contorno mais liso.

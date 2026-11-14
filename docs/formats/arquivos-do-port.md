@@ -45,11 +45,15 @@ JSON de uma linha por objeto, gravado por `crates/engine/src/paint/objects.rs`
   texto em `palavra_forma`; `tipo` (família instalada; vazio = "Pablo
   Graphos"; se a família não existir na máquina, a imagem sai na do
   programa), `molde` (`retangulo`, `arco-embaixo`, `onda`, `inflado`,
-  `cresce`, `encolhe`, `zigue-zague`, `triangulo`, `triangulo-baixo`,
-  `arco`, `circulo`), `estilos` (lista separada por vírgulas de `negrito`,
-  `inclinado`, `contorno`, `maiusculas`, `vertical`), `cores` (índices da
-  paleta separados por vírgula; mais de um = alternados por letra), `padrao`
-  (índice do padrão da pintura, 0 = cheio), `sombra` (`nenhuma`, `normal`,
+  `cresce`, `encolhe`, `zigue-zague`, `triangulo`, `seta`, `arco-iris`,
+  `esse`, `coracao`, `carro`, `peixe`, `cabeca` — o retângulo e os `SCRD`
+  1–14; os nomes antigos `triangulo-baixo`, `arco` e `circulo` são lidos
+  como `triangulo`, `arco-iris` e `arco-iris`), `estilos` (lista separada
+  por vírgulas de `negrito`, `inclinado`, `contorno`, `maiusculas`,
+  `vertical`, `preencher`, `em-cima-embaixo`, `esquerda-direita`), `cores`
+  (índices da paleta separados por vírgula; mais de um = alternados por
+  letra), `padrao` (índice na lista de padrões do cavalete: 0 = cheio, 1–13
+  = `PATS`; antes era o padrão da pintura), `sombra` (`nenhuma`, `normal`,
   `amanhecer`, `anoitecer`, `girar-sumir`, `girar-circulo`, `convergente`,
   `tridimensional`), `tamanho` (altura da linha em pixels) e `giro` (graus,
   anti-horário). A imagem é refeita ao abrir.
