@@ -61,7 +61,7 @@ fn placed_animal_settles_into_an_object() {
     let Some(a) = real_assets() else { return };
     let tmp = tempfile::tempdir().unwrap();
     let mut p = Paint::new_blank(Some(tmp.path().to_path_buf()), &a);
-    let mut step = |p: &mut Paint, i: Vec<engine::scene::Input>| {
+    let step = |p: &mut Paint, i: Vec<engine::scene::Input>| {
         p.update(&i, common::DT, &a);
     };
     let click = |x, y| {
@@ -101,4 +101,68 @@ fn placed_animal_settles_into_an_object() {
         frames / 60
     );
     eprintln!("cobra parou em {:.1} s", frames as f32 / 60.0);
+}
+
+/// Clica (aperta e solta em quadros seguidos) na pintura.
+fn tap(p: &mut engine::scenes::Paint, a: &engine::assets::Assets, x: i32, y: i32) {
+    use engine::scene::{Input, MouseButton, Scene};
+    p.update(&[Input::MouseMove { x, y }], common::DT, a);
+    p.update(
+        &[Input::Click {
+            button: MouseButton::Left,
+            x,
+            y,
+        }],
+        common::DT,
+        a,
+    );
+    p.update(
+        &[Input::MouseUp {
+            button: MouseButton::Left,
+            x,
+            y,
+        }],
+        common::DT,
+        a,
+    );
+    for _ in 0..3 {
+        p.update(&[], common::DT, a);
+    }
+}
+
+/// Coloca um adesivo de clip-art (rolo 2, o primeiro do filme) em `(x, y)` e
+/// devolve o centro dele na tela.
+fn place_clipart(p: &mut engine::scenes::Paint, a: &engine::assets::Assets, x: i32, y: i32) -> (i32, i32) {
+    let n = p.objects().len();
+    tap(p, a, 128, 28); // Seleciona-adesivos
+    tap(p, a, 95, 78); // rolo 2
+    tap(p, a, 95, 123); // primeiro adesivo do filme (embaixo do rolo)
+    tap(p, a, x, y);
+    assert_eq!(p.objects().len(), n + 1, "o adesivo não foi colocado");
+    let r = p.objects().records().last().cloned().unwrap();
+    let o = engine::paint::ORIGIN;
+    (o.0 + r.x + r.w / 2, o.1 + r.y + r.h / 2)
+}
+
+/// Seleciona-sons associa um som ao adesivo; o Remove-sons do aspirador o
+/// tira (e o ovo devolve).
+#[test]
+fn vacuum_removes_the_sound_of_a_sticker() {
+    let Some(a) = real_assets() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = engine::scenes::Paint::new_blank(Some(tmp.path().to_path_buf()), &a);
+    tap(&mut p, &a, 300, 455);
+    let (x, y) = place_clipart(&mut p, &a, 200, 300);
+    tap(&mut p, &a, 170, 25); // Seleciona-sons
+    tap(&mut p, &a, 290, 77); // categoria "Dinossauro"
+    tap(&mut p, &a, 60, 313); // um som da lista
+    tap(&mut p, &a, x, y); // associa ao adesivo
+    let sound = |p: &engine::scenes::Paint| p.objects().records().last().unwrap().sound.clone();
+    assert!(sound(&p).is_some(), "o som não foi associado ao adesivo");
+    tap(&mut p, &a, 325, 25); // aspirador
+    tap(&mut p, &a, 25 + 37 * 6 + 16, 79); // Remove-sons
+    tap(&mut p, &a, x, y);
+    assert!(sound(&p).is_none(), "o Remove-sons não tirou o som do adesivo");
+    tap(&mut p, &a, 275, 25); // ovo
+    assert!(sound(&p).is_some(), "o ovo não devolveu o som");
 }

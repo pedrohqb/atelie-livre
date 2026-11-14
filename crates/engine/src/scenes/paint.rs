@@ -1900,12 +1900,7 @@ impl Paint {
                 | Tool::Sounds
                 | Tool::Transformers
                 | Tool::Supertools => {}
-                Tool::Vacuum => {
-                    self.vacuum = VACUUM_MODES[k];
-                    if self.vacuum == VacuumMode::Sounds {
-                        fx.push(Effect::Log("aspirador: opção ainda não disponível".into()));
-                    }
-                }
+                Tool::Vacuum => self.vacuum = VACUUM_MODES[k],
             }
             self.show_help(true, assets);
         }
@@ -1990,7 +1985,9 @@ impl Paint {
                 self.objects = Objects::default();
                 self.changed = true;
             }
-            VacuumMode::Sounds => {}
+            VacuumMode::Sounds => {
+                self.vacuum_sound(cx, cy);
+            }
         }
     }
 
