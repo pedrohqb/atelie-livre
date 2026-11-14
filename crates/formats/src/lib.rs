@@ -25,6 +25,7 @@ pub mod render;
 pub mod scrd;
 pub mod splot_res;
 pub mod tag;
+pub mod twpb;
 pub mod wave;
 pub mod what;
 pub mod winres;
