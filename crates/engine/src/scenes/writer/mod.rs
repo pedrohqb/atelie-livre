@@ -29,15 +29,17 @@ mod viewer;
 mod word_strip;
 
 use crate::Frame;
-use crate::assets::{Assets, CursorRef};
-use crate::scene::{DEFAULT_CURSOR, Effect, Input, KidCommon, MouseButton, Scene};
-use crate::writer::Document;
+use crate::assets::{Assets, CursorRef, Program};
+use crate::scene::{DEFAULT_CURSOR, Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
+use crate::scenes::paint::exit_dialog::{Choice, ExitDialog, Reason};
+use crate::scenes::paint::rename::{After as RenameAfter, Rename};
+use crate::writer::doc::Document;
 use cursors::Pointer;
-pub use editor::{Editor, LIBRARIES, MARGIN, PAGE, TEXT_H, TEXT_W};
+pub use editor::{Editor, LIBRARIES, ORIGIN, PAGE, PAGE_GAP, PagePoint};
 use mczee::{McZee, Request};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 pub use tools::{Cx, ToolId, ToolStrip};
-use tools::{SND_TOOL_AGAIN, WHAT_GENERAL, inside, snd};
+use tools::{SND_CHOOSE, SND_TOOL_AGAIN, WHAT_GENERAL, WHAT_REMOVERS, inside, snd};
 pub use word_strip::List;
 
 /// Uma instância de cada ferramenta (na ordem da barra).
@@ -87,11 +89,75 @@ impl Tools {
     }
 }
 
-/// Setas ▲▼ da barra de baixo (rolar a vista; hoje trocam de página).
-const SND_ARROW_UP: u16 = 0x02bc;
-const SND_ARROW_DOWN: u16 = 0x02bd;
+/// Setas ▲▼◀▶ da barra de baixo: rolam a vista (sons `02bc`..`02bf`).
+const SND_ARROWS: [u16; 4] = [0x02bc, 0x02bd, 0x02be, 0x02bf];
+/// Quanto cada clique numa seta rola (provisório: não medido).
+pub const ARROW_STEP: i32 = PAGE.3 / 2;
 /// "Andando por aí e olhando as páginas", na primeira seta usada.
 const WHAT_PAGES: usize = 11;
+/// "Salvar": o título vira campo de nome (`0faa[14]`, som `0232`).
+const WHAT_SAVE: usize = 14;
+const SND_RENAME: u16 = 0x0232;
+/// Porta aberta: `02d6` + `02fe` e o "Epa!" (`0203[0]`).
+const SND_EPA: [u16; 2] = [0x02d6, 0x02fe];
+/// Ctrl+X/C/V: sons e balões dos Re-movedores (`0fa3[8]`, `[12]`, `[14]`).
+const SND_CUT: u16 = 0x022f;
+const SND_COPY: u16 = 0x0288;
+const SND_PASTE: u16 = 0x028d;
+/// Ctrl+Z: desfazer `020e`, refazer `0217`.
+const SND_UNDO: u16 = 0x020e;
+const SND_REDO: u16 = 0x0217;
+/// "Epa!" do Escritório: `0203[0]` (salvar, jogar fora, continuar) e
+/// `0202[3]` (documento com nome: as duas versões, só a nova, ainda não).
+const EPA: (u16, usize) = (0x0203, 0);
+const VERSIONS: (u16, usize) = (0x0202, 3);
+const EPA_FALLBACK: (&str, [&str; 3]) = (
+    "O que você quer fazer agora?",
+    [
+        "Salvar este trabalho",
+        "Jogar fora — reciclar",
+        "Ops!  Ainda não terminei!",
+    ],
+);
+const VERSIONS_FALLBACK: (&str, [&str; 3]) = (
+    "O que você quer salvar? Vou salvar “@” agora. Você quer:",
+    [
+        "Salvar a versão antiga e a nova?",
+        "Salvar só a nova?",
+        "Ops!  Ainda não quero salvar!",
+    ],
+);
+/// Título do documento na barra de baixo (campo de nome ao salvar).
+pub const TITLE_LABEL: (i32, i32, i32, i32) = (195, 461, 250, 14);
+
+/// O que fazer depois de salvar ou jogar fora.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum After {
+    /// Continuar no Escritório (SALVAR, Ctrl+S).
+    Stay,
+    /// Ir à sala Escritório (porta Saída).
+    Leave,
+    /// Começar um documento em branco (NOVO).
+    New,
+    /// Sair do programa (Ctrl+Q).
+    Quit,
+}
+
+/// Diálogo "Epa!" aberto.
+pub enum Dialog {
+    /// `0203[0]`: salvar, jogar fora ou continuar.
+    Epa(ExitDialog, After),
+    /// `0202[3]`: as duas versões, só a nova, ou ainda não; com o título.
+    Versions(ExitDialog, After, String),
+}
+
+impl Dialog {
+    pub fn exit(&self) -> &ExitDialog {
+        match self {
+            Dialog::Epa(d, _) | Dialog::Versions(d, _, _) => d,
+        }
+    }
+}
 
 pub struct Writer {
     common: KidCommon,
@@ -103,19 +169,43 @@ pub struct Writer {
     mouse: (i32, i32),
     ctrl: bool,
     shift: bool,
-    /// Nome do documento na barra de baixo.
-    title: String,
     /// Já entrou (som e balão de boas-vindas).
     started: bool,
     /// Alguma seta da barra de baixo já foi usada (balão só na primeira).
     arrows_used: bool,
+    /// Nome completo do usuário (autor gravado no `.MAX`).
+    author: String,
+    /// Porta aberta (o "Epa!" da Saída).
+    door_open: bool,
+    dialog: Option<Dialog>,
+    /// Campo de nome na barra de baixo e o que fazer depois.
+    rename: Option<(Rename, After)>,
 }
 
 impl Writer {
-    pub fn new(texts: Option<PathBuf>, assets: &Assets) -> Writer {
+    /// O Escritório com o último documento da pasta do usuário `dir` (ou um
+    /// em branco).
+    pub fn new(dir: Option<PathBuf>, assets: &Assets) -> Writer {
+        Writer::with_editor(Editor::new(dir, assets))
+    }
+
+    /// O Escritório com um documento em branco (prancheta da sala, NOVO,
+    /// "Ir direto para o Escritório").
+    pub fn new_blank(dir: Option<PathBuf>, assets: &Assets) -> Writer {
+        Writer::with_editor(Editor::blank(dir, assets))
+    }
+
+    /// O Escritório com o documento `path`.
+    pub fn open(dir: Option<PathBuf>, path: &Path, assets: &Assets) -> Result<Writer, String> {
+        let mut ed = Editor::blank(dir, assets);
+        ed.open(path)?;
+        Ok(Writer::with_editor(ed))
+    }
+
+    fn with_editor(ed: Editor) -> Writer {
         Writer {
             common: KidCommon::new(None),
-            ed: Editor::new(texts, assets),
+            ed,
             tools: Tools::default(),
             tool: ToolId::Word,
             mczee: McZee::default(),
@@ -123,18 +213,31 @@ impl Writer {
             mouse: (0, 0),
             ctrl: false,
             shift: false,
-            title: chrome::DEFAULT_TITLE.to_string(),
             started: false,
             arrows_used: false,
+            author: String::new(),
+            door_open: false,
+            dialog: None,
+            rename: None,
         }
     }
 
+    /// Nome do autor gravado nos documentos (o do cadastro).
+    pub fn with_author(mut self, author: &str) -> Writer {
+        self.author = author.to_string();
+        self
+    }
+
     pub fn doc(&self) -> &Document {
-        &self.ed.doc
+        self.ed.doc()
     }
 
     pub fn editor(&self) -> &Editor {
         &self.ed
+    }
+
+    pub fn editor_mut(&mut self) -> &mut Editor {
+        &mut self.ed
     }
 
     pub fn tool(&self) -> ToolId {
@@ -145,12 +248,30 @@ impl Writer {
         &self.tools
     }
 
+    /// Folha no meio da vista.
     pub fn page(&self) -> usize {
-        self.ed.page
+        self.ed.page()
     }
 
     pub fn mczee(&self) -> &McZee {
         &self.mczee
+    }
+
+    pub fn dialog(&self) -> Option<&Dialog> {
+        self.dialog.as_ref()
+    }
+
+    pub fn renaming(&self) -> Option<&Rename> {
+        self.rename.as_ref().map(|(r, _)| r)
+    }
+
+    pub fn door_open(&self) -> bool {
+        self.door_open
+    }
+
+    /// Título na barra de baixo.
+    pub fn title(&self) -> &str {
+        self.ed.title().unwrap_or(chrome::DEFAULT_TITLE)
     }
 
     /// Cursor do mouse atual.
@@ -186,38 +307,218 @@ impl Writer {
             self.with_tool(old, fx, a, |t, ed, cx| t.deactivate(ed, cx));
             self.tool = id;
         }
+        self.ed.undo.close();
         self.mczee.set_wand(false);
         self.mczee.show(def.help, false, a);
         self.with_tool(id, fx, a, |t, ed, cx| t.activate(ed, cx, again));
     }
 
-    /// Pedido do menu do McZee que ainda não tem tela.
-    fn request(&mut self, r: Request, fx: &mut Vec<Effect>) {
-        let what = match r {
-            Request::New => "Novo",
-            Request::Open => "Pasta",
-            Request::Save => "Salvar",
-            Request::Notebook => "Caderno de Idéias",
-        };
-        fx.push(Effect::Log(format!("{what}: ainda não disponível")));
+    /// Pedido do menu do McZee.
+    fn request(&mut self, r: Request, fx: &mut Vec<Effect>, a: &Assets) {
+        match r {
+            Request::New => self.ask_or(After::New, fx, a),
+            Request::Save => self.start_rename(After::Stay, fx, a),
+            Request::Open => fx.push(Effect::Log("Pasta: ainda não disponível".into())),
+            Request::Notebook => fx.push(Effect::Log(
+                "Caderno de Idéias: ainda não disponível".into(),
+            )),
+        }
     }
 
-    fn bottom_arrow(&mut self, delta: i32, fx: &mut Vec<Effect>, a: &Assets) {
-        fx.push(snd(if delta < 0 {
-            SND_ARROW_UP
+    // ---------------------------------------------------------------
+    // Salvar, jogar fora, sair (W21)
+
+    /// Com mudanças, pergunta no "Epa!" o que fazer antes de `after`; sem
+    /// mudanças, faz já.
+    fn ask_or(&mut self, after: After, fx: &mut Vec<Effect>, a: &Assets) {
+        if self.ed.changed() {
+            self.open_epa(after, fx, a);
         } else {
-            SND_ARROW_DOWN
-        }));
+            self.finish(after, fx);
+        }
+    }
+
+    fn open_epa(&mut self, after: After, fx: &mut Vec<Effect>, a: &Assets) {
+        fx.extend(SND_EPA.map(snd));
+        self.door_open = after == After::Leave;
+        self.mczee.close();
+        let reason = if after == After::New {
+            Reason::New
+        } else {
+            Reason::Exit
+        };
+        let d = ExitDialog::writer(reason, EPA, "", EPA_FALLBACK, a);
+        self.dialog = Some(Dialog::Epa(d, after));
+    }
+
+    fn open_versions(&mut self, title: String, after: After, a: &Assets) {
+        let d = ExitDialog::writer(Reason::Exit, VERSIONS, &title, VERSIONS_FALLBACK, a);
+        self.dialog = Some(Dialog::Versions(d, after, title));
+    }
+
+    /// Clique com um "Epa!" aberto: só as bolinhas respondem.
+    fn dialog_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, a: &Assets) {
+        let Some(d) = self.dialog.take() else { return };
+        let Some(c) = d.exit().hit(a, x, y) else {
+            self.dialog = Some(d);
+            return;
+        };
+        fx.push(snd(SND_CHOOSE));
+        match (d, c) {
+            (Dialog::Epa(_, after), Choice::Save) => match self.ed.title() {
+                Some(t) if self.ed.file().is_some() => self.open_versions(t.to_string(), after, a),
+                _ => self.start_rename(after, fx, a),
+            },
+            (Dialog::Epa(_, after), Choice::Discard) => {
+                self.ed.discard();
+                self.finish(after, fx);
+            }
+            (Dialog::Versions(_, after, title), Choice::Save | Choice::Discard) => {
+                let keep_old = c == Choice::Save;
+                self.save(&title, keep_old, fx);
+                self.finish(after, fx);
+            }
+            (_, Choice::Stay) => self.door_open = false,
+        }
+    }
+
+    /// SALVAR, Ctrl+S, "Salvar este trabalho": o título vira campo de nome.
+    fn start_rename(&mut self, after: After, fx: &mut Vec<Effect>, a: &Assets) {
+        fx.push(snd(SND_RENAME));
+        let r = Rename::new(self.title(), RenameAfter::Stay);
+        self.rename = Some((r, after));
+        self.mczee.show((WHAT_GENERAL, WHAT_SAVE), false, a);
+    }
+
+    /// Return no campo de nome: salva com o nome e segue.
+    fn finish_rename(&mut self, fx: &mut Vec<Effect>, a: &Assets) {
+        let Some((r, after)) = self.rename.take() else {
+            return;
+        };
+        self.mczee.close();
+        let t = r.text.trim();
+        let title = if t.is_empty() {
+            chrome::DEFAULT_TITLE.to_string()
+        } else {
+            t.to_string()
+        };
+        if self.ed.file().is_some() {
+            // já gravado antes: as duas versões ou só a nova?
+            self.open_versions(title, after, a);
+        } else {
+            self.save(&title, false, fx);
+            self.finish(after, fx);
+        }
+    }
+
+    fn save(&mut self, title: &str, keep_old: bool, fx: &mut Vec<Effect>) {
+        let author = self.author.clone();
+        fx.push(Effect::Log(
+            match self.ed.save_as(title, &author, keep_old) {
+                Ok(p) => format!("documento \"{title}\" guardado em {}", p.display()),
+                Err(e) => e,
+            },
+        ));
+    }
+
+    fn finish(&mut self, after: After, fx: &mut Vec<Effect>) {
+        match after {
+            After::Stay => {}
+            After::Leave => fx.push(Effect::ChangeScene(
+                SceneId::Studio.in_program(Program::Writer),
+            )),
+            After::New => self.ed.new_document(),
+            After::Quit => fx.push(Effect::Quit),
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Teclado e mouse
+
+    /// Atalhos com Ctrl (`office.md` §6). `true` = tratado.
+    fn shortcut(&mut self, key: Key, fx: &mut Vec<Effect>, a: &Assets) -> bool {
+        match key {
+            Key::X => {
+                if self.ed.cut() {
+                    fx.push(snd(SND_CUT));
+                    self.mczee.show((WHAT_REMOVERS, 8), false, a);
+                }
+            }
+            Key::C => {
+                if self.ed.copy() {
+                    fx.push(snd(SND_COPY));
+                    self.mczee.show((WHAT_REMOVERS, 12), false, a);
+                }
+            }
+            Key::V => {
+                if self.ed.paste() {
+                    fx.push(snd(SND_PASTE));
+                    self.mczee.show((WHAT_REMOVERS, 14), false, a);
+                }
+            }
+            Key::Z => {
+                let undo = !self.ed.undo.can_redo() || self.ed.undo.can_undo();
+                if self.ed.toggle_undo() {
+                    fx.push(snd(if undo { SND_UNDO } else { SND_REDO }));
+                }
+            }
+            Key::A => {
+                let d = self.ed.doc().clone();
+                self.ed.sel.select_all(&d);
+            }
+            Key::S => self.start_rename(After::Stay, fx, a),
+            Key::Q => self.ask_or(After::Quit, fx, a),
+            _ => return false,
+        }
+        true
+    }
+
+    fn key(&mut self, key: Key, ctrl: bool, fx: &mut Vec<Effect>, a: &Assets) {
+        if let Some((r, _)) = self.rename.as_mut() {
+            if r.key(key) {
+                self.finish_rename(fx, a);
+            }
+            return;
+        }
+        if self.dialog.is_some() {
+            return;
+        }
+        let t = self.tool;
+        if self.with_tool(t, fx, a, |t, ed, cx| t.key(ed, cx, key, ctrl)) {
+            return;
+        }
+        if ctrl && self.shortcut(key, fx, a) {
+            return;
+        }
+        let shift = self.shift;
+        self.ed.key(key, ctrl, shift);
+    }
+
+    fn bottom_arrow(&mut self, k: usize, fx: &mut Vec<Effect>, a: &Assets) {
+        fx.push(snd(SND_ARROWS[k]));
         if !std::mem::replace(&mut self.arrows_used, true) {
             self.mczee.show((WHAT_GENERAL, WHAT_PAGES), false, a);
         }
-        self.ed.set_page(delta);
+        let (dx, dy) = [(0, -1), (0, 1), (-1, 0), (1, 0)][k];
+        self.ed.scroll_by(dx * ARROW_STEP, dy * ARROW_STEP);
     }
 
     fn click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>, a: &Assets) {
+        if self.dialog.is_some() {
+            self.dialog_click(x, y, fx, a);
+            return;
+        }
+        if self.rename.is_some() {
+            if inside(TITLE_LABEL, x, y) {
+                return;
+            }
+            // clicar fora do campo de nome conclui
+            self.finish_rename(fx, a);
+            return;
+        }
         if let Some(req) = self.mczee.front_click(x, y, fx, a) {
             if let Some(r) = req {
-                self.request(r, fx);
+                self.request(r, fx, a);
             }
             return;
         }
@@ -240,28 +541,41 @@ impl Writer {
             return;
         }
         if inside(exit::DOOR_RECT, x, y) {
-            self.with_tool(tool, fx, a, |_, ed, cx| exit::click(ed, cx));
+            self.open_epa(After::Leave, fx, a);
             return;
         }
-        if inside(chrome::arrow_rect(chrome::ARROW_UP), x, y) {
-            self.bottom_arrow(-1, fx, a);
+        if inside(TITLE_LABEL, x, y) {
+            self.start_rename(After::Stay, fx, a);
             return;
         }
-        if inside(chrome::arrow_rect(chrome::ARROW_DOWN), x, y) {
-            self.bottom_arrow(1, fx, a);
-            return;
+        for (k, p) in [
+            chrome::ARROW_UP,
+            chrome::ARROW_DOWN,
+            chrome::ARROW_LEFT,
+            chrome::ARROW_RIGHT,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if inside(chrome::arrow_rect(p), x, y) {
+                self.bottom_arrow(k, fx, a);
+                return;
+            }
         }
         if self.with_tool(tool, fx, a, |t, ed, cx| t.press(ed, cx, x, y)) {
             return;
         }
-        self.ed.click_page(x, y);
+        let shift = self.shift;
+        self.ed.press_page(x, y, shift);
     }
 
     /// Cursor que o ponto `(x, y)` pede.
     fn wanted_cursor(&self, a: &Assets) -> CursorRef {
         let (x, y) = self.mouse;
         let tool = self.tools.get(self.tool);
-        if self.mczee.wand() {
+        if self.dialog.is_some() {
+            DEFAULT_CURSOR
+        } else if self.mczee.wand() {
             cursors::writer(cursors::WAND)
         } else if self.mczee.covers(a, x, y) {
             DEFAULT_CURSOR
@@ -278,6 +592,8 @@ impl Writer {
 impl Scene for Writer {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
+        // Ctrl+Q pergunta antes de sair (o "Epa!"), em vez de sair direto
+        fx.retain(|e| *e != Effect::Quit);
         if !std::mem::replace(&mut self.started, true) {
             fx.push(snd(mczee::SND_ENTER));
             self.mczee.show(mczee::WELCOME, false, assets);
@@ -294,6 +610,9 @@ impl Scene for Writer {
                 }
                 Input::MouseMove { x, y } => {
                     self.mouse = (x, y);
+                    if self.ed.dragging() {
+                        self.ed.drag_page(x, y);
+                    }
                     let t = self.tool;
                     self.with_tool(t, &mut fx, assets, |t, ed, cx| t.motion(ed, cx, x, y));
                 }
@@ -303,6 +622,7 @@ impl Scene for Writer {
                     y,
                 } => {
                     self.mouse = (x, y);
+                    self.ed.release_page();
                     let t = self.tool;
                     self.with_tool(t, &mut fx, assets, |t, ed, cx| t.release(ed, cx, x, y));
                 }
@@ -310,15 +630,14 @@ impl Scene for Writer {
                     key,
                     ctrl,
                     alt: false,
-                } => {
-                    let t = self.tool;
-                    let done =
-                        self.with_tool(t, &mut fx, assets, |t, ed, cx| t.key(ed, cx, key, ctrl));
-                    if !done && !ctrl {
-                        self.ed.key(key);
+                } => self.key(key, ctrl, &mut fx, assets),
+                Input::Text(ref t) => {
+                    if let Some((r, _)) = self.rename.as_mut() {
+                        r.type_text(t);
+                    } else if self.dialog.is_none() && !self.ctrl {
+                        self.ed.type_text(t);
                     }
                 }
-                Input::Text(ref t) => self.ed.type_text(t),
                 Input::Shift(on) => self.shift = on,
                 Input::Ctrl(on) => self.ctrl = on,
                 _ => {}
@@ -329,7 +648,8 @@ impl Scene for Writer {
         if dt.is_finite() {
             self.tools.get_mut(t).tick(&mut self.ed, dt.max(0.0));
         }
-        self.ed.caret_visible = !self.tools.get(t).modal();
+        self.ed.caret_visible =
+            !self.tools.get(t).modal() && self.dialog.is_none() && self.rename.is_none();
         let want = self.wanted_cursor(assets);
         if let Some(e) = self.pointer.set(want) {
             fx.push(e);
@@ -342,16 +662,32 @@ impl Scene for Writer {
         chrome::draw_frame(f);
         chrome::draw_toolbar(f, a, self.tool);
         self.mczee.draw_niche(f, a);
-        exit::draw(f, a);
+        exit::draw(f, a, self.door_open);
         tool.draw_strip(&self.ed, f, a);
-        self.ed.draw_page(f);
-        chrome::draw_bottom(f, a, &self.ed, &self.title);
+        self.ed.draw_page(f, a);
+        chrome::draw_bottom(f, a, &self.ed, self.title());
+        if let Some((r, _)) = &self.rename {
+            let (x, y, w, h) = TITLE_LABEL;
+            f.rect(x, y, w, h, [255, 255, 255]);
+            r.draw_in(f, a.font(8).as_deref(), TITLE_LABEL);
+        }
         tool.draw_front(&self.ed, f, a);
         self.mczee.draw(f, a);
+        if let Some(d) = &self.dialog {
+            d.exit().draw(f, a);
+        }
     }
 
     fn leave(&mut self) -> Vec<Effect> {
-        vec![Effect::Log(self.ed.save())]
+        // saiu sem escolher no "Epa!" (janela fechada): guarda num KIDSnnnn.MAX
+        match self.ed.save_auto() {
+            Some(Ok(p)) => vec![Effect::Log(format!(
+                "documento guardado em {}",
+                p.display()
+            ))],
+            Some(Err(e)) => vec![Effect::Log(e)],
+            None => Vec::new(),
+        }
     }
 }
 
@@ -362,8 +698,8 @@ mod tests {
     use crate::scene::Key;
     use crate::scenes::testutil::{assets, empty_assets};
     use crate::ui::center;
-    use crate::writer::legacy::doc::Run;
-    use crate::writer::{Align, Item, Size};
+    use crate::writer::doc::{Align, CSCH, Pos, Size};
+    use crate::writer::object::ObjectKind;
     use crate::{SCREEN_H, SCREEN_W};
     use word_strip::WordStrip;
 
@@ -375,10 +711,26 @@ mod tests {
         }
     }
 
+    fn up(x: i32, y: i32) -> Input {
+        Input::MouseUp {
+            button: MouseButton::Left,
+            x,
+            y,
+        }
+    }
+
     fn key(key: Key) -> Input {
         Input::Key {
             key,
             ctrl: false,
+            alt: false,
+        }
+    }
+
+    fn ctrl(key: Key) -> Input {
+        Input::Key {
+            key,
+            ctrl: true,
             alt: false,
         }
     }
@@ -402,6 +754,20 @@ mod tests {
             .collect()
     }
 
+    fn logs(fx: &[Effect]) -> String {
+        fx.iter()
+            .filter_map(|e| match e {
+                Effect::Log(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn para(w: &Writer, k: usize) -> String {
+        w.doc().paras[k].text()
+    }
+
     /// Pixels não brancos dentro da página.
     fn inked(w: &Writer, a: &Assets) -> usize {
         let mut f = Frame::new(SCREEN_W, SCREEN_H);
@@ -417,65 +783,110 @@ mod tests {
         n
     }
 
+    /// Bolinha `k` do "Epa!" aberto.
+    fn bullet(w: &Writer, a: &Assets, k: usize) -> Input {
+        let (x, y) = w.dialog().expect("Epa! aberto").exit().bullet(a, k);
+        click(x, y)
+    }
+
     #[test]
     fn typing_shows_text_on_the_page() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         // cursor apagado (meio período) para contar só o texto
         w.update(&[], 0.6, &a);
         assert_eq!(inked(&w, &a), 0);
         w.update(&[text("Oi")], 0.0, &a);
         w.update(&[], 0.6, &a);
-        assert_eq!(w.doc().para().text(), "Oi");
-        assert!(inked(&w, &a) > 20);
-        // o cursor aceso acrescenta uma linha de 2 px
+        assert_eq!(para(&w, 0), "Oi");
+        let ink = inked(&w, &a);
+        assert!(ink > 20, "{ink}");
+        // o cursor aceso é uma linha de 1 px da altura da linha (15)
         w.update(&[], 0.5, &a);
-        assert!(inked(&w, &a) > 20 + 32);
+        assert_eq!(inked(&w, &a), ink + 15);
+    }
+
+    #[test]
+    fn text_starts_where_the_original_starts() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[text("H")], 0.6, &a);
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.draw(&mut f, &a);
+        let ink: Vec<(i32, i32)> = (PAGE.1..PAGE.1 + PAGE.3)
+            .flat_map(|y| (PAGE.0..PAGE.0 + PAGE.2).map(move |x| (x, y)))
+            .filter(|&(x, y)| f.pixel(x as u32, y as u32)[0] < 128)
+            .collect();
+        let x0 = ink.iter().map(|p| p.0).min().unwrap();
+        let y1 = ink.iter().map(|p| p.1).max().unwrap();
+        // 'H' de 12 pontos: base na linha 179 + 12 (ascendente)
+        assert!((93..=95).contains(&x0), "{x0}");
+        assert_eq!(y1, 179 + 12 - 1);
     }
 
     #[test]
     fn entering_plays_the_welcome_sound_once() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         assert_eq!(sounds(&w.update(&[], 0.0, &a)), vec![mczee::SND_ENTER]);
         assert!(sounds(&w.update(&[], 0.0, &a)).is_empty());
     }
 
     #[test]
-    fn enter_makes_a_new_paragraph_and_egg_undoes() {
+    fn egg_strip_undoes_and_redoes_with_the_egg_queue() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[text("a"), key(Key::Enter), text("b")], 0.0, &a);
         assert_eq!(w.doc().paras.len(), 2);
-        assert_eq!(w.doc().paras[1].text(), "b");
-        w.update(&[click(280, 30)], 0.0, &a); // ovo
+        // escolher o ovo não desfaz: só mostra a faixa
+        w.update(&[tool(ToolId::Egg)], 0.0, &a);
         assert_eq!(w.tool(), ToolId::Egg);
-        assert_eq!(w.doc().paras.len(), 2);
-        assert_eq!(w.doc().paras[1].text(), "");
-        w.update(&[click(280, 30)], 0.0, &a);
-        assert_eq!(w.doc().paras[1].text(), "b");
-        // DESFAZER da faixa também alterna
+        assert_eq!(para(&w, 1), "b");
+        assert_eq!(w.editor().undo.eggs().len(), 3);
+        let fx = w.update(&[click(60, 75)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![egg::SND_UNDO]);
+        assert_eq!(para(&w, 1), "");
         w.update(&[click(60, 75)], 0.0, &a);
-        assert_eq!(w.doc().paras[1].text(), "");
+        assert_eq!(w.doc().paras.len(), 1);
+        assert_eq!(w.editor().undo.undo_len(), 1);
+        assert_eq!(w.editor().undo.redo_len(), 2);
+        let fx = w.update(&[click(460, 75)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![egg::SND_REDO]);
+        assert_eq!(w.doc().paras.len(), 2);
+        // Ctrl+Z alterna: desfaz, e depois de um desfazer refaz
+        w.update(&[ctrl(Key::Z)], 0.0, &a);
+        assert_eq!(w.doc().paras.len(), 1);
+        w.update(&[ctrl(Key::Z)], 0.0, &a);
+        assert_eq!(w.doc().paras.len(), 2);
     }
 
     #[test]
-    fn size_list_changes_the_run_style() {
+    fn egg_keeps_twenty_actions() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
+        for _ in 0..25 {
+            w.update(&[key(Key::Enter)], 0.0, &a);
+        }
+        assert_eq!(w.editor().undo.eggs().len(), 20);
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.update(&[tool(ToolId::Egg)], 0.0, &a);
+        w.draw(&mut f, &a);
+    }
+
+    #[test]
+    fn size_list_changes_the_typing_style() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[click(100, 70)], 0.0, &a);
         assert_eq!(w.tools().word.list(), Some(List::Sizes));
         // primeiro item: Gigante
         let r = WordStrip::list_item_rect(List::Sizes, 0);
         w.update(&[click(r.0 + 5, r.1 + 5), text("a")], 0.0, &a);
         assert_eq!(w.tools().word.list(), None);
-        assert_eq!(w.doc().style.size, Size::Giant);
-        let runs = w.doc().para().runs();
-        assert!(matches!(&runs[0], Run::Text { style, .. } if style.size == Size::Giant));
+        assert_eq!(w.doc().paras[0].items[0].props().unwrap().size, Size::Giant);
         // clique fora fecha a lista sem escolher
         w.update(&[click(100, 70), click(300, 300)], 0.0, &a);
         assert_eq!(w.tools().word.list(), None);
-        assert_eq!(w.doc().style.size, Size::Giant);
         // Esc também fecha
         w.update(&[click(100, 70), key(Key::Escape)], 0.0, &a);
         assert_eq!(w.tools().word.list(), None);
@@ -484,7 +895,7 @@ mod tests {
     #[test]
     fn open_list_takes_clicks_before_the_toolbar() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[click(100, 70)], 0.0, &a);
         // clicar numa ferramenta com a lista aberta só fecha a lista
         w.update(&[tool(ToolId::Stickers)], 0.0, &a);
@@ -493,45 +904,55 @@ mod tests {
     }
 
     #[test]
-    fn color_and_style_lists_apply() {
+    fn lists_apply_to_the_selection() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[text("abc"), ctrl(Key::A)], 0.0, &a);
         w.update(&[click(170, 70)], 0.0, &a);
-        let r = WordStrip::list_item_rect(List::Colors, 3);
+        let r = WordStrip::list_item_rect(List::Colors, 5);
         w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
-        assert_eq!(w.doc().style.color, crate::paint::COLORS[3]);
+        let p = *w.doc().paras[0].items[2].props().unwrap();
+        assert_eq!(p.color, Some(CSCH[5]));
         w.update(&[click(230, 70)], 0.0, &a);
         let r = WordStrip::list_item_rect(List::Styles, 1);
         w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
-        assert!(w.doc().style.bold);
+        assert!(w.doc().paras[0].items[0].props().unwrap().bold);
         w.update(&[click(300, 70)], 0.0, &a);
         let r = WordStrip::list_item_rect(List::Align, 2);
         w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
-        assert_eq!(w.doc().para().align, Align::Center);
+        assert_eq!(w.doc().paras[0].props.align, Align::Center);
+        // letras: a Impact entra na tabela de fontes do documento
+        w.update(&[click(40, 70)], 0.0, &a);
+        let r = WordStrip::list_item_rect(List::Fonts, 4);
+        w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        let ftc = w.doc().fonts.ftc_of("Impact").unwrap();
+        assert_eq!(w.doc().paras[0].items[1].props().unwrap().font, ftc);
+        // quatro ações no Ovo
+        assert_eq!(w.editor().undo.undo_len(), 5);
     }
 
     #[test]
-    fn sticker_without_data_uses_placeholder() {
+    fn sticker_without_data_uses_placeholder_object() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[click(80, 30)], 0.0, &a);
         assert_eq!(w.tool(), ToolId::Stickers);
         assert_eq!(w.editor().rolls.len(), 0);
         // sem rolos: cliques na faixa e nas setas não fazem nada
         w.update(&[click(40, 70), click(515, 60), click(515, 90)], 0.0, &a);
         assert!(!w.tools().stickers.film_open());
+        w.update(&[], 0.6, &a);
         w.ed.insert_sticker(5, 2);
-        assert!(matches!(
-            w.doc().para().items[0],
-            Item::Sticker(s) if s.w == 32 && s.h == 32
-        ));
+        let o = &w.doc().objects[0];
+        assert_eq!((o.kind, o.width, o.height), (ObjectKind::Sticker, 32, 32));
+        assert_eq!((o.x, o.y), (72, 72));
         assert!(inked(&w, &a) > 60);
     }
 
     #[test]
     fn removers_explosion_clears_with_undo() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[text("abc"), click(330, 30)], 0.0, &a);
         assert_eq!(w.tool(), ToolId::Removers);
         let (x, y) = center(removers::EXPLOSION.rect());
@@ -539,95 +960,264 @@ mod tests {
         let fx = w.update(&[click(x, y)], 0.0, &a);
         assert!(w.doc().is_empty());
         assert!(sounds(&fx).contains(&0x025f));
-        w.update(&[click(280, 30)], 0.0, &a);
-        assert_eq!(w.doc().para().text(), "abc");
+        w.update(&[ctrl(Key::Z)], 0.0, &a);
+        assert_eq!(para(&w, 0), "abc");
     }
 
     #[test]
-    fn cursor_keys_and_click_move_the_cursor() {
+    fn cursor_keys_click_and_selection() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[text("ab"), key(Key::Left), text("x")], 0.0, &a);
-        assert_eq!(w.doc().para().text(), "axb");
+        assert_eq!(para(&w, 0), "axb");
         w.update(
             &[key(Key::Home), text("1"), key(Key::End), text("2")],
             0.0,
             &a,
         );
-        assert_eq!(w.doc().para().text(), "1axb2");
+        assert_eq!(para(&w, 0), "1axb2");
         w.update(&[key(Key::Enter), text("c"), key(Key::Up)], 0.0, &a);
-        assert_eq!(w.doc().cursor.para, 0);
+        assert_eq!(w.editor().sel.caret.para, 0);
         w.update(&[key(Key::Down)], 0.0, &a);
-        assert_eq!(w.doc().cursor.para, 1);
+        assert_eq!(w.editor().sel.caret.para, 1);
         // clique no começo da primeira linha
-        w.update(&[click(PAGE.0 + MARGIN, PAGE.1 + MARGIN + 2)], 0.0, &a);
-        assert_eq!(w.doc().cursor, crate::writer::Cursor { para: 0, index: 0 });
+        w.update(&[click(94, 182), up(94, 182)], 0.0, &a);
+        assert_eq!(w.editor().sel.caret, Pos::new(0, 0));
         w.update(&[key(Key::Backspace)], 0.0, &a);
-        assert_eq!(w.doc().para().text(), "1axb2");
+        assert_eq!(para(&w, 0), "1axb2");
+        // Shift+→ seleciona; digitar troca a seleção
+        w.update(
+            &[
+                Input::Shift(true),
+                key(Key::Right),
+                key(Key::Right),
+                Input::Shift(false),
+                text("Z"),
+            ],
+            0.0,
+            &a,
+        );
+        assert_eq!(para(&w, 0), "Zxb2");
+        // arrastar seleciona
+        let (x0, y0) = w.editor().to_screen(0, 72, 75);
+        w.update(
+            &[
+                click(x0, y0),
+                Input::MouseMove { x: x0 + 200, y: y0 },
+                up(x0 + 200, y0),
+            ],
+            0.0,
+            &a,
+        );
+        let r = w.editor().sel.range();
+        assert_eq!((r.start, r.end), (Pos::new(0, 0), Pos::new(0, 4)));
+        // Delete apaga a seleção
+        w.update(&[key(Key::Delete)], 0.0, &a);
+        assert_eq!(para(&w, 0), "");
     }
 
     #[test]
-    fn pages_follow_the_cursor_and_arrows() {
+    fn clipboard_shortcuts() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
-        // 16 px por linha (8×8 reserva ×2): 301 px cabem 18 linhas
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[text("ola"), ctrl(Key::A)], 0.0, &a);
+        let fx = w.update(&[ctrl(Key::C)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![SND_COPY]);
+        w.update(&[key(Key::End), ctrl(Key::V)], 0.0, &a);
+        assert_eq!(para(&w, 0), "olaola");
+        w.update(
+            &[
+                Input::Shift(true),
+                key(Key::Home),
+                Input::Shift(false),
+                ctrl(Key::X),
+            ],
+            0.0,
+            &a,
+        );
+        assert_eq!(para(&w, 0), "");
+        let fx = w.update(&[ctrl(Key::V)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![SND_PASTE]);
+        assert_eq!(para(&w, 0), "olaola");
+        // Ctrl+letra não vira texto
+        w.update(&[Input::Ctrl(true), text("v"), Input::Ctrl(false)], 0.0, &a);
+        assert_eq!(para(&w, 0), "olaola");
+    }
+
+    #[test]
+    fn bottom_arrows_scroll_the_view() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
         let mut inputs = Vec::new();
-        for _ in 0..25 {
+        // 43 linhas de 15 por folha
+        for _ in 0..100 {
             inputs.push(text("a"));
             inputs.push(key(Key::Enter));
         }
         w.update(&inputs, 0.0, &a);
-        assert_eq!(w.page(), 1);
-        w.update(&[key(Key::PageUp)], 0.0, &a);
+        assert_eq!(w.editor().layout().page_count(), 3);
+        // o cursor ficou na última folha e a vista o acompanhou
+        assert_eq!(w.page(), 2);
+        w.update(&[key(Key::Home), key(Key::PageUp)], 0.0, &a);
+        w.ed.show_page(0);
         assert_eq!(w.page(), 0);
         let (dx, dy) = center(chrome::arrow_rect(chrome::ARROW_DOWN));
         let (ux, uy) = center(chrome::arrow_rect(chrome::ARROW_UP));
         let fx = w.update(&[click(dx, dy)], 0.0, &a);
-        assert_eq!(sounds(&fx), vec![SND_ARROW_DOWN]);
-        assert_eq!(w.page(), 1);
-        w.update(&[click(dx, dy)], 0.0, &a);
-        assert_eq!(w.page(), 1);
-        w.update(&[click(ux, uy)], 0.0, &a);
-        assert_eq!(w.page(), 0);
-        w.update(&[text("b")], 0.0, &a);
-        assert_eq!(w.page(), 1);
+        assert_eq!(sounds(&fx), vec![SND_ARROWS[1]]);
+        assert_eq!(w.editor().scroll.1, ARROW_STEP);
+        w.update(&[click(ux, uy), click(ux, uy)], 0.0, &a);
+        assert_eq!(w.editor().scroll.1, 0);
+        // a primeira seta abre "Andando por aí…" (só com a ajuda e os dados)
+        for _ in 0..10 {
+            w.update(&[click(dx, dy)], 0.0, &a);
+        }
+        assert_eq!(w.page(), 2);
     }
 
     #[test]
-    fn leave_saves_and_reload_restores() {
+    fn exit_door_discard_goes_to_the_office_room() {
         let (_d, a) = empty_assets();
         let dir = tempfile::tempdir().unwrap();
-        let mut w = Writer::new(Some(dir.path().to_path_buf()), &a);
-        w.update(&[text("Olá"), key(Key::Enter), text("mundo")], 0.0, &a);
-        w.ed.insert_sticker(1, 0);
-        assert!(matches!(&w.leave()[..], [Effect::Log(s)] if s.contains("guardado em")));
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
-        let again = Writer::new(Some(dir.path().to_path_buf()), &a);
-        assert_eq!(again.doc().paras.len(), 2);
-        assert_eq!(again.doc().paras[0].text(), "Olá");
-        assert_eq!(again.doc().paras[1].text(), "mundo");
-        assert!(matches!(
-            again.doc().paras[1].items[5],
-            Item::Sticker(s) if s.roll == 1 && s.w == 32
-        ));
-        let mut untouched = Writer::new(Some(dir.path().to_path_buf()), &a);
-        untouched.leave();
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+        let mut w = Writer::new_blank(Some(dir.path().to_path_buf()), &a);
+        w.update(&[text("oi")], 0.0, &a);
+        let fx = w.update(&[click(600, 60)], 0.0, &a);
+        assert!(w.door_open());
+        assert_eq!(sounds(&fx), SND_EPA.to_vec());
+        assert!(matches!(w.dialog(), Some(Dialog::Epa(_, After::Leave))));
+        // o "Epa!" é modal: clicar fora não faz nada
+        w.update(&[click(100, 30)], 0.0, &a);
+        assert_eq!(w.tool(), ToolId::Word);
+        // "Ops! Ainda não terminei!" fecha e a porta fecha
+        let b = bullet(&w, &a, 2);
+        w.update(&[b, click(600, 60)], 0.0, &a);
+        assert!(w.door_open());
+        // "Jogar fora": vai à sala Escritório e nada é gravado
+        let b = bullet(&w, &a, 1);
+        let fx = w.update(&[b], 0.0, &a);
+        assert!(fx.contains(&Effect::ChangeScene(SceneId::Cw(
+            crate::scene::CwScene::Building(crate::scenes::room::Floor::Studio)
+        ))));
+        assert!(w.leave().is_empty());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
     #[test]
-    fn leave_without_dir_logs() {
+    fn exit_door_save_asks_the_name_then_versions() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
-        assert!(matches!(&w.leave()[..], [Effect::Log(s)] if s.contains("não guardado")));
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = Writer::new_blank(Some(dir.path().to_path_buf()), &a).with_author("Ana Teste");
+        w.update(&[text("O gato")], 0.0, &a);
+        w.update(&[click(600, 60)], 0.0, &a);
+        let b = bullet(&w, &a, 0);
+        let fx = w.update(&[b], 0.0, &a);
+        // sem nome: o título vira campo selecionado
+        assert!(sounds(&fx).contains(&SND_RENAME));
+        assert_eq!(w.renaming().unwrap().text, "Documento Novo");
+        let fx = w.update(&[text("Gato Teste"), key(Key::Enter)], 0.0, &a);
+        assert!(logs(&fx).contains("GATO_TES.MAX"), "{}", logs(&fx));
+        assert!(fx.iter().any(|e| matches!(e, Effect::ChangeScene(_))));
+        let p = dir.path().join("GATO_TES.MAX");
+        let (doc, extra) = crate::writer::store::load(&p).unwrap();
+        assert_eq!(doc.paras[0].text(), "O gato");
+        assert_eq!(extra.add.title, "Gato Teste");
+        assert_eq!(extra.add.author, "Ana Teste");
+        // aberto de novo (o último da pasta), com o nome na barra de baixo
+        let mut w = Writer::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(w.title(), "Gato Teste");
+        w.update(&[key(Key::End), text("!")], 0.0, &a);
+        w.update(&[click(600, 60)], 0.0, &a);
+        let b = bullet(&w, &a, 0);
+        w.update(&[b], 0.0, &a);
+        // com nome: "as duas versões ou só a nova?"
+        assert!(
+            matches!(w.dialog(), Some(Dialog::Versions(_, After::Leave, t)) if t == "Gato Teste")
+        );
+        let b = bullet(&w, &a, 0);
+        w.update(&[b], 0.0, &a);
+        let mut names: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["GATO_T11.MAX", "GATO_TES.MAX"]);
+        // "só a nova": o arquivo do documento é substituído
+        let mut w = Writer::open(Some(dir.path().to_path_buf()), &p, &a).unwrap();
+        w.update(&[text("x"), ctrl(Key::S)], 0.0, &a);
+        w.update(&[key(Key::Enter)], 0.0, &a);
+        let b = bullet(&w, &a, 1);
+        w.update(&[b], 0.0, &a);
+        assert!(!w.editor().changed());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+        let (doc, _) = crate::writer::store::load(&p).unwrap();
+        assert_eq!(doc.paras[0].text(), "xO gato");
+    }
+
+    #[test]
+    fn leave_without_choosing_saves_a_kids_file() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = Writer::new_blank(Some(dir.path().to_path_buf()), &a);
+        assert!(w.leave().is_empty());
+        w.update(&[text("Olá"), key(Key::Enter), text("mundo")], 0.0, &a);
+        w.ed.insert_sticker(1, 0);
+        assert!(logs(&w.leave()).contains("KIDS0001.MAX"));
+        let again = Writer::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(again.doc().paras.len(), 2);
+        assert_eq!(again.doc().paras[1].text(), "mundo");
+        assert_eq!(again.doc().objects.len(), 1);
+        // sem pasta: só o registro
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[text("x")], 0.0, &a);
+        assert!(logs(&w.leave()).contains("não guardado"));
+    }
+
+    #[test]
+    fn ctrl_q_and_new_ask_only_with_changes() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
+        assert!(w.update(&[ctrl(Key::Q)], 0.0, &a).contains(&Effect::Quit));
+        w.update(&[text("a")], 0.0, &a);
+        let fx = w.update(&[ctrl(Key::Q)], 0.0, &a);
+        assert!(!fx.contains(&Effect::Quit));
+        assert!(matches!(w.dialog(), Some(Dialog::Epa(_, After::Quit))));
+        assert!(!w.door_open());
+        let b = bullet(&w, &a, 1);
+        assert!(w.update(&[b], 0.0, &a).contains(&Effect::Quit));
+        // NOVO do menu do McZee com mudanças: o "Epa!", depois em branco
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[text("a"), click(556, 80)], 0.0, &a);
+        w.update(&[click(556, 165)], 0.0, &a);
+        assert!(matches!(w.dialog(), Some(Dialog::Epa(_, After::New))));
+        let b = bullet(&w, &a, 1);
+        w.update(&[b], 0.0, &a);
+        assert!(w.doc().is_empty());
+    }
+
+    #[test]
+    fn title_click_renames_and_saves_in_place() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = Writer::new_blank(Some(dir.path().to_path_buf()), &a);
+        w.update(&[text("a")], 0.0, &a);
+        let fx = w.update(&[click(300, 467)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![SND_RENAME]);
+        assert!(w.renaming().unwrap().selected);
+        // clicar fora conclui
+        w.update(&[text("Meu"), click(300, 300)], 0.0, &a);
+        assert!(w.renaming().is_none());
+        assert_eq!(w.title(), "Meu");
+        assert!(dir.path().join("MEU.MAX").exists());
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.update(&[click(300, 467)], 0.0, &a);
+        w.draw(&mut f, &a);
     }
 
     #[test]
     fn every_tool_is_selectable_with_its_sound_and_strip_buttons_log() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[], 0.0, &a);
-        assert!(w.update(&[click(600, 60)], 0.0, &a).contains(&Effect::Quit));
         // a Palavra já está ativa: começa pela segunda e termina nela
         for id in ToolId::ALL.into_iter().cycle().skip(1).take(10) {
             let fx = w.update(&[tool(id)], 0.0, &a);
@@ -640,24 +1230,18 @@ mod tests {
         // botão de faixa ainda sem função: som de opção e registro
         w.update(&[tool(ToolId::Sounds)], 0.0, &a);
         let fx = w.update(&[click(470, 70)], 0.0, &a);
-        assert!(
-            fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("Gravador")))
-        );
+        assert!(logs(&fx).contains("Gravador"));
         assert_eq!(sounds(&fx), vec![tools::SND_OPTION]);
         // o interruptor troca a página da faixa da Preparação da página
         w.update(&[tool(ToolId::Page)], 0.0, &a);
         let fx = w.update(&[click(515, 70), click(150, 75)], 0.0, &a);
-        assert!(
-            fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("Borda")))
-        );
+        assert!(logs(&fx).contains("Borda"));
     }
 
     #[test]
     fn mczee_niche_opens_the_menu_and_dismiss_turns_help_off() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[], 0.0, &a);
         let fx = w.update(&[click(556, 80)], 0.0, &a);
         assert!(w.mczee().menu_open());
@@ -670,25 +1254,25 @@ mod tests {
         // pedidos do menu sem tela ainda: registro
         w.update(&[click(300, 300), click(556, 80)], 0.0, &a);
         let fx = w.update(&[click(556, 300)], 0.0, &a);
-        assert!(
-            fx.iter()
-                .any(|e| matches!(e, Effect::Log(s) if s.contains("Caderno")))
-        );
+        assert!(logs(&fx).contains("Caderno"));
         w.update(&[click(556, 80)], 0.0, &a);
         let fx = w.update(&[click(556, 430)], 0.0, &a);
-        assert!(fx.contains(&Effect::Push(crate::scene::SceneId::BookStory)));
+        assert!(fx.contains(&Effect::Push(SceneId::BookStory)));
         // Varinha: cursor de varinha até escolher uma ferramenta
         w.update(&[click(556, 80), click(556, 345)], 0.0, &a);
         assert!(w.mczee().wand());
         assert_eq!(w.cursor(), cursors::writer(cursors::WAND));
         w.update(&[tool(ToolId::Word)], 0.0, &a);
         assert!(!w.mczee().wand());
+        // SALVAR do menu: o campo de nome
+        w.update(&[click(556, 80), click(556, 255)], 0.0, &a);
+        assert!(w.renaming().is_some());
     }
 
     #[test]
     fn cursor_is_text_over_the_page_and_default_elsewhere() {
         let (_d, a) = empty_assets();
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         let fx = w.update(&[Input::MouseMove { x: 300, y: 300 }], 0.0, &a);
         let text_cursor = cursors::writer(cursors::TEXT);
         assert!(fx.contains(&Effect::SetCursor(text_cursor)));
@@ -709,7 +1293,7 @@ mod tests {
     #[test]
     fn real_assets_balloons_follow_tools_and_options() {
         let Some(a) = assets() else { return };
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[], 0.0, &a);
         // boas-vindas: "Oi! Aqui é o McZee!"
         assert_eq!(w.mczee().help(), Some(mczee::WELCOME));
@@ -744,27 +1328,51 @@ mod tests {
     }
 
     #[test]
-    fn real_assets_chrome_draws_icons_and_text() {
+    fn real_assets_epa_uses_the_writer_records() {
         let Some(a) = assets() else { return };
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[text("a"), click(600, 60)], 0.0, &a);
+        let d = w.dialog().unwrap().exit();
+        // a caixa do 0203[0] medida em office_134_saida: x 211..428
+        let (x, _, wd, _) = d.rect(&a);
+        assert!(
+            (x - 211).abs() <= 2 && (wd - 218).abs() <= 2,
+            "{:?}",
+            d.rect(&a)
+        );
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.draw(&mut f, &a);
+        crate::scenes::testutil::dump(&f, "writer_epa");
+    }
+
+    #[test]
+    fn real_assets_chrome_draws_icons_and_stickers() {
+        let Some(a) = assets() else { return };
+        let mut w = Writer::new_blank(None, &a);
         assert!(!w.editor().rolls.is_empty());
         let mut f = Frame::new(SCREEN_W, SCREEN_H);
         w.draw(&mut f, &a);
         // ícone da Palavra, em cima da aba clara
         assert_ne!(f.pixel(30, 30), [190, 190, 190, 255]);
-        // adesivo real: tamanho do desenho e tinta preta na página
+        // adesivo real: objeto solto do tamanho do desenho, com contorno
         w.update(&[click(80, 30), click(40, 70)], 0.0, &a);
         assert!(w.tools().stickers.film_open());
         let c = w.tools().stickers.film().cell(0);
         w.update(&[click(c.0 + 5, c.1 + 5)], 0.0, &a);
         assert!(!w.tools().stickers.film_open());
-        assert!(matches!(w.doc().para().items[0], Item::Sticker(s) if s.w != 32 || s.h != 32));
+        let o = w.doc().objects[0].clone();
+        assert!(o.width != 32 || o.height != 32);
+        assert!(o.outline.is_some());
+        assert!(w.editor().extra.object(o.object).is_some());
         w.update(&[], 0.6, &a);
         assert!(inked(&w, &a) > 0);
-        // texto na "Pablo Graphos" de 16 pontos, num parágrafo só de texto
-        w.update(&[key(Key::Enter), text("Olá")], 0.0, &a);
+        // o texto corre em volta do adesivo
+        w.update(&[text("palavra ")], 0.0, &a);
         let l = w.editor().layout();
-        assert_eq!(l.lines[1].height, a.font(16).unwrap().height as i32);
+        assert!(
+            l.lines[0].boxes[0].x >= i32::from(o.x) + i32::from(o.width)
+                || l.lines[0].top >= i32::from(o.y) + i32::from(o.height)
+        );
     }
 
     /// Com `ATELIE_DUMP`, grava a tela com a faixa de cada ferramenta e o
@@ -772,7 +1380,7 @@ mod tests {
     #[test]
     fn real_assets_dump_every_strip() {
         let Some(a) = assets() else { return };
-        let mut w = Writer::new(None, &a);
+        let mut w = Writer::new_blank(None, &a);
         w.update(&[], 0.0, &a);
         for id in ToolId::ALL {
             w.update(&[tool(id)], 0.0, &a);

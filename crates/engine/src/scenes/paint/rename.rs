@@ -94,13 +94,19 @@ impl Rename {
     /// Campo na barra de baixo: texto à esquerda, seleção azul com texto
     /// branco ou cursor no fim.
     pub fn draw(&self, f: &mut Frame, font: Option<&Font>) {
-        let (x, y) = (LABEL.0 + 6, LABEL.1 + 1);
+        self.draw_in(f, font, LABEL);
+    }
+
+    /// Como [`Rename::draw`], num rótulo `label` (`(x, y, l, a)`) qualquer
+    /// (o título do documento no Escritório do Writer).
+    pub fn draw_in(&self, f: &mut Frame, font: Option<&Font>, label: (i32, i32, i32, i32)) {
+        let (x, y) = (label.0 + 6, label.1 + 1);
         let w = match font {
             Some(fo) => fo.width(&self.text) as i32,
             None => 8 * self.text.chars().count() as i32,
         };
         if self.selected {
-            f.rect(x - 2, LABEL.1, w + 4, 14, SELECTION);
+            f.rect(x - 2, label.1, w + 4, 14, SELECTION);
         }
         let color = if self.selected { WHITE } else { BLACK };
         match font {
@@ -110,7 +116,7 @@ impl Rename {
             None => f.text(x, y + 2, &self.text, color),
         }
         if !self.selected {
-            f.rect(x + w + 1, LABEL.1 + 1, 1, 12, BLACK);
+            f.rect(x + w + 1, label.1 + 1, 1, 12, BLACK);
         }
     }
 }

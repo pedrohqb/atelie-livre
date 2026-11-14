@@ -118,7 +118,7 @@ pub fn draw_bottom(f: &mut Frame, a: &Assets, ed: &Editor, title: &str) {
     text_in(f, a, (44, 140), "Escritório");
     text_in(f, a, BOX_TITLE, title);
     PAGES_ICON.draw(f, a);
-    text_in(f, a, (488, 538), &format!("Pág. {}", ed.page + 1));
+    text_in(f, a, (488, 538), &format!("Pág. {}", ed.page() + 1));
     for p in [ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT] {
         p.draw(f, a);
     }

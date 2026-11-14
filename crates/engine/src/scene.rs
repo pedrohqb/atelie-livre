@@ -26,6 +26,14 @@ pub enum Key {
     Delete,
     F12,
     Q,
+    /// Letras dos atalhos do Escritório (Ctrl+A/C/S/V/X/Z). Sem Ctrl elas
+    /// também chegam como `Input::Text`.
+    A,
+    C,
+    S,
+    V,
+    X,
+    Z,
     Other,
 }
 

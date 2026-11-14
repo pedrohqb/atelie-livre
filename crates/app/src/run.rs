@@ -1,7 +1,7 @@
 //! Laço principal com a SDL3: janela, ampliação, eventos e execução dos efeitos.
 
 use crate::audio::Mixer;
-use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, texts_dir, users_dir};
+use crate::config::{Args, Config, ProgramChoice, Scale, drawings_dir, users_dir};
 use crate::platform::{clamped_point, integer_scale, key_allowed, logical_point, scale_cursor};
 use engine::assets::{Assets, CursorRef, Program};
 use engine::scene::{CwScene, Effect, Input, Key, MouseButton, Scene, SceneId};
@@ -21,6 +21,7 @@ use sdl3::pixels::{Color, PixelFormat};
 use sdl3::render::ScaleMode;
 use sdl3::surface::Surface;
 use sdl3::sys::render::SDL_RendererLogicalPresentation;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const FRAME_TIME: Duration = Duration::from_micros(16_667);
@@ -42,6 +43,19 @@ struct UserContext {
 impl UserContext {
     fn name(&self) -> &str {
         self.user.as_deref().unwrap_or(DEFAULT_USER)
+    }
+
+    /// Pasta do usuário (os documentos do Writer).
+    fn folder(&self) -> Option<PathBuf> {
+        Some(users_dir()?.join(self.name()))
+    }
+
+    /// Nome completo do cadastro (o autor dos documentos do Writer).
+    fn author(&self) -> String {
+        users_dir()
+            .and_then(|d| engine::users::load(&d, self.name()))
+            .map(|p| format!("{} {}", p.nome, p.sobrenome).trim().to_string())
+            .unwrap_or_else(|| self.name().to_string())
     }
 
     /// Bicho preferido do cadastro, para a pasta de trabalhos.
@@ -115,10 +129,12 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         }
         SceneId::Browser => Box::new(Browser::new()),
         SceneId::WriterSplash => Box::new(Splash::writer(cfg.click_sound.clone())),
-        SceneId::Writer => Box::new(Writer::new(texts_dir(), assets)),
-        // TODO(office): abrir com um documento em branco quando o Escritório
-        // tiver o construtor; por enquanto o editor abre o último documento
-        SceneId::Cw(CwScene::NewDocument) => Box::new(Writer::new(texts_dir(), assets)),
+        // os documentos ficam na pasta do usuário, como no original
+        // (`USERS\<APELIDO>\*.MAX`)
+        SceneId::Writer => Box::new(Writer::new(user.folder(), assets).with_author(&user.author())),
+        SceneId::Cw(CwScene::NewDocument) => {
+            Box::new(Writer::new_blank(user.folder(), assets).with_author(&user.author()))
+        }
         SceneId::Cw(CwScene::IdeaMachine) => Box::new(IdeaMachine::new(
             users_dir().as_deref(),
             user.name(),
@@ -129,11 +145,9 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
             user.name(),
             assets,
         )),
-        // TODO(office): o Escritório integrado pega o conteúdo com
-        // `writer::ideas::session::take_story(user)` (sentença ou figura,
-        // barra de status "Oficina de Idéias", balão 0faa[13]/[16], volta à
-        // Oficina); por enquanto o editor atual abre sem ele
-        SceneId::Cw(CwScene::IdeaStory(_)) => Box::new(Writer::new(texts_dir(), assets)),
+        SceneId::Cw(CwScene::IdeaStory(_)) => {
+            Box::new(Writer::new_blank(user.folder(), assets).with_author(&user.author()))
+        }
     }
 }
 
@@ -216,6 +230,12 @@ fn map_key(k: Keycode) -> Key {
         Keycode::Delete => Key::Delete,
         Keycode::F12 => Key::F12,
         Keycode::Q => Key::Q,
+        Keycode::A => Key::A,
+        Keycode::C => Key::C,
+        Keycode::S => Key::S,
+        Keycode::V => Key::V,
+        Keycode::X => Key::X,
+        Keycode::Z => Key::Z,
         _ => Key::Other,
     }
 }
@@ -333,7 +353,14 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         Some(None) => return fail("cena desconhecida em --scene"),
         None => first_scene(args.browser, cfg.program),
     };
-    let mut stack: Vec<Box<dyn Scene>> = vec![make_scene(first, &cfg, &user, &assets)];
+    let first_scene: Box<dyn Scene> = match &args.open {
+        Some(path) => match Writer::open(user.folder(), path, &assets) {
+            Ok(w) => Box::new(w.with_author(&user.author())),
+            Err(e) => return fail(&e),
+        },
+        None => make_scene(first, &cfg, &user, &assets),
+    };
+    let mut stack: Vec<Box<dyn Scene>> = vec![first_scene];
     let mut frame = Frame::new(SCREEN_W, SCREEN_H);
     let mut cursor_ref: Option<CursorRef> = None;
     let mut cursor: Option<Cursor> = None;

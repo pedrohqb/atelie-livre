@@ -26,13 +26,13 @@ pub fn clamped_point(x: f32, y: f32) -> (i32, i32) {
     (c(x, SCREEN_W), c(y, SCREEN_H))
 }
 
-/// Repetição de tecla (tecla segurada) só vale para as teclas de navegação e o Backspace.
+/// Repetição de tecla (tecla segurada) só vale para as teclas de navegação, o Backspace e o Delete.
 pub fn key_allowed(key: engine::scene::Key, repeat: bool) -> bool {
     use engine::scene::Key::*;
     !repeat
         || matches!(
             key,
-            Up | Down | Left | Right | PageUp | PageDown | Backspace
+            Up | Down | Left | Right | PageUp | PageDown | Backspace | Delete
         )
 }
 

@@ -62,8 +62,8 @@ leva o arrasto do pincel a palavras inteiras, como no original.
 |---|---|---|
 | `align: Align` | `0x19` | Posicionador: Esquerda 0, Direita 1, Centro 2, Esquerda e direita 3 |
 | `indent: Indent` | `0x1a` | Recuos: nenhum, só a 1ª linha (1), todas menos a 1ª (2), todas (3) |
-| `line_spacing` | `0x1b` | Espaçamento: espaço extra entre as linhas |
-| `space_after` | `0x1c` | Espaçamento: espaço extra depois do parágrafo |
+| `line_spacing` | `0x1c` | Espaçamento: espaço extra entre as linhas (entrelinha dupla) |
+| `space_after` | `0x1b` | Espaçamento: espaço extra depois do parágrafo (meia linha) |
 | `new_page` | `0x1f` | Espaçamento: começa uma nova página |
 | `drop_cap: Option<u8>` | `0x1d` | Estilos de parágrafo: Capitular (o original grava 3 = linhas) |
 | `raised_cap` | `0x1e` | Estilos de parágrafo: Destacada |
@@ -164,15 +164,16 @@ Regras:
   capitular: a 1ª letra com `n` vezes o tamanho, base na `n`-ésima linha, e
   as linhas ao lado recuadas pela largura dela + `DROP_GAP`; destacada: a 1ª
   letra com `RAISED_SCALE` (3) vezes o tamanho, na 1ª linha;
-- espaço extra entre as linhas = metade da altura da linha; depois do
-  parágrafo = `SPACE_AFTER` (12 pt);
+- espaço extra entre as linhas (`0x1c`) = entrelinha dupla (+ a altura da
+  linha); depois do parágrafo (`0x1b`) = meia altura da última linha (+7 na
+  fonte padrão de 15), medidos em `office-complemento.md` §3.1;
 - folhas = as do texto, ou mais se um objeto está numa folha adiante;
 - número de página em cada folha, na caixa do `DopProps`;
 - um objeto que tampa a coluna inteira em todas as folhas não trava a
   diagramação: depois de algumas colunas sem lugar, a linha ignora os
   objetos.
 
-As medidas marcadas acima (recuo, marcador, espaços, folga, capitular,
+As medidas marcadas acima (recuo, marcador, folga, capitular,
 destacada) são **provisórias** e devem ser medidas no original (W26).
 
 Medição: o trait `Measure` (`advance`, `metrics`, `rebus_size`) recebe uma

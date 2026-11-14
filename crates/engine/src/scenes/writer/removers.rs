@@ -2,7 +2,8 @@
 //! Copiar, Colar, Remove-sons e Remove-figuras (o "borrão" verde), Ponto de
 //! inserção e Jogar tudo fora (explosão `0845` em (435,55)).
 //!
-//! Hoje só a explosão funciona (apaga tudo, desfazível, ao ser clicada);
+//! Hoje só a explosão funciona (apaga o texto e os objetos, desfazível,
+//! ao ser clicada; [`Editor::clear_all`]);
 //! no original ela é escolhida e depois se clica na página. O resto é a
 //! tarefa W12 (o McZee ajuda nas três primeiras vezes mesmo desligado:
 //! [`Cx::help_even_off`]).
