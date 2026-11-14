@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod atag;
+pub mod bor;
 pub mod chnk;
 pub mod cp1252;
 pub mod dct;
