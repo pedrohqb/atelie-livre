@@ -17,6 +17,7 @@ leitores sem consultar o código original.
 | [`what.md`](what.md) | Balões de ajuda e dos assistentes (`WHAT` dos executáveis): texto formatado, opções, dicas, glossário |
 | [`winres-ui.md`](winres-ui.md) | Menus, atalhos e caixas de diálogo (`MENU`, `ACCELERATOR`, `DIALOG`) dos executáveis |
 | [`maxprefs.md`](maxprefs.md) | Preferências do usuário (`~MAXUSER.INF`, `~MAGUSER.INF`): parede da Biblioteca, cache de fontes, entradas da Máquina de Idéias |
+| [`pict.md`](pict.md) | Figuras do Mac que o Writer importa: `PICT` (bitmaps das versões 1 e 2) e MacPaint |
 | [`animacao.md`](animacao.md) | Pasta `animacao-…/` gravada pelo Ateliê Livre (desenho animado): PNGs, `animacao.json` e GIF animado |
 
 ## Mapa dos arquivos
