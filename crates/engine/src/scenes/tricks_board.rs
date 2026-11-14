@@ -35,6 +35,19 @@ pub const TITLE_BOX: (i32, i32, i32, i32) = (227, 4, 186, 30);
 /// Pincel grosso da criança no quadro (passo "trace o espaço negativo").
 const STROKE_R: i32 = 3;
 
+/// Som do original para um evento do assistente (medidos no Wine pelo
+/// tamanho do `waveOutWrite`): Segue e Volta `02eb` (7424 bytes), bolinha
+/// de opção `0254` (2816), clique na Maggie `0226` (22060).
+pub fn event_sound(e: WizardEvent) -> Option<Effect> {
+    let id = match e {
+        WizardEvent::Next | WizardEvent::Back => 0x02eb,
+        WizardEvent::Option(_) => 0x0254,
+        WizardEvent::McZee => 0x0226,
+        _ => return None,
+    };
+    Some(Effect::PlaySound(SoundRef::Snd(Program::Artist, id)))
+}
+
 /// Moldura laranja em relevo (5 px) com o retângulo de fora em `(x, y, w, h)`:
 /// de fora para dentro, preto, laranja, laranja, marrom e preto em cima e à
 /// direita; preto, marrom, laranja, laranja e preto à esquerda e embaixo.
@@ -298,6 +311,7 @@ impl TricksBoard {
     }
 
     fn event(&mut self, e: WizardEvent, fx: &mut Vec<Effect>) {
+        fx.extend(event_sound(e));
         let out = self.wizard.on_event(e);
         match out {
             WizardOutcome::Entered(s) => {
@@ -503,9 +517,11 @@ mod tests {
         crate::scenes::testutil::dump(&f, "tricks_board_0");
         // a Maggie sentada com o pincel, à direita do quadro
         assert_eq!(b.poses(), &[(0x3803, 468, 262)]);
-        option(&mut b, &a, 0);
+        let fx = option(&mut b, &a, 0);
+        assert!(fx.contains(&Effect::PlaySound(SoundRef::Snd(Program::Artist, 0x254))));
         assert_eq!(b.wizard.current(), 1);
-        next(&mut b, &a);
+        let fx = next(&mut b, &a);
+        assert!(fx.contains(&Effect::PlaySound(SoundRef::Snd(Program::Artist, 0x2eb))));
         next(&mut b, &a);
         assert_eq!(b.wizard.current(), 3);
         // o Max aparece com a Maggie no "clique no espaço positivo"

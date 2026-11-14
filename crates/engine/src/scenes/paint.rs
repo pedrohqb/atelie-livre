@@ -1016,6 +1016,7 @@ impl Paint {
         let Some(w) = self.wizard.as_mut() else {
             return;
         };
+        fx.extend(super::tricks_board::event_sound(e));
         let before = w.current();
         let out = w.on_event(e);
         let entered = match out {
