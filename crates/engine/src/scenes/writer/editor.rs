@@ -203,6 +203,9 @@ fn is_white(p: &[u8]) -> bool {
     p[3] == 0 || (p[0] > 250 && p[1] > 250 && p[2] > 250)
 }
 
+/// Desenhos dos objetos já decodificados, por conteúdo e tamanho.
+type PictureCache = HashMap<(ObjRef, u16, u16), Option<Rc<Image>>>;
+
 pub struct Editor {
     /// Pasta do usuário (os `.MAX`).
     dir: Option<PathBuf>,
@@ -223,7 +226,7 @@ pub struct Editor {
     /// Tamanho das figuras do Maçã.
     rebus: HashMap<u8, (i32, i32)>,
     layout: RefCell<Option<Rc<Layout>>>,
-    pictures: RefCell<HashMap<(ObjRef, u16, u16), Option<Rc<Image>>>>,
+    pictures: RefCell<PictureCache>,
     /// Rolagem da vista, em pontos: (x, y) da pilha de folhas no canto.
     pub scroll: (i32, i32),
     /// Rolos de adesivos das bibliotecas do Writer.
