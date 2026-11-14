@@ -729,7 +729,7 @@ impl Sounds {
                 let r = box_at(f, k);
                 match &font {
                     Some(fo) => {
-                        let shown = finder::clip_text(name, |s| fo.width(s) as i32, r.2 - 12);
+                        let shown = crate::ui::clip_text(name, |s| fo.width(s) as i32, r.2 - 12);
                         let w = fo.width(&shown) as i32;
                         f.text_font(fo, r.0 + r.2 / 2 - w / 2, r.1 + 5, &shown, BLACK);
                     }

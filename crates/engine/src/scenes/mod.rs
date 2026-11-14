@@ -5,6 +5,7 @@ pub mod browser;
 pub mod chooser;
 pub mod elevator;
 pub mod entry;
+pub mod finder_dialog;
 pub mod gags;
 pub mod gallery;
 pub mod gallery_print;

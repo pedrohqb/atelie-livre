@@ -14,7 +14,7 @@ use crate::assets::{Assets, ImageRef, Program};
 use crate::balloon::{Balloon, balloon_font};
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::{PIC_ANIMAL0, Part, TextBalloon, blit_pic};
-use crate::ui::DoubleClick;
+use crate::ui::{DoubleClick, clip_text};
 use crate::{Frame, Image};
 use formats::palette::Rgb;
 
@@ -500,21 +500,10 @@ impl Binder {
 
     /// Texto cortado com "…" para caber em `w`.
     fn fit(a: &Assets, s: &str, w: i32) -> String {
-        let Some(font) = balloon_font(a) else {
-            return s.to_string();
-        };
-        if font.width(s) as i32 <= w {
-            return s.to_string();
+        match balloon_font(a) {
+            Some(font) => clip_text(s, |t| font.width(t) as i32, w),
+            None => s.to_string(),
         }
-        let mut chars: Vec<char> = s.chars().collect();
-        while !chars.is_empty() {
-            chars.pop();
-            let t: String = chars.iter().collect::<String>() + "…";
-            if font.width(&t) as i32 <= w {
-                return t;
-            }
-        }
-        String::new()
     }
 
     fn text(f: &mut Frame, a: &Assets, x: i32, y: i32, s: &str, rgb: [u8; 3]) {

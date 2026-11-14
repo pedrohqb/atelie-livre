@@ -18,7 +18,7 @@ use crate::Frame;
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
-use crate::ui::{DoubleClick, SoundQueue};
+use crate::ui::{DoubleClick, SoundQueue, clip_text};
 use crate::paint::store::{LAST_NAME, MAG_TITLE, NAME_FILE, load_picture, save_png};
 use crate::paint::{CANVAS_H, CANVAS_W, Canvas};
 use crate::rng::XorShift;
@@ -1110,18 +1110,7 @@ impl GalleryRoom {
     fn draw_text_centered(f: &mut Frame, a: &Assets, r: Rect, s: &str) {
         match a.font(8) {
             Some(font) => {
-                let mut s = s.to_string();
-                if font.width(&s) as i32 > r.2 {
-                    let mut chars: Vec<char> = s.chars().collect();
-                    while chars.len() > 1 {
-                        chars.pop();
-                        let t: String = chars.iter().collect::<String>() + "…";
-                        if font.width(&t) as i32 <= r.2 {
-                            break;
-                        }
-                    }
-                    s = chars.iter().collect::<String>() + "…";
-                }
+                let s = clip_text(s, |t| font.width(t) as i32, r.2);
                 let w = font.width(&s) as i32;
                 f.text_font(&font, r.0 + (r.2 - w) / 2, r.1, &s, BLACK);
             }

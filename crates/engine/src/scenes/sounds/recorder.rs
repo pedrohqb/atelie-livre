@@ -315,7 +315,7 @@ impl Recorder {
         let caret = match &font {
             Some(fo) => {
                 let name =
-                    super::finder::clip_text(&self.name, |s| fo.width(s) as i32, NAME_FIELD.2 - 10);
+                    crate::ui::clip_text(&self.name, |s| fo.width(s) as i32, NAME_FIELD.2 - 10);
                 f.text_font(fo, NAME_FIELD.0 + 4, NAME_FIELD.1 + 6, &name, BLACK)
             }
             None => {
