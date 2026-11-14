@@ -166,13 +166,7 @@ fn parse_user_dirs(text: &str, home: Option<&Path>) -> Option<PathBuf> {
 /// Pinta o fundo de cinza pontilhado (a tela "apagada" atrás dos diálogos).
 pub fn dim(f: &mut Frame) {
     let (w, h) = (f.width() as i32, f.height() as i32);
-    for y in 0..h {
-        for x in 0..w {
-            if (x + y) % 2 == 0 {
-                f.put(x, y, [140, 140, 140]);
-            }
-        }
-    }
+    crate::ui::checker(f, (0, 0, w, h), [140, 140, 140]);
 }
 
 pub struct Finder {

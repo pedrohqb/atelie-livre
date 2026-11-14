@@ -52,19 +52,14 @@ pub fn bar_v(f: &mut Frame, x: i32, y: i32, h: i32) {
 /// Escurece em xadrez o que fica fora do cavalete (barras de ferramentas,
 /// faixa e colunas), como os botões "apagados" do original.
 pub fn dim_outside(f: &mut Frame) {
-    let mut dot = |x0: i32, y0: i32, x1: i32, y1: i32| {
-        for y in y0..y1 {
-            for x in x0..x1 {
-                if (x + y) % 2 == 0 {
-                    f.put(x, y, GRAY);
-                }
-            }
-        }
-    };
-    dot(0, 0, 640, 106);
-    dot(0, 106, 24, 480);
-    dot(616, 106, 640, 480);
-    dot(24, 456, 616, 480);
+    for r in [
+        (0, 0, 640, 106),
+        (0, 106, 24, 374),
+        (616, 106, 24, 374),
+        (24, 456, 592, 24),
+    ] {
+        crate::ui::checker(f, r, GRAY);
+    }
 }
 
 /// Texto numa fonte do programa (ou na 8×8 reserva).
