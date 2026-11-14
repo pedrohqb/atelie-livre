@@ -430,7 +430,7 @@ impl SpellDct {
     pub fn suggestions(&self, word: &str, variants: u8, max: usize) -> Vec<String> {
         let lower = word.to_lowercase();
         let mut found: HashMap<u32, u32> = HashMap::new();
-        let mut add = |cand: &str, cost: u32, found: &mut HashMap<u32, u32>| {
+        let add = |cand: &str, cost: u32, found: &mut HashMap<u32, u32>| {
             for (i, _) in self.lookup(cand, variants) {
                 let e = found.entry(i).or_insert(cost);
                 *e = (*e).min(cost);
