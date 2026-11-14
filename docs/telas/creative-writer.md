@@ -280,6 +280,7 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.add_object(obj, Some(chunk))` | põe um objeto solto, guardando a cópia do conteúdo com um número livre (`obj.object` é reescrito) |
 | `ed.add_sticker(rolo, item, folha, x, y)` | adesivo de clip-art em tamanho natural, com o contorno (`TWPB`) calculado |
 | `ed.insert_sticker(rolo, item)` | o mesmo, no ponto de inserção |
+| `ed.add_picture(&img, título, folha, x, y)` | imagem própria (Cavalete, Cachorrinho, Caderno) como objeto: `PICT` com `META` (DIB de 24 bits) e `TWPB` |
 | `ed.remove_object(k)` | tira o objeto `k` |
 | `ed.clear_all()` | Jogar tudo fora (texto e objetos) |
 | `ed.cut()`, `ed.copy()`, `ed.paste()` | texto da seleção ↔ área de transferência |
@@ -302,4 +303,9 @@ precisam da cópia em `ed.extra` (use `add_object` com o chunk) para irem ao
 manter_antigo)`, `ed.save_auto()`, `ed.save_text()`, `ed.discard()`. A
 cena: `Writer::new(pasta, a)` (último documento), `Writer::new_blank(pasta,
 a)` (`CwScene::NewDocument`), `Writer::open(pasta, caminho, a)` (e o
-`--open ARQ.MAX` do app, para testes), `.with_author(nome)`.
+`--open ARQ.MAX` do app, para testes), `Writer::idea_story(pasta, apelido,
+a)` (`CwScene::IdeaStory`: a história da Oficina de Idéias, ver
+`creative-writer-ideias.md`), `.with_author(nome)`, `.with_user(apelido)`
+(a área de transferência da sessão, que o Caderno de Idéias também usa:
+o Ctrl+V cola de lá o que veio do Caderno). `ed.open_story(história)` abre
+o documento de uma `IdeaStory`.

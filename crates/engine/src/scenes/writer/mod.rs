@@ -33,11 +33,15 @@ use crate::assets::{Assets, CursorRef, Program};
 use crate::scene::{DEFAULT_CURSOR, Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use crate::scenes::paint::exit_dialog::{Choice, ExitDialog, Reason};
 use crate::scenes::paint::rename::{After as RenameAfter, Rename};
-use crate::writer::doc::Document;
+use crate::writer::doc::{Document, Item};
+use crate::writer::ideas::machine::Piece;
+use crate::writer::ideas::{session, story};
+use crate::writer::selection::Clip;
 use cursors::Pointer;
 pub use editor::{Editor, LIBRARIES, ORIGIN, PAGE, PAGE_GAP, PagePoint};
 use mczee::{McZee, Request};
 use std::path::{Path, PathBuf};
+use tools::HelpRef;
 pub use tools::{Cx, ToolId, ToolStrip};
 use tools::{SND_CHOOSE, SND_TOOL_AGAIN, WHAT_GENERAL, WHAT_REMOVERS, inside, snd};
 pub use word_strip::List;
@@ -130,6 +134,14 @@ const VERSIONS_FALLBACK: (&str, [&str; 3]) = (
 /// Título do documento na barra de baixo (campo de nome ao salvar).
 pub const TITLE_LABEL: (i32, i32, i32, i32) = (195, 461, 250, 14);
 
+/// Acrescenta texto à lista de pedaços (juntando com o texto anterior).
+fn push_text(pieces: &mut Vec<Piece>, t: &str) {
+    match pieces.last_mut() {
+        Some(Piece::Text(s)) => s.push_str(t),
+        _ => pieces.push(Piece::Text(t.to_string())),
+    }
+}
+
 /// O que fazer depois de salvar ou jogar fora.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum After {
@@ -180,6 +192,17 @@ pub struct Writer {
     dialog: Option<Dialog>,
     /// Campo de nome na barra de baixo e o que fazer depois.
     rename: Option<(Rename, After)>,
+    /// Apelido do usuário (sessão da Oficina de Idéias: área de transferência).
+    user: String,
+    /// O que o editor pôs na área de transferência da sessão por último.
+    last_copy: Option<Vec<Piece>>,
+    /// Andar na barra de baixo.
+    floor: &'static str,
+    /// Para onde a porta SAÍDA leva (a sala Escritório; a Oficina de Idéias
+    /// nas histórias começadas lá).
+    exit_to: SceneId,
+    /// Balão de boas-vindas.
+    welcome: HelpRef,
 }
 
 impl Writer {
@@ -202,6 +225,34 @@ impl Writer {
         Ok(Writer::with_editor(ed))
     }
 
+    /// O Escritório com a história começada na Oficina de Idéias
+    /// (`CwScene::IdeaStory`): pega o conteúdo deixado na sessão do usuário
+    /// (`ideas::session::take_story`); sem ele, um documento em branco.
+    pub fn idea_story(dir: Option<PathBuf>, user: &str, assets: &Assets) -> Writer {
+        let mut ed = Editor::blank(dir, assets);
+        let story = session::take_story(user);
+        let mut w = match story {
+            Some(s) => {
+                let (help, back) = (s.source.help(), s.source.back());
+                ed.open_story(s);
+                let mut w = Writer::with_editor(ed);
+                w.floor = story::FLOOR_LABEL;
+                w.exit_to = back;
+                w.welcome = help;
+                w
+            }
+            None => Writer::with_editor(ed),
+        };
+        w.user = user.to_string();
+        w
+    }
+
+    /// Apelido do usuário (a área de transferência da Oficina de Idéias).
+    pub fn with_user(mut self, user: &str) -> Writer {
+        self.user = user.to_string();
+        self
+    }
+
     fn with_editor(ed: Editor) -> Writer {
         Writer {
             common: KidCommon::new(None),
@@ -219,6 +270,79 @@ impl Writer {
             door_open: false,
             dialog: None,
             rename: None,
+            user: String::new(),
+            last_copy: None,
+            floor: chrome::FLOOR_OFFICE,
+            exit_to: SceneId::Studio.in_program(Program::Writer),
+            welcome: mczee::WELCOME,
+        }
+    }
+
+    /// Andar da barra de baixo.
+    pub fn floor(&self) -> &str {
+        self.floor
+    }
+
+    /// Para onde a porta SAÍDA leva.
+    pub fn exit_to(&self) -> SceneId {
+        self.exit_to
+    }
+
+    /// Copiado no editor: vai também para a área de transferência da sessão
+    /// (a do Caderno de Idéias), sem estilos.
+    fn share_clip(&mut self) {
+        let Some(Clip::Text(f)) = &self.ed.clipboard.clip else {
+            return;
+        };
+        let mut pieces: Vec<Piece> = Vec::new();
+        for (k, p) in f.paras.iter().enumerate() {
+            if k > 0 {
+                push_text(&mut pieces, "\n");
+            }
+            for it in &p.items {
+                match *it {
+                    Item::Char(c, _) => push_text(&mut pieces, &c.to_string()),
+                    Item::Rebus(c) => pieces.push(Piece::Rebus(c)),
+                }
+            }
+        }
+        session::set_clip(&self.user, session::Clip::Text(pieces.clone()));
+        self.last_copy = Some(pieces);
+    }
+
+    /// Colar: a área de transferência da sessão, se o que está nela veio do
+    /// Caderno de Idéias (texto com figuras-rebus ou uma figura); senão, a do
+    /// editor (com os estilos).
+    fn paste(&mut self) -> bool {
+        match session::clip(&self.user) {
+            Some(session::Clip::Text(p)) if Some(&p) != self.last_copy.as_ref() => {
+                let props = self.ed.typing_props();
+                self.ed.edit(|d, s| {
+                    let mut at = d.delete(s.range());
+                    for piece in &p {
+                        match piece {
+                            Piece::Text(t) => {
+                                for (k, line) in t.split('\n').enumerate() {
+                                    if k > 0 {
+                                        at = d.split(at);
+                                    }
+                                    at = d.insert_text(at, line, props);
+                                }
+                            }
+                            Piece::Rebus(c) if *c > 0 => at = d.insert_item(at, Item::Rebus(*c)),
+                            Piece::Rebus(_) => {}
+                        }
+                    }
+                    *s = crate::writer::selection::Selection::at(at);
+                });
+                true
+            }
+            Some(session::Clip::Picture(img, title)) => {
+                let c = self.ed.layout().caret(self.ed.sel.caret);
+                self.ed.add_picture(&img, &title, c.page, c.x, c.top);
+                true
+            }
+            _ => self.ed.paste(),
         }
     }
 
@@ -424,9 +548,7 @@ impl Writer {
     fn finish(&mut self, after: After, fx: &mut Vec<Effect>) {
         match after {
             After::Stay => {}
-            After::Leave => fx.push(Effect::ChangeScene(
-                SceneId::Studio.in_program(Program::Writer),
-            )),
+            After::Leave => fx.push(Effect::ChangeScene(self.exit_to)),
             After::New => self.ed.new_document(),
             After::Quit => fx.push(Effect::Quit),
         }
@@ -440,18 +562,20 @@ impl Writer {
         match key {
             Key::X => {
                 if self.ed.cut() {
+                    self.share_clip();
                     fx.push(snd(SND_CUT));
                     self.mczee.show((WHAT_REMOVERS, 8), false, a);
                 }
             }
             Key::C => {
                 if self.ed.copy() {
+                    self.share_clip();
                     fx.push(snd(SND_COPY));
                     self.mczee.show((WHAT_REMOVERS, 12), false, a);
                 }
             }
             Key::V => {
-                if self.ed.paste() {
+                if self.paste() {
                     fx.push(snd(SND_PASTE));
                     self.mczee.show((WHAT_REMOVERS, 14), false, a);
                 }
@@ -596,7 +720,7 @@ impl Scene for Writer {
         fx.retain(|e| *e != Effect::Quit);
         if !std::mem::replace(&mut self.started, true) {
             fx.push(snd(mczee::SND_ENTER));
-            self.mczee.show(mczee::WELCOME, false, assets);
+            self.mczee.show(self.welcome, false, assets);
         }
         for i in input {
             match *i {
@@ -665,7 +789,7 @@ impl Scene for Writer {
         exit::draw(f, a, self.door_open);
         tool.draw_strip(&self.ed, f, a);
         self.ed.draw_page(f, a);
-        chrome::draw_bottom(f, a, &self.ed, self.title());
+        chrome::draw_bottom(f, a, &self.ed, self.floor, self.title());
         if let Some((r, _)) = &self.rename {
             let (x, y, w, h) = TITLE_LABEL;
             f.rect(x, y, w, h, [255, 255, 255]);
@@ -699,6 +823,7 @@ mod tests {
     use crate::scenes::testutil::{assets, empty_assets};
     use crate::ui::center;
     use crate::writer::doc::{Align, CSCH, Pos, Size};
+    use crate::writer::ideas::machine::Piece;
     use crate::writer::object::ObjectKind;
     use crate::{SCREEN_H, SCREEN_W};
     use word_strip::WordStrip;
@@ -1219,6 +1344,106 @@ mod tests {
     }
 
     #[test]
+    fn idea_story_sentence_opens_with_floor_label_and_returns_to_the_workshop() {
+        use crate::writer::ideas::story::IdeaStory;
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let story = IdeaStory::from_sentence(&[
+            Piece::Text("O gato ".into()),
+            Piece::Rebus(0x25),
+            Piece::Text(" voou.".into()),
+        ]);
+        session::set_story("bia", story);
+        let mut w = Writer::idea_story(Some(dir.path().to_path_buf()), "bia", &a);
+        // a história é pega uma vez só
+        assert!(session::take_story("bia").is_none());
+        assert_eq!(para(&w, 0), "O gato  voou.");
+        assert!(matches!(w.doc().paras[0].items[7], Item::Rebus(0x25)));
+        assert_eq!(w.editor().sel.caret, w.doc().end());
+        assert_eq!(w.floor(), story::FLOOR_LABEL);
+        assert!(w.editor().changed());
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.draw(&mut f, &a);
+        // salvar grava FLOR 4 e WIZA "plot"; a porta volta à Oficina
+        w.update(&[click(600, 60)], 0.0, &a);
+        let b = bullet(&w, &a, 0);
+        w.update(&[b], 0.0, &a);
+        let fx = w.update(&[text("Gato"), key(Key::Enter)], 0.0, &a);
+        assert!(
+            fx.contains(&Effect::ChangeScene(SceneId::Cw(
+                crate::scene::CwScene::Building(crate::scenes::room::Floor::Tricks)
+            ))),
+            "{fx:?}"
+        );
+        let m = formats::max::read(&std::fs::read(dir.path().join("GATO.MAX")).unwrap()).unwrap();
+        assert_eq!(m.add.floor, story::FLOOR);
+        assert_eq!(m.add.project.to_bytes(), *b"plot");
+        // sem história na sessão: em branco, no Escritório
+        let w = Writer::idea_story(None, "bia", &a);
+        assert!(w.doc().is_empty());
+        assert_eq!(w.floor(), chrome::FLOOR_OFFICE);
+    }
+
+    #[test]
+    fn idea_story_picture_becomes_a_drawing_saved_as_meta() {
+        use crate::writer::ideas::story::IdeaStory;
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let img = crate::Image {
+            width: 20,
+            height: 10,
+            rgba: [200u8, 0, 0, 255].repeat(200),
+        };
+        session::set_story("ana", IdeaStory::from_picture("Foguete", img));
+        let mut w = Writer::idea_story(Some(dir.path().to_path_buf()), "ana", &a);
+        let o = w.doc().objects[0].clone();
+        assert_eq!((o.kind, o.width, o.height), (ObjectKind::Drawing, 20, 10));
+        assert!(o.outline.is_some());
+        assert!(w.editor().picture(&o).is_some());
+        w.update(&[], 0.6, &a);
+        assert!(inked(&w, &a) >= 200);
+        let p = w.editor_mut().save_as("Foguete", "", false).unwrap();
+        let (doc, extra) = crate::writer::store::load(&p).unwrap();
+        assert_eq!(doc.objects.len(), 1);
+        assert_eq!(extra.add.project.to_bytes(), *b"wpic");
+        let c = extra.object(doc.objects[0].object).unwrap();
+        assert_eq!(c.name.as_deref(), Some("Foguete"));
+    }
+
+    #[test]
+    fn paste_uses_the_notebook_clipboard_until_the_editor_copies() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a).with_user("caio");
+        w.update(&[], 0.0, &a);
+        session::set_clip(
+            "caio",
+            session::Clip::Text(vec![Piece::Text("Era ".into()), Piece::Rebus(3)]),
+        );
+        let fx = w.update(&[ctrl(Key::V)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![SND_PASTE]);
+        assert_eq!(para(&w, 0), "Era ");
+        assert!(matches!(w.doc().paras[0].items[4], Item::Rebus(3)));
+        // copiado no editor: o Colar usa o do editor (com os estilos) e a
+        // sessão fica com o mesmo texto
+        w.update(&[text(" fim"), ctrl(Key::A), ctrl(Key::C)], 0.0, &a);
+        assert!(matches!(
+            session::clip("caio"),
+            Some(session::Clip::Text(_))
+        ));
+        w.update(&[key(Key::End), ctrl(Key::V)], 0.0, &a);
+        assert_eq!(w.doc().paras[0].items.len(), 2 * 9);
+        // uma figura do Caderno vira objeto solto
+        let img = crate::Image {
+            width: 4,
+            height: 4,
+            rgba: [0u8, 0, 0, 255].repeat(16),
+        };
+        session::set_clip("caio", session::Clip::Picture(img, "Bola".into()));
+        w.update(&[ctrl(Key::V)], 0.0, &a);
+        assert_eq!(w.doc().objects.len(), 1);
+    }
+
+    #[test]
     fn every_tool_is_selectable_with_its_sound_and_strip_buttons_log() {
         let (_d, a) = empty_assets();
         let mut w = Writer::new_blank(None, &a);
@@ -1330,6 +1555,19 @@ mod tests {
         w.update(&[click(x, y), tool(ToolId::Print)], 0.0, &a);
         assert!(w.mczee().help_on());
         assert_eq!(w.mczee().help(), Some(ToolId::Print.def().help));
+    }
+
+    #[test]
+    fn real_assets_idea_story_opens_with_its_balloon() {
+        use crate::writer::ideas::story::{IdeaSource, IdeaStory};
+        let Some(a) = assets() else { return };
+        session::set_story("rui", IdeaStory::from_sentence(&[Piece::Text("Oi".into())]));
+        let mut w = Writer::idea_story(None, "rui", &a);
+        w.update(&[], 0.0, &a);
+        assert_eq!(w.mczee().help(), Some(IdeaSource::Machine.help()));
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.draw(&mut f, &a);
+        crate::scenes::testutil::dump(&f, "writer_idea_story");
     }
 
     #[test]

@@ -138,7 +138,9 @@ impl<'a> Director<'a> {
             SceneId::Street => Box::new(Street::new(None)),
             SceneId::Browser => Box::new(Browser::new()),
             SceneId::WriterSplash => Box::new(Splash::writer(None)),
-            SceneId::Writer => Box::new(Writer::new(Some(self.texts()), assets)),
+            SceneId::Writer => {
+                Box::new(Writer::new(Some(self.texts()), assets).with_user(&self.user_name()))
+            }
             // (o documento em branco do Escritório está no braço do Cw abaixo)
             SceneId::Cw(c) => {
                 // as mesmas cenas, com os dados do Writer (sem os desenhos do FA)
@@ -163,7 +165,7 @@ impl<'a> Director<'a> {
                             .with_user(&user, self.animal()),
                     ),
                     CwScene::NewDocument => {
-                        Box::new(Writer::new_blank(Some(self.texts()), assets))
+                        Box::new(Writer::new_blank(Some(self.texts()), assets).with_user(&user))
                     }
                     CwScene::IdeaMachine => {
                         Box::new(engine::scenes::writer_ideas::IdeaMachine::new(
@@ -179,7 +181,9 @@ impl<'a> Director<'a> {
                             assets,
                         ))
                     }
-                    CwScene::IdeaStory(_) => Box::new(Writer::new_blank(Some(self.texts()), assets)),
+                    CwScene::IdeaStory(_) => {
+                        Box::new(Writer::idea_story(Some(self.texts()), &user, assets))
+                    }
                 }
             }
         }

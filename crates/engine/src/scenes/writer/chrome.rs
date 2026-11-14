@@ -107,15 +107,19 @@ fn text_in(f: &mut Frame, a: &Assets, (x0, x1): (i32, i32), s: &str) {
     }
 }
 
-/// Barra de baixo: andar ("Escritório"), nome do documento e páginas.
-pub fn draw_bottom(f: &mut Frame, a: &Assets, ed: &Editor, title: &str) {
+/// Andar mostrado na barra de baixo (`STR#0808`).
+pub const FLOOR_OFFICE: &str = "Escritório";
+
+/// Barra de baixo: andar (`floor`: "Escritório", "Oficina de Idéias"), nome
+/// do documento e páginas.
+pub fn draw_bottom(f: &mut Frame, a: &Assets, ed: &Editor, floor: &str, title: &str) {
     for (x0, x1) in [BOX_FLOOR, BOX_TITLE, BOX_PAGES] {
         f.rect(x0, BOTTOM_Y, 1, BOTTOM_H, BLACK);
         f.rect(x1, BOTTOM_Y, 1, BOTTOM_H, BLACK);
         f.rect(x0 + 1, BOTTOM_Y, x1 - x0 - 1, BOTTOM_H, WHITE);
     }
     FLOOR_ICON.draw(f, a);
-    text_in(f, a, (44, 140), "Escritório");
+    text_in(f, a, (44, 140), floor);
     text_in(f, a, BOX_TITLE, title);
     PAGES_ICON.draw(f, a);
     text_in(f, a, (488, 538), &format!("Pág. {}", ed.page() + 1));

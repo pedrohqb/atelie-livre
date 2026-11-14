@@ -27,6 +27,7 @@ use crate::ui::Rect;
 use crate::writer::convert::{self, MaxExtra};
 use crate::writer::doc::{CharChange, CharProps, Document, DopProps, Item, ParaChange};
 use crate::writer::fonts::{RunFont, WriterFonts};
+use crate::writer::ideas::story::{self, IdeaStory};
 use crate::writer::layout::{FontKey, Layout, Measure};
 use crate::writer::object::{FloatObject, ObjRef, ObjectKind};
 use crate::writer::selection::{Clip, Clipboard, Motion, Selection};
@@ -666,6 +667,26 @@ impl Editor {
         self.add_object(o, Some(chunk))
     }
 
+    /// Põe uma imagem própria (figura do Caderno ou do Quadro, desenho do
+    /// cavalete) como objeto solto com o canto em `(x, y)` da folha `page`,
+    /// no tamanho natural: o documento ganha um `PICT` com o metarquivo
+    /// (`META` + `TWPB`, sem a prévia `PKBM`, como os desenhos do original).
+    pub fn add_picture(&mut self, img: &Image, title: &str, page: usize, x: i32, y: i32) -> usize {
+        let (chunk, outline) = picture_chunk(img, title, 0);
+        let (w, h) = (img.width.clamp(1, 0x7fff), img.height.clamp(1, 0x7fff));
+        let mut o = FloatObject::new(
+            ObjectKind::Drawing,
+            ObjRef::pict(0),
+            page as u16,
+            x as i16,
+            y as i16,
+            w as u16,
+            h as u16,
+        );
+        o.outline = Some(outline);
+        self.add_object(o, Some(chunk))
+    }
+
     /// Cola o adesivo no ponto de inserção (a faixa dos Adesivos até a W10).
     pub fn insert_sticker(&mut self, roll: u16, index: usize) -> usize {
         let c = self.layout().caret(self.sel.caret);
@@ -1081,6 +1102,29 @@ impl Editor {
         Ok(())
     }
 
+    /// Abre a história começada na Oficina de Idéias (I10): o documento com
+    /// a sentença ou a figura, o cursor no lugar dela e, ao salvar, `FLOR` 4
+    /// e `WIZA` `plot`/`wpic`. É um documento novo (sem arquivo), já mudado.
+    pub fn open_story(&mut self, story: IdeaStory) {
+        let mut extra = MaxExtra::new();
+        let mut doc = story.doc;
+        for p in &story.pictures {
+            let (chunk, outline) = picture_chunk(&p.image, &p.title, p.object.id);
+            extra.objects.push(chunk);
+            for o in doc.objects.iter_mut().filter(|o| o.object == p.object) {
+                o.kind = ObjectKind::Drawing;
+                o.outline = Some(outline.clone());
+            }
+        }
+        extra.frame_extra = doc.objects.iter().map(|o| (o.object, Vec::new())).collect();
+        extra.add.floor = story::FLOOR;
+        extra.add.project = max::Project::from_bytes(story.source.wiza());
+        self.load(doc, extra, None);
+        self.sel = Selection::at(self.doc.clamp(story.cursor));
+        self.changed = true;
+        self.follow_caret();
+    }
+
     /// Começa um documento em branco (NOVO).
     pub fn new_document(&mut self) {
         let (doc, extra) = convert::blank();
@@ -1222,6 +1266,33 @@ impl Editor {
         let p = dir.join(format!("{stem}.TXT"));
         store::save_text(&p, &self.doc).map(|()| p)
     }
+}
+
+/// `PICT` de uma imagem própria (`META` + `TWPB`) e o contorno dela.
+fn picture_chunk(
+    img: &Image,
+    title: &str,
+    id: u16,
+) -> (OwnedChunk, crate::writer::object::Outline) {
+    let mask: Vec<bool> = img.rgba.chunks_exact(4).map(|p| !is_white(p)).collect();
+    let t = twpb::from_mask(&mask, img.width, img.height);
+    let chunk = OwnedChunk {
+        tag: formats::Tag(*b"PICT"),
+        id,
+        flags: 0,
+        name: (!title.is_empty()).then(|| title.to_string()),
+        parts: vec![
+            OwnedPart {
+                tag: formats::Tag(*b"META"),
+                data: wmf::meta_from_image(img),
+            },
+            OwnedPart {
+                tag: formats::Tag(*b"TWPB"),
+                data: twpb::write(&t),
+            },
+        ],
+    };
+    (chunk, convert::outline_of(&t))
 }
 
 /// Inverte as cores do retângulo (vídeo inverso da seleção).

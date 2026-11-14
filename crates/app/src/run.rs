@@ -131,10 +131,16 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::WriterSplash => Box::new(Splash::writer(cfg.click_sound.clone())),
         // os documentos ficam na pasta do usuário, como no original
         // (`USERS\<APELIDO>\*.MAX`)
-        SceneId::Writer => Box::new(Writer::new(user.folder(), assets).with_author(&user.author())),
-        SceneId::Cw(CwScene::NewDocument) => {
-            Box::new(Writer::new_blank(user.folder(), assets).with_author(&user.author()))
-        }
+        SceneId::Writer => Box::new(
+            Writer::new(user.folder(), assets)
+                .with_author(&user.author())
+                .with_user(user.name()),
+        ),
+        SceneId::Cw(CwScene::NewDocument) => Box::new(
+            Writer::new_blank(user.folder(), assets)
+                .with_author(&user.author())
+                .with_user(user.name()),
+        ),
         SceneId::Cw(CwScene::IdeaMachine) => Box::new(IdeaMachine::new(
             users_dir().as_deref(),
             user.name(),
@@ -145,9 +151,10 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
             user.name(),
             assets,
         )),
-        SceneId::Cw(CwScene::IdeaStory(_)) => {
-            Box::new(Writer::new_blank(user.folder(), assets).with_author(&user.author()))
-        }
+        // a história começada na Oficina de Idéias (deixada na sessão)
+        SceneId::Cw(CwScene::IdeaStory(_)) => Box::new(
+            Writer::idea_story(user.folder(), user.name(), assets).with_author(&user.author()),
+        ),
     }
 }
 
@@ -355,7 +362,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     };
     let first_scene: Box<dyn Scene> = match &args.open {
         Some(path) => match Writer::open(user.folder(), path, &assets) {
-            Ok(w) => Box::new(w.with_author(&user.author())),
+            Ok(w) => Box::new(w.with_author(&user.author()).with_user(user.name())),
             Err(e) => return fail(&e),
         },
         None => make_scene(first, &cfg, &user, &assets),

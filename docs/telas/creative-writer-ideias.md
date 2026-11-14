@@ -124,7 +124,7 @@ Lápis: traço de 4 px na cor escolhida; aspirador limpa tudo; ovo desfaz
 contorno de 1 bit com as capturas `ideas_34_desenho.png`/`ideas_44`.
 Falta: mudar o tamanho do cavalete arrastando as bordas (`0fa1[7]`).
 
-## Ponte para o editor (I10) — o que falta ligar
+## Ponte para o editor (I10)
 
 `IdeaStory::from_sentence` monta o documento (modelo rico
 `writer::doc`) com a sentença no 1º parágrafo (fonte padrão, rebus como
@@ -133,15 +133,22 @@ adesivo flutuante `PICT 0` em tamanho natural, centrado na largura da
 folha e na margem de cima. O close-up guarda a história com
 `session::set_story` e troca para `SceneId::Cw(CwScene::IdeaStory(fonte))`.
 
-O Escritório integrado (ramo `cw-office-core`) deve, ao montar essa cena:
-pegar o conteúdo com `session::take_story(usuário)`; abrir o documento com
-o cursor em `IdeaStory::cursor` e as figuras de `IdeaStory::pictures`; pôr
-"Oficina de Idéias" (`story::FLOOR_LABEL`) na barra de status e o balão
-`IdeaSource::help` (`0faa[13]`/`[16]`); ao salvar, gravar `FLOR` 4 e
-`WIZA` (`IdeaSource::wiza`: `plot`/`wpic`); a porta SAÍDA volta à Oficina
-(`IdeaSource::back`). Até lá `run.rs` abre o editor atual sem o conteúdo.
-A área de transferência do Caderno (`session::clip`) é a que o "Colar" do
-editor deve usar.
+O Escritório monta essa cena com `Writer::idea_story(pasta, usuário, a)`:
+pega o conteúdo com `session::take_story(usuário)` (sem ele, documento em
+branco); abre o documento com o cursor em `IdeaStory::cursor`; cada figura
+de `IdeaStory::pictures` vira um `PICT` do documento (`META` com um
+`StretchDIB` de 24 bits, `formats::wmf::meta_from_image`, e o contorno
+`TWPB`; objeto do tipo desenho); a barra de baixo mostra "Oficina de
+Idéias" (`story::FLOOR_LABEL`) e o McZee abre `IdeaSource::help`
+(`0faa[13]`/`[16]`) no lugar do balão de boas-vindas; ao salvar, o `.MAX`
+leva `FLOR` 4 e `WIZA` (`plot`/`wpic`, no `ADD `); a porta SAÍDA volta à
+Oficina (`IdeaSource::back`).
+
+Área de transferência: o Ctrl+V do editor cola o que está em
+`session::clip` quando veio do Caderno (texto com figuras-rebus, ou uma
+figura, que vira objeto solto no ponto de inserção); o Ctrl+C/Ctrl+X do
+editor também põe o texto copiado (sem estilos) em `session::clip`, e
+enquanto ele estiver lá o Colar usa a cópia do editor, com os estilos.
 
 ## Pasta filtrada (I12) — pendente
 
