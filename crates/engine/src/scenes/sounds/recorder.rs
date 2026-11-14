@@ -3,7 +3,8 @@
 //! plataforma (`Effect::RecordStart` / `RecordStop`, que grava um `.wav`);
 //! aqui ficam o tempo, o nome e o arquivo: a gravação vai para
 //! `<desenhos>/sons/.gravacao-<n>.wav` e o OK a renomeia para
-//! `<desenhos>/sons/<nome>.wav` e põe o som na mão. Geometria medida no
+//! `<desenhos>/sons/<nome>.wav` (sem sobrescrever outro som) e põe o som na
+//! mão; o NÃO descarta (`Effect::RecordCancel`). Geometria medida no
 //! original (varredura `paint-sounds`, `paint-sounds_orig_10_record.png`).
 
 use super::finder::dim;
@@ -45,6 +46,25 @@ const MIC: (u16, u16, Rect) = (0x02d3, 0x02d5, (216, 272, 41, 36));
 const PLAY: (u16, u16, Rect) = (0x02d7, 0x02d9, (272, 272, 67, 35));
 const NO: (u16, u16, Rect) = (0x0271, 0x0273, (354, 276, 28, 28));
 const OK: (u16, u16, Rect) = (0x026d, 0x026f, (397, 276, 26, 27));
+
+/// Arquivo do som `name` em `dir`: o nome sem barras nem espaços, sem ponto
+/// no começo (arquivo oculto não aparece no Cachorrinho e `.gravacao-` é
+/// apagado) e com `-2`, `-3`… se já houver um som com esse nome (outro
+/// desenho pode estar usando).
+pub fn free_sound_path(dir: &Path, name: &str) -> PathBuf {
+    let stem = safe_component(name);
+    let stem = match stem.trim_start_matches('.') {
+        "" => safe_component(DEFAULT_NAME),
+        s => s.to_string(),
+    };
+    let mut path = dir.join(format!("{stem}.wav"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{stem}-{n}.wav"));
+        n += 1;
+    }
+    path
+}
 
 /// Resposta a um clique ou tecla no Gravador.
 #[derive(Debug, Default, PartialEq)]
@@ -108,21 +128,19 @@ impl Recorder {
         )))
     }
 
-    /// Efeito que para a gravação em andamento.
-    pub fn stop_effect(&self) -> Option<Effect> {
+    /// Efeito que descarta a gravação em andamento (o Gravador vai sumir).
+    pub fn cancel_effect(&self) -> Option<Effect> {
+        self.recording.then_some(Effect::RecordCancel)
+    }
+
+    /// Para a gravação: a plataforma grava o arquivo.
+    fn stop(&mut self) -> Option<Effect> {
         if !self.recording {
             return None;
         }
+        self.recording = false;
+        self.length = self.elapsed;
         self.recorded.clone().map(Effect::RecordStop)
-    }
-
-    fn stop(&mut self) -> Option<Effect> {
-        let e = self.stop_effect();
-        if self.recording {
-            self.recording = false;
-            self.length = self.elapsed;
-        }
-        e
     }
 
     fn start(&mut self) -> Vec<Effect> {
@@ -188,9 +206,8 @@ impl Recorder {
             close: true,
             ..Reply::default()
         };
-        r.fx.extend(self.stop());
-        // a gravação ainda pode ser escrita depois do RecordStop: o arquivo
-        // some na próxima abertura do Gravador
+        r.fx.extend(self.cancel_effect());
+        self.recording = false;
         if let Some(p) = self.recorded.take() {
             let _ = std::fs::remove_file(p);
         }
@@ -217,7 +234,7 @@ impl Recorder {
             "" => DEFAULT_NAME.to_string(),
             n => n.to_string(),
         };
-        let path = dir.join(format!("{}.wav", safe_component(&name)));
+        let path = free_sound_path(&dir, &name);
         match std::fs::rename(&temp, &path) {
             Ok(()) => {
                 let sound = SoundRef::File(path);
@@ -399,8 +416,61 @@ mod tests {
         let (nx, ny) = center(NO.2);
         let out = r.click(nx, ny, &assets);
         assert!(out.close);
-        assert!(out.fx.contains(&Effect::RecordStop(temp.clone())));
+        // descarta: nada de RecordStop gravando um arquivo órfão depois
+        assert!(out.fx.contains(&Effect::RecordCancel));
+        assert!(!out.fx.iter().any(|e| matches!(e, Effect::RecordStop(_))));
         assert!(!temp.exists());
+        // NÃO depois de parar: apaga a gravação, sem efeito de gravação
+        let mut r = Recorder::new(Some(d.path()));
+        r.click(mx, my, &assets);
+        let temp = r.recorded().unwrap().to_path_buf();
+        assert_eq!(
+            r.click(mx, my, &assets).fx,
+            vec![Effect::RecordStop(temp.clone())]
+        );
+        std::fs::write(&temp, b"x").unwrap();
+        let out = r.key(Key::Escape, &assets);
+        assert!(out.close && !temp.exists());
+        assert!(!out.fx.iter().any(|e| matches!(e, Effect::RecordCancel)));
+        assert_eq!(r.cancel_effect(), None);
+    }
+
+    #[test]
+    fn sound_names_never_hide_or_overwrite() {
+        let d = tempfile::tempdir().unwrap();
+        let p = |n: &str| free_sound_path(d.path(), n);
+        assert_eq!(p("Galo doido"), d.path().join("Galo_doido.wav"));
+        assert_eq!(p(".gravacao-1"), d.path().join("gravacao-1.wav"));
+        assert_eq!(p(".."), d.path().join("__.wav"));
+        assert_eq!(p("..."), d.path().join("Meu_som.wav"));
+        assert_eq!(p("Ação"), d.path().join("Ação.wav"));
+        std::fs::write(d.path().join("Galo.wav"), b"x").unwrap();
+        assert_eq!(p("Galo"), d.path().join("Galo-2.wav"));
+        std::fs::write(d.path().join("Galo-2.wav"), b"x").unwrap();
+        assert_eq!(p("Galo"), d.path().join("Galo-3.wav"));
+    }
+
+    #[test]
+    fn ok_keeps_the_older_sound_with_the_same_name() {
+        let (_a, assets) = crate::scenes::testutil::empty_assets();
+        let d = tempfile::tempdir().unwrap();
+        let sons = d.path().join(SOUNDS_DIR);
+        std::fs::create_dir_all(&sons).unwrap();
+        std::fs::write(sons.join("Meu_som.wav"), b"antigo").unwrap();
+        let mut r = Recorder::new(Some(d.path()));
+        let (mx, my) = center(MIC.2);
+        r.click(mx, my, &assets);
+        let temp = r.recorded().unwrap().to_path_buf();
+        r.click(mx, my, &assets);
+        std::fs::write(&temp, b"novo").unwrap();
+        let out = r.key(Key::Enter, &assets);
+        let Some(Hand::Sound { name, sound }) = out.chosen else {
+            panic!("{out:?}");
+        };
+        assert_eq!(name, "Meu som");
+        assert_eq!(sound, SoundRef::File(sons.join("Meu_som-2.wav")));
+        assert_eq!(std::fs::read(sons.join("Meu_som.wav")).unwrap(), b"antigo");
+        assert_eq!(std::fs::read(sons.join("Meu_som-2.wav")).unwrap(), b"novo");
     }
 
     #[test]

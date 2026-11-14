@@ -133,6 +133,9 @@ pub enum Effect {
     /// Para a gravação e grava o que foi captado neste `.wav` (nada, se não
     /// havia gravação ou microfone).
     RecordStop(std::path::PathBuf),
+    /// Para a gravação e descarta o que foi captado (NÃO do Gravador, troca
+    /// de ferramenta no meio da gravação).
+    RecordCancel,
     /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
     SetUser(String),
     Log(String),

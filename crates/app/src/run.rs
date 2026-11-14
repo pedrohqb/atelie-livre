@@ -210,7 +210,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
     };
     assets.set_volume(cfg.volume);
     // gravação do microfone em andamento (Gravador do Seleciona-sons)
-    let mut recording: Option<crate::audio::Recording> = None;
+    let mut mic = crate::audio::Mic::default();
     let mut mixer = match Mixer::new(&sdl, cfg.volume) {
         Ok(m) => Some(m),
         Err(e) => {
@@ -367,9 +367,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
         {
             eprintln!("aviso: som em laço: {e}");
         }
-        if let Some(r) = recording.as_mut() {
-            r.tick();
-        }
+        mic.tick();
         for effect in effects {
             if trace {
                 trace_effect(&effect);
@@ -399,7 +397,7 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     cursor_factor = 0;
                 }
                 Effect::ChangeScene(id) => {
-                    recording = None;
+                    mic.cancel();
                     // o laço é da cena que sai (traço interrompido)
                     if let Some(m) = mixer.as_mut() {
                         m.stop_loop();
@@ -429,20 +427,8 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                         m.set_volume(v);
                     }
                 }
-                Effect::RecordStart => {
-                    recording = None;
-                    match mixer.as_ref().map(|m| m.start_recording()) {
-                        Some(Ok(r)) => recording = Some(r),
-                        Some(Err(e)) => eprintln!("aviso: microfone: {e}"),
-                        None => eprintln!("aviso: sem áudio, nada a gravar"),
-                    }
-                }
-                Effect::RecordStop(path) => {
-                    if let Some(r) = recording.take()
-                        && let Err(e) = r.finish(&path)
-                    {
-                        eprintln!("aviso: gravação {}: {e}", path.display());
-                    }
+                Effect::RecordStart | Effect::RecordStop(_) | Effect::RecordCancel => {
+                    mic.handle(&effect, mixer.as_ref());
                 }
                 Effect::SetUser(u) => user.user = Some(u),
                 Effect::Log(s) => println!("{s}"),
@@ -503,6 +489,7 @@ fn trace_effect(effect: &Effect) {
         Effect::SetVolume(v) => println!("TRACE volume {v}"),
         Effect::RecordStart => println!("TRACE gravar"),
         Effect::RecordStop(p) => println!("TRACE gravar-fim {}", p.display()),
+        Effect::RecordCancel => println!("TRACE gravar-cancela"),
         Effect::Quit => println!("TRACE quit"),
         _ => {}
     }

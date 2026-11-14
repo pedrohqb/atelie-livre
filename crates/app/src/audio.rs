@@ -3,41 +3,67 @@
 //! grava do microfone (Gravador do Seleciona-sons) num `.wav`.
 
 use engine::Pcm;
+use engine::scene::Effect;
 use sdl3::AudioSubsystem;
 use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioStreamOwner};
 use std::collections::VecDeque;
+use std::io::Read;
 use std::rc::Rc;
 
 const MAX_STREAMS: usize = 8;
 /// Taxa da gravação do microfone (a dos sons do Fine Artist).
 const RECORD_RATE: u32 = 22_050;
-/// Limite de amostras de uma gravação (30 s; o Gravador para em 10 s).
-const RECORD_MAX: usize = RECORD_RATE as usize * 30;
+/// Limite de amostras de uma gravação: os 10 s da barra de TEMPO do Gravador
+/// (o tempo da cena pode atrasar em relação ao relógio do áudio).
+const RECORD_MAX: usize =
+    (RECORD_RATE as f32 * engine::scenes::sounds::recorder::MAX_SECONDS) as usize;
 
 /// Gravação do microfone em andamento.
 pub struct Recording {
-    _device: AudioDevice,
+    // o fluxo sai antes do dispositivo
     stream: AudioStreamOwner,
+    device: AudioDevice,
     samples: Vec<i16>,
 }
 
 impl Recording {
-    /// Recolhe o que o microfone mandou; chamar a cada quadro.
+    /// Taxa e canais do dispositivo de captura (antes da conversão).
+    #[cfg(test)]
+    pub fn device_format(&self) -> (i32, usize) {
+        let spec = self.device.format().map(|(s, _)| s).ok();
+        (
+            spec.as_ref().and_then(|s| s.freq).unwrap_or(0),
+            spec.as_ref().and_then(|s| s.channels).unwrap_or(0).max(0) as usize,
+        )
+    }
+
+    /// Recolhe o que o microfone mandou; chamar a cada quadro. O que passa
+    /// do limite é lido e jogado fora (não acumula na fila da SDL).
     pub fn tick(&mut self) {
-        let mut buf = [0i16; 4096];
-        while self.samples.len() < RECORD_MAX {
-            match self.stream.read_i16_samples(&mut buf) {
+        let mut buf = [0u8; 8192];
+        loop {
+            // o fluxo entrega S16LE mono (formato pedido em `start_recording`)
+            let n = match self.stream.read(&mut buf) {
                 Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    let room = RECORD_MAX - self.samples.len();
-                    self.samples.extend_from_slice(&buf[..n.min(room)]);
-                }
-            }
+                Ok(n) => n,
+            };
+            let room = RECORD_MAX - self.samples.len();
+            self.samples.extend(
+                buf[..n & !1]
+                    .chunks_exact(2)
+                    .take(room)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]])),
+            );
         }
     }
 
-    /// Para e grava o `.wav` (PCM de 16 bits, mono).
+    /// Para e grava o `.wav` (PCM de 16 bits, mono, 22 050 Hz).
     pub fn finish(mut self, path: &std::path::Path) -> std::io::Result<()> {
+        // para de captar e esvazia o conversor (as últimas amostras
+        // ficam retidas no reamostrador até o flush)
+        self.device.pause();
+        self.tick();
+        let _ = self.stream.flush();
         self.tick();
         let pcm = Pcm {
             sample_rate: RECORD_RATE,
@@ -46,6 +72,54 @@ impl Recording {
             loop_points: None,
         };
         std::fs::write(path, engine::encode_pcm16(&pcm))
+    }
+}
+
+/// Microfone do Gravador: trata `RecordStart`, `RecordStop` e `RecordCancel`.
+#[derive(Default)]
+pub struct Mic {
+    rec: Option<Recording>,
+}
+
+impl Mic {
+    /// Aplica um efeito de gravação; falso se `e` não é de gravação.
+    pub fn handle(&mut self, e: &Effect, mixer: Option<&Mixer>) -> bool {
+        match e {
+            Effect::RecordStart => {
+                self.rec = None;
+                match mixer.map(|m| m.start_recording()) {
+                    Some(Ok(r)) => self.rec = Some(r),
+                    Some(Err(e)) => eprintln!("aviso: microfone: {e}"),
+                    None => eprintln!("aviso: sem áudio, nada a gravar"),
+                }
+            }
+            Effect::RecordStop(path) => {
+                if let Some(r) = self.rec.take()
+                    && let Err(e) = r.finish(path)
+                {
+                    eprintln!("aviso: gravação {}: {e}", path.display());
+                }
+            }
+            Effect::RecordCancel => self.cancel(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Recolhe o que o microfone mandou; chamar a cada quadro.
+    pub fn tick(&mut self) {
+        if let Some(r) = self.rec.as_mut() {
+            r.tick();
+        }
+    }
+
+    /// Descarta a gravação em andamento.
+    pub fn cancel(&mut self) {
+        self.rec = None;
+    }
+
+    pub fn recording(&self) -> bool {
+        self.rec.is_some()
     }
 }
 
@@ -202,6 +276,16 @@ impl Mixer {
         }
     }
 
+    /// Taxa e canais do dispositivo de saída.
+    #[cfg(test)]
+    pub fn playback_format(&self) -> (i32, usize) {
+        let spec = self.device.format().map(|(s, _)| s).ok();
+        (
+            spec.as_ref().and_then(|s| s.freq).unwrap_or(0),
+            spec.as_ref().and_then(|s| s.channels).unwrap_or(0).max(0) as usize,
+        )
+    }
+
     /// Começa a gravar do microfone padrão (mono, 22 050 Hz, 16 bits).
     pub fn start_recording(&self) -> Result<Recording, String> {
         let spec = AudioSpec::new(Some(RECORD_RATE as i32), Some(1), Some(AudioFormat::S16LE));
@@ -216,8 +300,8 @@ impl Mixer {
         device.bind_stream(&stream).map_err(|e| e.to_string())?;
         stream.resume().map_err(|e| e.to_string())?;
         Ok(Recording {
-            _device: device,
             stream,
+            device,
             samples: Vec::new(),
         })
     }

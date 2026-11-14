@@ -502,11 +502,11 @@ impl Sounds {
         self.recorder = None;
     }
 
-    /// Recorder em gravação no meio de um `reset`: o que parar.
+    /// Recorder em gravação no meio de um `reset`: a gravação é descartada.
     pub fn stop_effects(&self) -> Vec<Effect> {
         self.recorder
             .as_ref()
-            .and_then(|r| r.stop_effect())
+            .and_then(|r| r.cancel_effect())
             .into_iter()
             .collect()
     }
