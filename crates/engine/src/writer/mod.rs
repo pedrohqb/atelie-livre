@@ -17,11 +17,13 @@
 //!   de texto abstrata ([`layout::Measure`]);
 //! - [`selection`]: seleção, movimentos com Shift e área de transferência
 //!   interna;
-//! - [`undo`]: a pilha de 20 ações do Ovo.
+//! - [`undo`]: a pilha de 20 ações do Ovo;
+//! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
 //!
 //! O modelo provisório que a cena `scenes/writer` usa hoje fica em
 //! [`legacy`] e é reexportado aqui com os nomes antigos até a integração.
 
+pub mod borders;
 pub mod dict;
 pub mod doc;
 pub mod fonts;
