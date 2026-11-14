@@ -21,10 +21,11 @@
 
 use super::entry_spec::QuitSpec;
 use super::room::Floor;
-use super::room_objects::{BagPics, WAND_CURSOR};
-use super::room_spec::{RoomKit, RoomSounds, RoomSpec};
+use super::room_objects::BagPics;
+use super::room_spec::{Persist, RoomKit, RoomSounds, RoomSpec, Tip};
 use super::writer_entry::WRITER_QUIT;
-use crate::assets::Program;
+use crate::assets::{CursorRef, Program};
+use crate::writer::prefs;
 
 /// Sons próprios das salas do Writer (o resto é igual ao Fine Artist).
 pub mod snd {
@@ -36,7 +37,151 @@ pub mod snd {
     pub const CHOICE: u16 = 0x2ff;
     /// Buraco do rato sem a varinha.
     pub const MOUSE_HOLE: u16 = 0x2ea;
+    /// Clique num objeto com balão (prancheta, quadro, bichos, máquinas).
+    pub const OBJECT: u16 = 0x21c;
+    /// Abre o balão de escolha dos bichos dos Projetos.
+    pub const PICK: u16 = 0x2f4;
+    /// Quadro de andares do saguão (fala do McZee) e chegada pelo elevador
+    /// ao Escritório.
+    pub const BOARD: u16 = 0x304;
+    /// Seta "Biblioteca" do saguão (e "Saguão" da Biblioteca).
+    pub const LIBRARY_ARROW: u16 = 0x2fb;
+    /// Mostrador do elevador no saguão: só o som.
+    pub const DIAL: u16 = 0x233;
+    /// Portas e botão do elevador no saguão.
+    pub const ELEVATOR_DOORS: u16 = 0x2d4;
+    /// Skate ("LÁ FORA" no saguão, "ELEVADOR" nos andares).
+    pub const SKATE: u16 = 0x2fc;
 }
+
+/// Registros do `WHAT 0bb8` usados pelas salas do Writer.
+pub mod rec {
+    /// "Esse documento é do Max…" (quadro do Escritório com o exemplo).
+    pub const MAX_DOC: usize = 0;
+    pub const LOBBY: usize = 1;
+    /// Dicas do saguão: Escritório, Projetos, Ideias, Biblioteca.
+    pub const LOBBY_OFFICE: usize = 2;
+    pub const LOBBY_PROJECTS: usize = 3;
+    pub const LOBBY_IDEAS: usize = 4;
+    pub const LOBBY_LIBRARY: usize = 5;
+    /// "A pasta é o lugar onde são guardados…".
+    pub const PORTFOLIO: usize = 12;
+    /// "Se você quiser, pode digitar outro nome!" (plaqueta) e a dica
+    /// "Quer esconder o seu trabalho dos outros?".
+    pub const NAME: usize = 18;
+    pub const HIDE: usize = 19;
+    pub const OFFICE: usize = 26;
+    /// Prancheta: "Para criar um novo documento • Dê um clique duplo…".
+    pub const OFFICE_NEW: usize = 27;
+    /// Quadro: "Esta é a última coisa que você salvou no Escritório…".
+    pub const OFFICE_LAST: usize = 28;
+    pub const PROJECTS: usize = 31;
+    pub const CARD: usize = 35;
+    pub const NEWSPAPER: usize = 36;
+    pub const BANNER: usize = 37;
+    /// "Quer ignorar este balão…? Ctrl" (bichos dos Projetos).
+    pub const SKIP_PROJECT: usize = 38;
+    pub const IDEAS: usize = 42;
+    pub const IDEA_MACHINE: usize = 44;
+    pub const SKIP_MACHINE: usize = 45;
+    pub const PICTURE_BOARD: usize = 49;
+    pub const SKIP_BOARD: usize = 50;
+    /// "Varinha Mágica" nos andares (com a "Tecla de atalho" `[57]`).
+    pub const WAND_FLOORS: usize = 56;
+    pub const HOTKEY_WAND: usize = 57;
+    /// "Outra coisa?" do Escritório (mastro, "Descendo?" e "Tecla de atalho").
+    pub const OFFICE_POLE: usize = 66;
+    pub const HOTKEY_UP: usize = 67;
+    pub const POLE_DOWN: usize = 68;
+    /// "Outra coisa?" dos Projetos e das Ideias.
+    pub const PROJECTS_POLE: usize = 69;
+    pub const IDEAS_POLE: usize = 70;
+    pub const HOTKEY_DOWN: usize = 71;
+    /// "Para ver mais escolhas…" e "Tecla de atalho" Ctrl+O (pasta).
+    pub const PORTFOLIO_HELP: usize = 53;
+    pub const HOTKEY_PORTFOLIO: usize = 54;
+}
+
+/// Balões dos objetos das salas do McZee (prancheta, quadro do
+/// Escritório, varinha): saem da boca dele, com o rabicho para cima
+/// (corpo medido em `building_44_esc_frame`, `45_esc_clip`,
+/// `49_wand_picked`).
+pub const MCZEE_MOUTH: (i32, i32) = (129, 233);
+/// Menu "Você quer me ver menos?" do McZee e do Max (`19_mczee_click`,
+/// `60_p_max`).
+pub const MCZEE_MENU: (i32, i32) = (129, 233);
+pub const MAX_MENU: (i32, i32) = (107, 132);
+/// "EPA! O que você quer fazer?": o mesmo lugar em todas as salas
+/// (`building_25_lamp`, `ideas_71_tchau`).
+pub const QUIT_POS: (i32, i32) = (208, 179);
+
+/// Dicas comuns às salas do Writer (posições das "Tecla de atalho" a medir:
+/// as do Fine Artist).
+const KIT_TIPS: &[Tip] = &[
+    Tip {
+        record: rec::SKIP_PROJECT,
+        pos: (169, 203),
+        w: 301,
+        text: "Quer ignorar este balão e começar um novo projeto imediatamente?\n• Na próxima vez, segure Ctrl quando clicar no projeto que você quer começar.",
+        links: &[],
+    },
+    Tip {
+        record: rec::SKIP_MACHINE,
+        pos: (169, 203),
+        w: 284,
+        text: "Você quer ignorar este balão e começar imediatamente do começo?\n• Na próxima vez, segure Ctrl quando clicar na Máquina de Idéias.",
+        links: &[],
+    },
+    Tip {
+        record: rec::SKIP_BOARD,
+        pos: (169, 203),
+        w: 283,
+        text: "Você quer ignorar este balão e começar imediatamente do começo?\n• Na próxima vez, segure Ctrl quando clicar na Máquina de Idéias.",
+        links: &[],
+    },
+    Tip {
+        record: rec::HOTKEY_UP,
+        pos: (195, 204),
+        w: 246,
+        text: "Quer subir DOIS andares?\nTente segurar a tecla Ctrl enquanto clica no mastro de bombeiro.",
+        links: &[],
+    },
+    Tip {
+        record: rec::POLE_DOWN,
+        pos: (195, 204),
+        w: 237,
+        text: "Quer descer pelo mastro de bombeiro?\n• Clique na abertura do mastro de bombeiro do andar em que você está.",
+        links: &[],
+    },
+    Tip {
+        record: rec::HOTKEY_DOWN,
+        pos: (195, 204),
+        w: 272,
+        text: "Quer descer DOIS andares?\nSegure a tecla Ctrl enquanto clica na abertura do mastro de bombeiro do andar em que você está.",
+        links: &[],
+    },
+    Tip {
+        record: rec::HOTKEY_WAND,
+        pos: (195, 204),
+        w: 228,
+        text: "Quer continuar usando a Varinha Mágica?\nGeralmente a Varinha Mágica desaparece depois que você clica uma vez.\nSe você quiser continuar usando a Varinha Mágica, segure Ctrl quando clicar.",
+        links: &[],
+    },
+    Tip {
+        record: rec::NAME,
+        pos: (129, 252),
+        w: 197,
+        text: "Se você quiser, pode digitar outro nome!\nPara apagar alguma coisa\n• Aperte Delete/Backspace.",
+        links: &[(rec::HIDE, "Esconder o seu trabalho?")],
+    },
+    Tip {
+        record: rec::HIDE,
+        pos: (195, 204),
+        w: 264,
+        text: "Quer esconder o seu trabalho dos outros?\n• Comece o nome com um ponto de exclamação (!).\nPor exemplo, !Resumo do Livro\nA única pessoa que pode abrir o seu trabalho é você mesmo!",
+        links: &[],
+    },
+];
 
 /// Bolsa Mágica e o que sai dela no `WRITER.PIC` (cor, máscara = duas
 /// imagens adiante, tamanho; `building.md` §8.3).
@@ -57,8 +202,8 @@ pub const WRITER_KIT: RoomKit = RoomKit {
     program: Program::Writer,
     what: 0x0bb8,
     snd: RoomSounds {
-        object: 0x21c,
-        pick: 0x2f4,
+        object: snd::OBJECT,
+        pick: snd::PICK,
         choice: snd::CHOICE,
         tip: 0x2dd,
         // não medido no Writer
@@ -69,7 +214,7 @@ pub const WRITER_KIT: RoomKit = RoomKit {
         painting: 0,
         mouse_hole: snd::MOUSE_HOLE,
         portfolio: 0x2f1,
-        board: 0x304,
+        board: snd::BOARD,
         mczee: snd::MCZEE,
         bag_open: 0x2cf,
         bag_close: 0x2ce,
@@ -80,26 +225,40 @@ pub const WRITER_KIT: RoomKit = RoomKit {
         wand_hole: 0x2ea,
         pole_up: 0x2f3,
         pole_down: 0x2f2,
-        skate: 0x2fc,
+        skate: snd::SKATE,
         elevator_arrive: 0x311,
     },
-    // as dicas ficam em cada sala (`RoomSpec::tips`)
-    tips: &[],
-    glossary_links: &[],
-    // figura da "Tecla de atalho" no `WHAT 0bb8`: a medir (T5–T7)
-    hotkey_pic: None,
+    // as dicas de cada sala ficam nela (`RoomSpec::tips`); aqui, as comuns
+    tips: KIT_TIPS,
+    glossary_links: &[
+        rec::HOTKEY_UP,
+        rec::HOTKEY_DOWN,
+        rec::HOTKEY_WAND,
+        rec::HOTKEY_PORTFOLIO,
+    ],
+    // a "Tecla de atalho" do `WHAT 0bb8` é a mesma figura `21c` do FA
+    hotkey_pic: Some((super::room_talk::PIC_HOTKEY, formats::what::PIC_TIP)),
     help_off: 29,
     help_on: 30,
-    // registro do balão da varinha nos andares: a identificar (T13)
-    wand: None,
+    wand: Some(Tip {
+        record: rec::WAND_FLOORS,
+        pos: MCZEE_MOUTH,
+        w: 178,
+        text: "Varinha Mágica\nQuando você clica no mastro de bombeiro ou no buraco do rato com a Varinha Mágica, acontecem coisas incríveis!",
+        links: &[(rec::HOTKEY_WAND, "Tecla de atalho")],
+    }),
     quit: QUIT,
     bag: &WRITER_BAG_PICS,
-    // cursor da varinha do `WRITER.EXE`: a pegar no GROUP_CURSOR (T13)
-    wand_cursor: WAND_CURSOR,
+    // varinha do `WRITER.EXE` (`CURSOR` 0x000f, `scenes::writer::cursors`)
+    wand_cursor: CursorRef(Program::Writer, super::writer::cursors::WAND),
     // menu do McZee no elevador ≈ (140,100) (`building-salas.md` §2; T8)
     elevator_helper: (140, 100),
-    persist: None,
-    ctrl_o: false,
+    // a bolsa aberta e a ajuda desligada valem entre salas e sessões
+    persist: Some(Persist {
+        load: prefs::load_state,
+        save: prefs::save_state,
+    }),
+    ctrl_o: true,
 };
 
 /// Sala do Writer em cada andar.

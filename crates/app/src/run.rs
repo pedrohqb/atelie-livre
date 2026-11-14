@@ -63,7 +63,8 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
     let room = |floor| {
         Box::new(
             Room::for_program(p, floor, cfg.click_sound.clone(), pictures(), assets)
-                .with_user(user.name(), assets),
+                .with_user(user.name(), assets)
+                .with_users_dir(users_dir(), assets),
         )
     };
     let entry = || {
@@ -118,6 +119,11 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         // TODO(office): abrir com um documento em branco quando o Escritório
         // tiver o construtor; por enquanto o editor abre o último documento
         SceneId::Cw(CwScene::NewDocument) => Box::new(Writer::new(texts_dir(), assets)),
+        // TODO(cw-ideas-scenes): as telas da Máquina de Idéias e do Quadro de
+        // Figuras; até lá, a área de escrita
+        SceneId::Cw(CwScene::IdeaMachine | CwScene::PictureBoard) => {
+            Box::new(Writer::new(texts_dir(), assets))
+        }
     }
 }
 

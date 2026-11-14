@@ -29,6 +29,7 @@ pub mod ideas;
 pub mod layout;
 pub mod legacy;
 pub mod object;
+pub mod prefs;
 pub mod selection;
 pub mod store;
 pub mod undo;

@@ -672,6 +672,13 @@ impl Room {
                 }
             }
             Action::Tip(k) => {
+                // a dica do quadro da parede, com o documento de outra pessoa
+                let k = match (self.spec.studio, &self.last_work) {
+                    (Some(st), Some(w)) if k == st.wall_tip && !w.own => {
+                        st.doc.map_or(k, |d| d.other_tip)
+                    }
+                    _ => k,
+                };
                 let b = self.tip(k, assets);
                 self.show(b, Talk::Tip);
             }
@@ -1041,9 +1048,10 @@ fn fit_work(mut w: LastWork, (_, _, bw, bh): crate::ui::Rect) -> LastWork {
         let (iw, ih) = (img.width as i32, img.height as i32);
         if iw > 0 && ih > 0 {
             let k = (bh as f32 / ih as f32).min(bw as f32 / iw as f32);
+            // arredondado para baixo, como o original (108×144 → 73×98)
             let (tw, th) = (
-                ((iw as f32 * k).round() as i32).max(1),
-                ((ih as f32 * k).round() as i32).max(1),
+                ((iw as f32 * k) as i32).max(1),
+                ((ih as f32 * k) as i32).max(1),
             );
             let mut rgba = Vec::with_capacity((tw * th * 4) as usize);
             for y in 0..th {
@@ -1306,6 +1314,9 @@ impl Scene for Room {
         }
     }
 }
+
+#[cfg(test)]
+mod writer_tests;
 
 #[cfg(test)]
 mod tests {

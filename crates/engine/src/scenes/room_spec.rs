@@ -66,11 +66,17 @@ pub enum Action {
 
 impl Action {
     /// Objetos que respondem com balão: clicar num deles com outro balão
-    /// aberto troca direto para o balão dele.
+    /// aberto troca direto para o balão dele. O mostrador do saguão do
+    /// Writer (`Sound`) também responde já no clique que fecha o balão.
     pub fn talks(self) -> bool {
         matches!(
             self,
-            Action::Easel | Action::Wall | Action::Pick(_) | Action::Painting | Action::Quit
+            Action::Easel
+                | Action::Wall
+                | Action::Pick(_)
+                | Action::Painting
+                | Action::Quit
+                | Action::Sound(_)
         )
     }
 }

@@ -144,6 +144,12 @@ pub enum CwScene {
     /// Área de escrita com um "Documento Novo" (opção 4 da Entrada,
     /// clique duplo na prancheta).
     NewDocument,
+    /// Máquina de Idéias (close-up, aberta pela máquina da Oficina de
+    /// Idéias). Sem equivalente no Fine Artist.
+    IdeaMachine,
+    /// Quadro de Figuras (close-up, aberto pelo quadro da Oficina de
+    /// Idéias). Sem equivalente no Fine Artist.
+    PictureBoard,
 }
 
 impl SceneId {
@@ -187,6 +193,8 @@ impl SceneId {
                     CwScene::Library => SceneId::Gallery,
                     CwScene::Portfolio => SceneId::Portfolio,
                     CwScene::NewDocument => SceneId::PaintNew,
+                    // telas só do Writer ficam como estão
+                    c @ (CwScene::IdeaMachine | CwScene::PictureBoard) => SceneId::Cw(c),
                 },
                 other => other,
             },
