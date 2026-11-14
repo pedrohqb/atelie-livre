@@ -46,3 +46,11 @@ a5 09                                 2.469 entradas
 ```
 
 Toda imagem começa com `00 01 00 00 50 4b 42 4d` (`.. .. "PKBM"`).
+
+## Entre o índice e a primeira imagem
+
+O índice não descreve tudo o que há no arquivo. No `WRITER.PIC`, entre o fim
+do índice (0x3642) e a primeira imagem (0xAC82) fica a tabela palavra →
+figura da Maçã (Coloca-figuras), descrita em [`maca.md`](maca.md). No
+`ARTIST.PIC` o espaço correspondente (0x39f0..0x3e28) guarda só um `PKBM`
+4 bits 112×37 sem entrada no índice (sobra de montagem; ignorado).

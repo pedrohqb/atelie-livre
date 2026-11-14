@@ -9,6 +9,7 @@ leitores sem consultar o código original.
 |---|---|
 | [`recursos.md`](recursos.md) | Recursos dos executáveis NE: paletas, textos (`STR#`, `STR`, `STRING`), padrões (`PAT#`), ícones, cursores, bitmaps |
 | [`glob.md`](glob.md) | Índice `GLOB` dos arquivos `.PIC` |
+| [`maca.md`](maca.md) | Tabela palavra → figura da Maçã (Coloca-figuras) escondida no `WRITER.PIC` entre o índice e a 1ª imagem |
 | [`pkbm.md`](pkbm.md) | Imagens `PKBM` (1, 4 e 8 bits, PackBits, paleta embutida) |
 | [`sons.md`](sons.md) | Sons WAV com ADPCM da Microsoft e as DLLs `.SND` |
 | [`chnk.md`](chnk.md) | Arquivos `CHNK`: documentos salvos e bibliotecas |
@@ -36,7 +37,7 @@ leitores sem consultar o código original.
 | Arquivo | Formato | Ver |
 |---|---|---|
 | `ARTIST.EXE`, `WRITER.EXE` | executável NE (Win16) | `recursos.md`; `writer-exe-recursos.md`, `writer-atag.md` |
-| `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` | `glob.md`, `pkbm.md`, `writer-pic-snd.md` |
+| `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` (+ tabela da Maçã no `WRITER.PIC`) | `glob.md`, `pkbm.md`, `writer-pic-snd.md`, `maca.md` |
 | `ARTIST/ARTIST.SND`, `WRITER/WRITER.SND` | DLL NE com sons WAV | `sons.md`, `writer-pic-snd.md` |
 | `SHARED/MSKIDS.INF` | `CHNK` (usuários) | `chnk.md` |
 | `SHARED/USERS/*/*.MAG`, `*.PTM` (exemplos) e `USERS/*/` (usuários) | `CHNK` (desenhos do Fine Artist) | `mag.md`, `chnk.md` |
