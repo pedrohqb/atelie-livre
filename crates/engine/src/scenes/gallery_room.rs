@@ -94,7 +94,7 @@ const OPT_QUIT: u16 = 1;
 const ALERT_POS: (i32, i32) = (178, 145);
 const QUIT_POS: (i32, i32) = (214, 179);
 /// Balão de boas-vindas (medido na chegada do original).
-const WELCOME_POS: (i32, i32) = (130, 240);
+const WELCOME_POS: (i32, i32) = (129, 233);
 
 /// Sons da Galeria (ids do `ARTIST.SND`, identificados pelo tamanho no
 /// original; ver `report/gallery.md` da varredura).
@@ -1035,6 +1035,7 @@ impl GalleryRoom {
             options: opts.iter().map(|o| o.to_string()).collect(),
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         };
         let fallback = match kind {
             Ask::Welcome => balloon(t.welcome, 239),
@@ -1043,21 +1044,24 @@ impl GalleryRoom {
             Ask::HelpOff | Ask::HelpOn => {
                 // o mesmo menu do McZee das salas
                 let off = kind == Ask::HelpOn;
-                let b = Helper::McZee.balloon_in(
+                let mut b = Helper::McZee.balloon_in(
                     self.spec.kit,
                     assets,
                     super::room::DEFAULT_USER,
                     off,
                     self.spec.pos.welcome,
                 );
+                b.tail = room_talk::mczee_tail(Some(Helper::McZee), false, &b);
                 self.balloon = Some((kind, b));
                 return;
             }
             Ask::Tip => balloon(("", &[]), 200),
         };
         let records = assets.dialogs(self.spec.kit.program, self.spec.kit.what);
-        let mut b =
-            Balloon::from_block(&records, k, 0, 0, super::room::DEFAULT_USER).unwrap_or(fallback);
+        // as figuras e o fundo dos balões vêm do programa da sala
+        let mut b = Balloon::from_block(&records, k, 0, 0, super::room::DEFAULT_USER)
+            .map(|b| b.in_program(self.spec.kit.program))
+            .unwrap_or(fallback);
         if kind == Ask::Welcome2 {
             let drop = self.spec.welcome2_drop;
             b.options.retain(|o| !drop.iter().any(|d| o.contains(d)));
@@ -1072,6 +1076,7 @@ impl GalleryRoom {
                 .find(|(r, _)| *r == k)
                 .map_or(pos.tip, |&(_, p)| p),
         };
+        b.tail = room_talk::mczee_tail(Some(Helper::McZee), false, &b);
         self.balloon = Some((kind, b));
     }
 
@@ -1083,6 +1088,7 @@ impl GalleryRoom {
         self.ask(Ask::Tip, k, assets);
         if let Some((_, b)) = &mut self.balloon {
             (b.x, b.y) = pos;
+            b.tail = room_talk::mczee_tail(Some(Helper::McZee), false, b);
         }
     }
 
@@ -1094,6 +1100,8 @@ impl GalleryRoom {
         let (gap, dy) = self.spec.pos.work_on;
         let fixed = self.spec.pos.work_on_at.get(k).copied();
         if let Some((_, b)) = &mut self.balloon {
+            // o rabicho do original aponta a moldura, não o McZee
+            b.tail = None;
             if let Some(p) = fixed {
                 (b.x, b.y) = p;
                 return;

@@ -1,19 +1,21 @@
 //! Balões com campos de texto, figuras para escolher e botões Volta / Para /
-//! Segue: os do cadastro da Entrada (`WHAT 4400` e `4402` de `ARTIST.EXE`).
-//! Complementa `Balloon` (texto e opções) sem alterá-lo.
+//! Segue: os do cadastro da Entrada (`WHAT 4400` e `4402` de `ARTIST.EXE`) e
+//! os avisos "EPA!" do Rex. Complementa `Balloon` (texto e opções).
 //!
-//! No `WHAT`, uma figura de id 0 é uma caixa de texto (o parâmetro é a
-//! largura em pixels), `0x22e` marca uma opção com figura (a bolinha verde),
-//! os ids `0x237`…`0x242` são os doze bichos (figuras `0x45b`, `0x45d`… de
-//! `ARTIST.PIC`), `0x22c` marca uma opção de resposta (bolinha preta) e
-//! `0x230` é o cabeçalho "EPA!" dos avisos (casinha do Rex e cachorro,
-//! figura `0x2a9`), que no original vêm em balão branco, sem botão: qualquer
-//! clique fecha.
+//! Tudo é disposto como texto formatado ([`crate::rich`]): no `WHAT`, uma
+//! figura de id 0 é uma caixa de texto (o parâmetro é a largura em pixels),
+//! `0x22e` é a bolinha verde de uma opção com figura (seguida do bicho,
+//! `0x237`…`0x242`, figuras `0x45b`, `0x45d`… de `ARTIST.PIC`, e de espaços,
+//! o que forma a grade de três colunas do original), `0x22c` marca uma opção
+//! de resposta (bolinha preta) e `0x230` é o cabeçalho "EPA!" dos avisos
+//! (casinha do Rex e cachorro, figura `0x2a9`), centralizado. Os
+//! avisos têm cantos retos e o mesmo fundo pontilhado; os botões ficam em
+//! três vagas fixas (Volta, Para, Segue) centralizadas, e um botão que falta
+//! deixa a vaga vazia, como no original.
 
 use crate::assets::{Assets, ImageRef, Program};
-use crate::balloon::{
-    PAD, balloon_font, draw_box, draw_box_white, draw_bullet, draw_line, line_height, wrap_opt,
-};
+use crate::balloon::{BOX_EXTRA, PAD, PAD_BOTTOM, WRAP_LESS, draw_frame, plain_items};
+use crate::rich::{self, Ctx, Laid, Run};
 use crate::scene::{Input, Key, MouseButton};
 use crate::{Frame, Image};
 use formats::fnt::Font;
@@ -24,15 +26,14 @@ type Rect = (i32, i32, i32, i32);
 
 const WHITE: [u8; 3] = [255, 255, 255];
 const BLACK: [u8; 3] = [0, 0, 0];
-/// Altura da caixa de texto e espaço que ela ocupa na coluna.
-const FIELD_H: i32 = 15;
-const FIELD_ROW: i32 = 20;
-/// Altura de cada linha da grade de figuras.
-const CELL_H: i32 = 16;
-/// Botões Volta / Para / Segue (31×14, com a máscara duas imagens adiante).
+/// Botões Volta / Para / Segue (31×14, com a máscara duas imagens adiante),
+/// em três vagas com 10 px entre elas.
 const BTN_W: i32 = 31;
 const BTN_H: i32 = 14;
 const BTN_GAP: i32 = 10;
+/// Do pé do texto até os botões, e dos botões até o pé da caixa.
+const BTN_ABOVE: i32 = 15;
+const BTN_BELOW: i32 = 8;
 pub const PIC_BACK: u16 = 0x40f;
 pub const PIC_STOP: u16 = 0x417;
 pub const PIC_NEXT: u16 = 0x413;
@@ -43,9 +44,8 @@ pub const PIC_BALL_CHECKED: u16 = 0x40d;
 pub const PIC_ANIMAL0: u16 = 0x45b;
 /// Cabeçalho "EPA!" dos avisos (195×48: casinha do Rex, "EPA!" e cachorro).
 pub const PIC_ALERT: u16 = 0x2a9;
-/// Bolinha preta das opções e espaço até o texto.
-const BULLET: i32 = 14;
-const OPTION_GAP: i32 = 4;
+/// Célula da grade: bolinha, espaço e bicho.
+const CELL_W: i32 = 40;
 const WHAT_FIELD: u16 = 0;
 const WHAT_ANIMAL0: u16 = 0x237;
 const WHAT_ANIMALS: u16 = 12;
@@ -74,6 +74,15 @@ impl Button {
             Button::Next => "Segue",
         }
     }
+
+    /// Vaga do botão (0, 1, 2).
+    fn slot(self) -> i32 {
+        match self {
+            Button::Back => 0,
+            Button::Stop => 1,
+            Button::Next => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +102,98 @@ pub enum Part {
     Figure(u16),
     /// Opções de resposta, cada uma com a bolinha preta na frente.
     Options(Vec<String>),
+    /// Trecho de um registro `WHAT`, com a formatação, as caixas de texto
+    /// (`fields`), as figuras para escolher e as opções (`options`, na ordem).
+    Rich {
+        items: Vec<Item>,
+        options: Vec<String>,
+    },
+}
+
+impl Part {
+    /// Itens equivalentes, para dispor como texto formatado.
+    fn items(&self) -> Vec<Item> {
+        match self {
+            Part::Text(t) => plain_items(t, &[], &[], &[]),
+            Part::Field { width, .. } => vec![
+                Item::Picture {
+                    id: WHAT_FIELD,
+                    param: (*width).clamp(0, 0xffff) as u16,
+                },
+                Item::Newline,
+            ],
+            Part::Grid { pictures, cols } => {
+                let mut v = Vec::new();
+                for row in pictures.chunks((*cols).max(1)) {
+                    for (c, pic) in row.iter().enumerate() {
+                        v.push(Item::Picture {
+                            id: PIC_OPTION_PICTURE,
+                            param: 0,
+                        });
+                        v.push(space_item(" "));
+                        v.push(Item::Picture {
+                            id: what_for(*pic),
+                            param: 0,
+                        });
+                        if c + 1 < row.len() {
+                            v.push(space_item("            "));
+                        }
+                    }
+                    v.push(Item::Newline);
+                }
+                v
+            }
+            Part::Figure(pic) => {
+                let id = if *pic == PIC_ALERT { WHAT_HEAD } else { *pic };
+                vec![
+                    Item::Format {
+                        indent: 0,
+                        center: true,
+                    },
+                    Item::Picture { id, param: 0 },
+                    Item::Newline,
+                    Item::Format {
+                        indent: 0,
+                        center: false,
+                    },
+                ]
+            }
+            Part::Options(o) => plain_items("", &[], &[], o)
+                .into_iter()
+                .skip_while(|i| !matches!(i, Item::Format { .. }))
+                .collect(),
+            Part::Rich { items, .. } => {
+                let mut v = items.clone();
+                if !matches!(v.last(), Some(Item::Newline)) {
+                    v.push(Item::Newline);
+                }
+                v
+            }
+        }
+    }
+
+    /// Número de caixas de texto.
+    fn fields(&self) -> usize {
+        match self {
+            Part::Field { .. } => 1,
+            Part::Rich { items, .. } => items
+                .iter()
+                .filter(|i| matches!(i, Item::Picture { id: WHAT_FIELD, .. }))
+                .count(),
+            _ => 0,
+        }
+    }
+}
+
+fn space_item(s: &str) -> Item {
+    Item::Text {
+        text: s.into(),
+        bold: false,
+        color: 0xf,
+        indent: 0,
+        key: false,
+        signature: false,
+    }
 }
 
 /// Figura do `.PIC` correspondente a um id de figura do `WHAT`.
@@ -103,6 +204,17 @@ pub fn pic_for(what_id: u16) -> Option<u16> {
         Some(PIC_ALERT)
     } else {
         None
+    }
+}
+
+/// Id do `WHAT` de uma figura do `.PIC` (bichos e cabeçalho "EPA!").
+fn what_for(pic: u16) -> u16 {
+    if (PIC_ANIMAL0..PIC_ANIMAL0 + 2 * WHAT_ANIMALS).contains(&pic) {
+        WHAT_ANIMAL0 + (pic - PIC_ANIMAL0) / 2
+    } else if pic == PIC_ALERT {
+        WHAT_HEAD
+    } else {
+        pic
     }
 }
 
@@ -118,7 +230,7 @@ pub struct TextBalloon {
     /// Figura escolhida na grade.
     pub selected: usize,
     pub buttons: Vec<Button>,
-    /// Aviso: fundo branco em vez do amarelo pontilhado.
+    /// Aviso do Rex: cantos retos.
     pub alert: bool,
     /// O texto do campo com o cursor está todo selecionado: digitar o
     /// substitui, Backspace o apaga.
@@ -126,6 +238,7 @@ pub struct TextBalloon {
 }
 
 struct Layout {
+    laid: Laid,
     fields: Vec<(usize, Rect)>,
     cells: Vec<Rect>,
     options: Vec<Rect>,
@@ -212,7 +325,8 @@ impl TextBalloon {
                 _ => None,
             })
             .max()
-            .unwrap_or(0);
+            .unwrap_or(0)
+            .max(parts.iter().map(Part::fields).sum());
         TextBalloon {
             x,
             y,
@@ -227,7 +341,7 @@ impl TextBalloon {
         }
     }
 
-    /// O mesmo balão como aviso (fundo branco).
+    /// O mesmo balão como aviso (cantos retos).
     pub fn as_alert(mut self) -> TextBalloon {
         self.alert = true;
         self
@@ -239,13 +353,15 @@ impl TextBalloon {
             .iter()
             .find_map(|p| match p {
                 Part::Options(o) => Some(o.as_slice()),
+                Part::Rich { options, .. } if !options.is_empty() => Some(options.as_slice()),
                 _ => None,
             })
             .unwrap_or(&[])
     }
 
-    /// Balão a partir de um registro `WHAT`: texto (o `@` vira `name`),
-    /// caixas de texto, grade de figuras e figuras decorativas, na ordem.
+    /// Balão a partir de um registro `WHAT`, com a formatação, as caixas
+    /// de texto, a grade de figuras e as opções do original (o `@` vira
+    /// `name`).
     pub fn from_record(
         r: &Record,
         x: i32,
@@ -253,159 +369,195 @@ impl TextBalloon {
         name: &str,
         buttons: Vec<Button>,
     ) -> TextBalloon {
-        let mut parts: Vec<Part> = Vec::new();
-        let mut text = String::new();
-        let mut fields = 0;
-        let mut grid: Option<(Vec<u16>, usize, bool)> = None; // figuras, colunas, 1ª linha
-        let flush = |text: &mut String, parts: &mut Vec<Part>| {
-            let t = text.trim().to_string();
-            text.clear();
-            if !t.is_empty() {
-                parts.push(Part::Text(t));
-            }
-        };
-        let close_grid = |grid: &mut Option<(Vec<u16>, usize, bool)>, parts: &mut Vec<Part>| {
-            if let Some((pictures, cols, _)) = grid.take() {
-                parts.push(Part::Grid {
-                    pictures,
-                    cols: cols.max(1),
-                });
-            }
-        };
-        let options: Vec<String> = r.options().into_iter().map(|o| o.1).collect();
-        for i in &r.items {
-            match i {
-                // as opções (bolinha preta) vêm por `Record::options`; o que
-                // segue a primeira é o texto delas
-                Item::Picture { id, .. } if *id == PIC_OPTION => {
-                    flush(&mut text, &mut parts);
-                    if !options.is_empty() && !parts.iter().any(|p| matches!(p, Part::Options(_))) {
-                        parts.push(Part::Options(options.clone()));
-                    }
-                    break;
+        let items = r
+            .items
+            .iter()
+            .cloned()
+            .map(|i| match i {
+                Item::Text {
+                    text,
+                    bold,
+                    color,
+                    indent,
+                    key,
+                    signature,
+                } => Item::Text {
+                    text: text.replace('@', name),
+                    bold,
+                    color,
+                    indent,
+                    key,
+                    signature,
+                },
+                other => other,
+            })
+            .collect();
+        let options = r.options().into_iter().map(|o| o.1).collect();
+        TextBalloon::new(
+            x,
+            y,
+            r.width as i32,
+            vec![Part::Rich { items, options }],
+            buttons,
+        )
+    }
+
+    /// Tira as linhas (parágrafos) com `needle` do texto do balão (a dica
+    /// do disquete do cadastro, por exemplo).
+    pub fn drop_lines_containing(&mut self, needle: &str) {
+        for p in &mut self.parts {
+            match p {
+                Part::Text(t) => {
+                    *t = t
+                        .lines()
+                        .filter(|l| !l.contains(needle))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                        .trim()
+                        .to_string();
                 }
-                Item::Text { text: t, .. } => {
-                    if grid.is_none() || !t.trim().is_empty() {
-                        if grid.is_some() {
-                            close_grid(&mut grid, &mut parts);
+                Part::Rich { items, .. } => {
+                    let mut out = Vec::new();
+                    let mut para = Vec::new();
+                    for i in items.drain(..) {
+                        let end = matches!(i, Item::Newline);
+                        para.push(i);
+                        if end {
+                            let hit = para.iter().any(
+                                |i| matches!(i, Item::Text { text, .. } if text.contains(needle)),
+                            );
+                            if !hit {
+                                out.append(&mut para);
+                            }
+                            para.clear();
                         }
-                        text.push_str(t);
                     }
-                }
-                Item::Newline => {
-                    if let Some(g) = grid.as_mut() {
-                        g.2 = false;
-                    } else {
-                        text.push('\n');
-                    }
-                }
-                Item::Picture { id, param } if *id == WHAT_FIELD => {
-                    flush(&mut text, &mut parts);
-                    parts.push(Part::Field {
-                        field: fields,
-                        width: (*param as i32).max(40),
-                    });
-                    fields += 1;
-                }
-                Item::Picture { id, .. } if *id == PIC_OPTION_PICTURE => {
-                    if grid.is_none() {
-                        flush(&mut text, &mut parts);
-                        grid = Some((Vec::new(), 0, true));
-                    }
-                    if let Some(g) = grid.as_mut()
-                        && g.2
+                    if !para
+                        .iter()
+                        .any(|i| matches!(i, Item::Text { text, .. } if text.contains(needle)))
                     {
-                        g.1 += 1;
+                        out.append(&mut para);
                     }
+                    *items = out;
                 }
-                Item::Picture { id, .. } => {
-                    let Some(pic) = pic_for(*id) else { continue };
-                    match grid.as_mut() {
-                        Some(g) => g.0.push(pic),
-                        None => {
-                            flush(&mut text, &mut parts);
-                            parts.push(Part::Figure(pic));
-                        }
-                    }
-                }
+                _ => {}
             }
         }
-        close_grid(&mut grid, &mut parts);
-        flush(&mut text, &mut parts);
-        for p in &mut parts {
-            if let Part::Text(t) = p {
-                *t = t.replace('@', name);
+        self.parts
+            .retain(|p| !matches!(p, Part::Text(t) if t.is_empty()));
+    }
+
+    /// Texto do balão, sem formatação nem opções (para conferir).
+    pub fn plain_text(&self) -> String {
+        let mut out = String::new();
+        let mut in_option = false;
+        for i in self
+            .parts
+            .iter()
+            .filter(|p| !matches!(p, Part::Options(_)))
+            .flat_map(Part::items)
+        {
+            match i {
+                Item::Text { text, .. } if !in_option => out.push_str(&text),
+                Item::Picture { id: PIC_OPTION, .. } => in_option = true,
+                Item::Newline => {
+                    in_option = false;
+                    out.push('\n');
+                }
+                _ => {}
             }
         }
-        TextBalloon::new(x, y, r.width as i32, parts, buttons)
+        out.trim().to_string()
+    }
+
+    /// O balão abre com o cabeçalho "EPA!" do Rex.
+    pub fn has_alert_header(&self) -> bool {
+        self.parts
+            .iter()
+            .flat_map(Part::items)
+            .find_map(|i| match i {
+                Item::Picture { id, .. } => Some(id),
+                Item::Text { text, .. } if !text.trim().is_empty() => Some(u16::MAX),
+                _ => None,
+            })
+            == Some(WHAT_HEAD)
     }
 
     fn font(a: &Assets) -> Option<Rc<Font>> {
-        balloon_font(a)
+        a.font(8)
+    }
+
+    /// Largura da caixa: a do registro mais 2 (mais 1 nos avisos).
+    pub fn box_width(&self) -> i32 {
+        self.w + if self.alert { 1 } else { BOX_EXTRA }
+    }
+
+    fn items(&self) -> Vec<Item> {
+        self.parts.iter().flat_map(Part::items).collect()
     }
 
     fn layout(&self, a: &Assets, font: Option<&Font>) -> Layout {
-        let lh = line_height(font);
-        let inner = self.w - 2 * PAD;
-        let mut y = self.y + PAD;
-        let mut lay = Layout {
-            fields: Vec::new(),
-            cells: Vec::new(),
-            options: Vec::new(),
-            buttons: Vec::new(),
-            h: 0,
+        let none = |_: usize| None;
+        let ctx = Ctx {
+            assets: a,
+            program: Program::Artist,
+            font,
+            name: "",
+            glossary: &none,
+            own: None,
         };
-        for p in &self.parts {
-            match p {
-                Part::Text(t) => {
-                    y += wrap_opt(font, t, inner as u32).len() as i32 * lh;
-                }
-                Part::Field { field, width } => {
-                    let w = (*width).min(inner);
-                    lay.fields.push((*field, (self.x + PAD, y + 2, w, FIELD_H)));
-                    y += FIELD_ROW;
-                }
-                Part::Grid { pictures, cols } => {
-                    let cw = inner / *cols as i32;
-                    for (k, _) in pictures.iter().enumerate() {
-                        let (col, row) = ((k % cols) as i32, (k / cols) as i32);
-                        lay.cells
-                            .push((self.x + PAD + col * cw, y + row * CELL_H, cw, CELL_H));
-                    }
-                    y += pictures.len().div_ceil(*cols) as i32 * CELL_H + 2;
-                }
-                Part::Figure(id) => {
-                    let h = if has_pic(a, *id) {
-                        a.image(&ImageRef::Pic(Program::Artist, *id)).height as i32
-                    } else {
-                        0
-                    };
-                    y += h + 2;
-                }
-                Part::Options(opts) => {
-                    y += OPTION_GAP;
-                    for o in opts {
-                        let n = wrap_opt(font, o, (inner - BULLET - 4) as u32).len() as i32;
-                        let h = n * lh + 4;
-                        lay.options.push((self.x + PAD, y - 2, inner, h));
-                        y += h;
-                    }
-                }
-            }
-        }
+        let laid = rich::layout(&self.items(), self.w - WRAP_LESS, &ctx);
+        let (ox, oy) = (self.x + PAD, self.y + PAD);
+        let abs = |r: Rect| (ox + r.0, oy + r.1, r.2, r.3);
+        let fields = laid
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(k, r)| (k, abs(*r)))
+            .collect();
+        let cells = laid
+            .runs
+            .iter()
+            .filter_map(|r| match r {
+                Run::Option {
+                    x,
+                    y,
+                    id: PIC_OPTION_PICTURE,
+                    ..
+                } => Some(abs((*x, *y, CELL_W, rich::OPTION_H))),
+                _ => None,
+            })
+            .collect();
+        let options = laid
+            .options
+            .iter()
+            .map(|r| {
+                let (x, y, w, h) = abs(*r);
+                (x, y - rich::PARA / 2, w, h + rich::PARA)
+            })
+            .collect();
+        let mut y = oy + laid.height;
+        let mut buttons = Vec::new();
         if !self.buttons.is_empty() {
-            y += 4;
-            let n = self.buttons.len() as i32;
-            let total = n * BTN_W + (n - 1) * BTN_GAP;
-            let mut bx = self.x + (self.w - total) / 2;
+            y += BTN_ABOVE;
+            let total = 3 * BTN_W + 2 * BTN_GAP;
+            let x0 = self.x + (self.box_width() - total) / 2;
             for b in &self.buttons {
-                lay.buttons.push((*b, (bx, y, BTN_W, BTN_H)));
-                bx += BTN_W + BTN_GAP;
+                let bx = x0 + b.slot() * (BTN_W + BTN_GAP);
+                buttons.push((*b, (bx, y, BTN_W, BTN_H)));
             }
-            y += BTN_H;
+            y += BTN_H + BTN_BELOW;
+        } else {
+            y += PAD_BOTTOM;
         }
-        lay.h = y + PAD - self.y;
-        lay
+        Layout {
+            laid,
+            fields,
+            cells,
+            options,
+            buttons,
+            h: y - self.y,
+        }
     }
 
     pub fn height(&self, a: &Assets) -> i32 {
@@ -413,7 +565,7 @@ impl TextBalloon {
     }
 
     pub fn contains(&self, a: &Assets, x: i32, y: i32) -> bool {
-        inside((self.x, self.y, self.w, self.height(a)), x, y)
+        inside((self.x, self.y, self.box_width(), self.height(a)), x, y)
     }
 
     /// Retângulo do botão `b`, se o balão o tiver.
@@ -468,24 +620,13 @@ impl TextBalloon {
     }
 
     /// Largura máxima do texto que cabe no campo `k`.
-    fn field_capacity(&self, k: usize) -> i32 {
-        self.parts
-            .iter()
-            .find_map(|p| match p {
-                Part::Field { field, width } if *field == k => Some(*width),
-                _ => None,
-            })
-            .unwrap_or(100)
-            - 6
+    fn field_capacity(&self, a: &Assets, k: usize) -> i32 {
+        self.field_rect(a, k).map_or(100, |r| r.2) - 6
     }
 
     fn text_width(font: Option<&Font>, s: &str) -> i32 {
-        match font {
-            Some(f) => f.width(s) as i32,
-            None => 8 * s.chars().count() as i32,
-        }
+        rich::text_width(font, s, false)
     }
-
     /// Trata uma entrada: cliques nos campos, na grade e nos botões; texto e
     /// Backspace no campo com o cursor; Enter é "Segue"; setas trocam o
     /// campo. Devolve o botão acionado.
@@ -512,7 +653,7 @@ impl TextBalloon {
             Input::Text(s) => {
                 if let Some(field) = self.fields.get(self.focus) {
                     let font = Self::font(a);
-                    let cap = self.field_capacity(self.focus);
+                    let cap = self.field_capacity(a, self.focus);
                     let mut t = if self.select_all {
                         String::new()
                     } else {
@@ -565,104 +706,35 @@ impl TextBalloon {
 
     pub fn draw(&self, f: &mut Frame, a: &Assets) {
         let font = Self::font(a);
-        let lay = self.layout(a, font.as_deref());
-        let lh = line_height(font.as_deref());
-        let inner = self.w - 2 * PAD;
-        if self.alert {
-            draw_box_white(f, self.x, self.y, self.w, lay.h);
-        } else {
-            draw_box(f, self.x, self.y, self.w, lay.h);
-        }
-        let mut y = self.y + PAD;
-        let mut opt_idx = 0;
-        for p in &self.parts {
-            match p {
-                Part::Text(t) => {
-                    for line in wrap_opt(font.as_deref(), t, inner as u32) {
-                        draw_line(f, font.as_deref(), self.x + PAD, y, &line);
-                        y += lh;
-                    }
+        let font = font.as_deref();
+        let lay = self.layout(a, font);
+        draw_frame(f, self.x, self.y, self.box_width(), lay.h, !self.alert);
+        let fields = &self.fields;
+        let (focus, select_all) = (self.focus, self.select_all);
+        rich::draw(
+            f,
+            a,
+            font,
+            &lay.laid,
+            (self.x + PAD, self.y + PAD),
+            Some(self.selected),
+            &mut |f, k, (bx, by, w, h)| {
+                f.rect(bx, by, w, h, BLACK);
+                f.rect(bx + 1, by + 1, w - 2, h - 2, WHITE);
+                let text = fields.get(k).map_or("", String::as_str);
+                let tw = Self::text_width(font, text);
+                if k == focus && select_all && !text.is_empty() {
+                    // texto selecionado: invertido
+                    f.rect(bx + 2, by + 2, tw + 2, h - 4, BLACK);
+                    rich::draw_text(f, font, bx + 3, by + 2, text, false, WHITE);
+                } else {
+                    rich::draw_text(f, font, bx + 3, by + 2, text, false, BLACK);
                 }
-                Part::Field { field, width } => {
-                    let w = (*width).min(inner);
-                    let (bx, by) = (self.x + PAD, y + 2);
-                    f.rect(bx, by, w, FIELD_H, BLACK);
-                    f.rect(bx + 1, by + 1, w - 2, FIELD_H - 2, WHITE);
-                    let text = self.fields.get(*field).map_or("", String::as_str);
-                    let tw = Self::text_width(font.as_deref(), text);
-                    if *field == self.focus && self.select_all && !text.is_empty() {
-                        // texto selecionado: invertido
-                        f.rect(bx + 2, by + 2, tw + 2, FIELD_H - 4, BLACK);
-                        match &font {
-                            Some(fo) => {
-                                f.text_font(fo, bx + 3, by + 2, text, WHITE);
-                            }
-                            None => f.text(bx + 3, by + 2, text, WHITE),
-                        }
-                    } else {
-                        draw_line(f, font.as_deref(), bx + 3, by + 2, text);
-                    }
-                    if *field == self.focus && !self.select_all {
-                        f.rect(bx + 3 + tw, by + 2, 1, FIELD_H - 4, BLACK);
-                    }
-                    y += FIELD_ROW;
+                if k == focus && !select_all {
+                    f.rect(bx + 3 + tw, by + 2, 1, h - 4, BLACK);
                 }
-                Part::Grid { pictures, cols } => {
-                    let cw = inner / *cols as i32;
-                    for (k, pic) in pictures.iter().enumerate() {
-                        let (col, row) = ((k % cols) as i32, (k / cols) as i32);
-                        let (cx, cy) = (self.x + PAD + col * cw, y + row * CELL_H);
-                        let ball = if k == self.selected {
-                            PIC_BALL_CHECKED
-                        } else {
-                            PIC_BALL
-                        };
-                        if has_pic(a, ball) {
-                            blit_pic(f, a, ball, cx, cy, false);
-                        } else {
-                            crate::balloon::draw_bullet(f, cx + 2, cy + 2);
-                            if k == self.selected {
-                                f.rect(cx + 5, cy + 5, 4, 4, WHITE);
-                            }
-                        }
-                        if has_pic(a, *pic) {
-                            blit_pic(f, a, *pic, cx + 20, cy + 2, false);
-                        } else {
-                            f.text(cx + 20, cy + 3, &format!("{}", k + 1), BLACK);
-                        }
-                    }
-                    y += pictures.len().div_ceil(*cols) as i32 * CELL_H + 2;
-                }
-                Part::Figure(id) => {
-                    if has_pic(a, *id) {
-                        blit_pic(f, a, *id, self.x + PAD, y, true);
-                        y += a.image(&ImageRef::Pic(Program::Artist, *id)).height as i32;
-                    }
-                    y += 2;
-                }
-                Part::Options(opts) => {
-                    y += OPTION_GAP;
-                    for o in opts {
-                        let r = lay.options[opt_idx];
-                        opt_idx += 1;
-                        draw_bullet(f, r.0, r.1 + 2 + (lh - 10) / 2);
-                        for (j, line) in wrap_opt(font.as_deref(), o, (inner - BULLET - 4) as u32)
-                            .iter()
-                            .enumerate()
-                        {
-                            draw_line(
-                                f,
-                                font.as_deref(),
-                                r.0 + BULLET + 4,
-                                r.1 + 2 + j as i32 * lh,
-                                line,
-                            );
-                        }
-                        y += r.3;
-                    }
-                }
-            }
-        }
+            },
+        );
         for (b, r) in &lay.buttons {
             draw_button(f, a, *b, r.0, r.1);
         }
@@ -829,27 +901,28 @@ mod tests {
         let name = TextBalloon::from_record(&recs[4], 112, 78, "Ana", vec![Button::Next]);
         assert_eq!(name.fields.len(), 2);
         assert_eq!(name.w, 297);
-        assert!(matches!(&name.parts[0], Part::Text(t) if t.starts_with("Preciso saber")));
-        assert!(matches!(
-            name.parts[1],
-            Part::Field {
-                field: 0,
-                width: 144
-            }
-        ));
-        let animal = TextBalloon::from_record(&recs[8], 130, 78, "Ana", vec![Button::Next]);
-        assert!(matches!(&animal.parts[0], Part::Text(t) if t.starts_with("Oi, Ana!")));
-        assert!(
-            matches!(&animal.parts[1], Part::Grid { pictures, cols: 3 } if pictures.len() == 12)
+        assert!(name.plain_text().starts_with("Preciso saber"));
+        let (r0, r1) = (
+            name.field_rect(&a, 0).unwrap(),
+            name.field_rect(&a, 1).unwrap(),
         );
+        assert_eq!((r0.2, r1.2), (144, 144));
+        assert!(r1.1 > r0.1);
+        let animal = TextBalloon::from_record(&recs[8], 130, 78, "Ana", vec![Button::Next]);
+        assert!(animal.plain_text().starts_with("Oi, Ana!"));
+        // 12 bichos em 3 colunas e 4 linhas
+        let cells: Vec<Rect> = (0..12).map(|k| animal.cell_rect(&a, k).unwrap()).collect();
+        assert!(animal.cell_rect(&a, 12).is_none());
+        assert_eq!(cells[0].1, cells[2].1);
+        assert!(cells[3].1 > cells[0].1 && cells[3].0 == cells[0].0);
         let bad = a.dialogs(Program::Artist, 0x4402);
         let dup = TextBalloon::from_record(&bad[0], 0, 0, "zé", vec![]);
-        assert_eq!(dup.parts[0], Part::Figure(PIC_ALERT));
-        assert!(matches!(&dup.parts[1], Part::Text(t) if t.contains("(zé)")));
+        assert!(dup.has_alert_header());
+        assert!(dup.plain_text().contains("(zé)"));
         let mut f = Frame::new(640, 480);
-        name.draw(&mut f, &a);
         animal.draw(&mut f, &a);
         dup.draw(&mut f, &a);
+        name.draw(&mut f, &a);
         // o botão Segue é a figura 0x413 (verde)
         let r = name.button_rect(&a, Button::Next).unwrap();
         let mut green = 0;

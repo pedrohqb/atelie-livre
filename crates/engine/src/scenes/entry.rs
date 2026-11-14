@@ -372,19 +372,7 @@ impl Entry {
             vec![Button::Back, Button::Stop],
         );
         let mut b = form_balloon(assets, (spec.program, spec.what), 6, "", fallback);
-        for p in &mut b.parts {
-            if let Part::Text(t) = p {
-                *t = t
-                    .lines()
-                    .filter(|l| !l.contains("disquete"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .trim()
-                    .to_string();
-            }
-        }
-        b.parts
-            .retain(|p| !matches!(p, Part::Text(t) if t.is_empty()));
+        b.drop_lines_containing("disquete");
         b
     }
 
@@ -1536,22 +1524,18 @@ mod tests {
         let Some(a) = assets() else { return };
         let dir = tempfile::tempdir().unwrap();
         let mut e = Entry::new(Some(dir.path().to_path_buf()), None, &a);
-        assert!(matches!(&e.intro.parts[0], Part::Text(t) if t.starts_with("Oi, eu sou o McZee!")));
+        assert!(e.intro.plain_text().starts_with("Oi, eu sou o McZee!"));
         // o balão de saída e os avisos vêm do WHAT, com a arte "EPA!"
         let q = Entry::quit_balloon(&a);
-        assert_eq!(q.parts[0], Part::Figure(PIC_ALERT));
+        assert!(q.has_alert_header());
         assert_eq!(q.options()[0], "Sair do Fine Artist");
         assert!(q.alert && q.buttons.is_empty());
         let h = Entry::home_balloon(&ARTIST_ENTRY, &a);
-        assert!(matches!(&h.parts[0], Part::Text(t) if t.starts_with("Onde você quer")));
-        assert!(
-            !h.parts
-                .iter()
-                .any(|p| matches!(p, Part::Text(t) if t.contains("disquete")))
-        );
+        assert!(h.plain_text().starts_with("Onde você quer"));
+        assert!(!h.plain_text().contains("disquete"));
         register(&mut e, &a, "Ana", "Teste", "ana");
         let o = e.options.as_ref().unwrap();
-        assert!(matches!(&o.parts[0], Part::Text(t) if t.contains("ana")));
+        assert!(o.plain_text().contains("ana"));
         assert_eq!(o.options().len(), 3);
         assert_eq!(o.buttons, [Button::Stop]);
         let mut f = Frame::new(640, 480);
@@ -1625,14 +1609,7 @@ mod tests {
 
     /// Texto de um balão (as partes de texto, juntas).
     fn text_of(b: &TextBalloon) -> String {
-        b.parts
-            .iter()
-            .filter_map(|p| match p {
-                Part::Text(t) => Some(t.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        b.plain_text()
     }
 
     /// Com os dados reais: os balões do Writer vêm do `WHAT 4e00/4e02` e o

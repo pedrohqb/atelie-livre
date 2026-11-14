@@ -22,9 +22,10 @@ pub const NICHE: (i32, i32, i32, i32) = (533, 47, 47, 57);
 /// McZee no nicho.
 pub const MCZEE: super::tools::Pic = super::tools::Pic::masked(0x0235, 0x0237, 536, 47);
 /// Canto de cima dos balões: encostados à direita (borda em x 629) logo
-/// abaixo da faixa (`office_03_palavra.png`).
+/// abaixo da linha preta da faixa (borda de cima em y 108,
+/// `office_03_palavra.png`).
 const HELP_RIGHT: i32 = 629;
-const HELP_Y: i32 = 106;
+const HELP_Y: i32 = 108;
 /// Ponta do rabicho: embaixo do McZee.
 const HELP_TAIL: (i32, i32) = (545, 101);
 /// Balões de ligar e desligar o McZee, Varinha Mágica.
@@ -262,8 +263,12 @@ impl McZee {
             options: Vec::new(),
             links: Vec::new(),
             figures: Vec::new(),
+            rich: None,
+            tail: None,
         };
-        let mut b = Balloon::from_block(&records, k, 0, HELP_Y, name).unwrap_or(fallback);
+        let mut b = Balloon::from_block(&records, k, 0, HELP_Y, name)
+            .map(|b| b.in_program(Program::Writer))
+            .unwrap_or(fallback);
         if b.text.is_empty() && b.options.is_empty() {
             let (text, options) = match kind {
                 Talk::Dismiss => (

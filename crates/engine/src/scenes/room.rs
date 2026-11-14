@@ -287,7 +287,8 @@ impl Room {
         self.help_off
     }
 
-    fn show(&mut self, b: Balloon, t: Talk) {
+    fn show(&mut self, mut b: Balloon, t: Talk) {
+        b.tail = talk::mczee_tail(helper(self.spec), self.elevator.is_some(), &b);
         self.balloon = Some(b);
         self.talk = t;
         self.sub = None;
@@ -879,12 +880,19 @@ fn arrival_balloon(spec: &RoomSpec, assets: &Assets, user: &str) -> Option<Ballo
     let mut fallback = talk::fallback(f.w, f.text, f.options, &[]);
     (fallback.x, fallback.y) = (f.x, f.y);
     let records = assets.dialogs(spec.kit.program, spec.kit.what);
-    Some(match records.get(a.record) {
+    let mut b = match records.get(a.record) {
         Some(r) if r.options().len() == fallback.options.len() => {
             Balloon::from_block(&records, a.record, f.x, f.y, user).unwrap_or(fallback)
         }
         _ => fallback,
-    })
+    };
+    b.tail = talk::mczee_tail(helper(spec), false, &b);
+    Some(b)
+}
+
+/// Quem fala na sala (o personagem parado), se há alguém.
+fn helper(spec: &RoomSpec) -> Option<Helper> {
+    spec.character.map(|c| c.helper)
 }
 
 /// Balão da Varinha Mágica nos andares (fala do mastro e do buraco do
@@ -1132,8 +1140,9 @@ mod tests {
         let (_d, a) = empty_assets();
         let mut r = Room::new(Floor::Lobby, None, None, &a);
         assert!(r.balloon_open());
-        // clique fora do balão fecha; depois os pontos quentes funcionam
-        r.update(&[click(140, 300)], 0.0, &a);
+        // clique fora do balão (que fica sobre o chão, como no original) fecha;
+        // depois os pontos quentes funcionam
+        r.update(&[click(520, 150)], 0.0, &a);
         assert!(!r.balloon_open());
         let fx = r.update(&[click(140, 86)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Studio);
@@ -1544,7 +1553,7 @@ mod tests {
         let c = r.character().unwrap().clone();
         assert!(gags::MCZEE_COSTUMES.contains(&c.image));
         assert_eq!((c.x, c.y), gags::MCZEE_LOBBY);
-        r.update(&[click(140, 300), click(140, 66)], 0.0, &a);
+        r.update(&[click(520, 150), click(140, 66)], 0.0, &a);
         assert_eq!(r.floor(), Floor::Projects);
         let c = r.character().unwrap();
         assert!(gags::MAGGIE_POSES.contains(&c.image));
