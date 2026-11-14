@@ -197,6 +197,7 @@ fn map_key(k: Keycode) -> Key {
         Keycode::Backspace => Key::Backspace,
         Keycode::Delete => Key::Delete,
         Keycode::F12 => Key::F12,
+        Keycode::O => Key::O,
         Keycode::Q => Key::Q,
         _ => Key::Other,
     }

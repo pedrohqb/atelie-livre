@@ -25,6 +25,8 @@ pub enum Key {
     Backspace,
     Delete,
     F12,
+    /// Ctrl+O abre a pasta nas salas do Creative Writer.
+    O,
     Q,
     Other,
 }

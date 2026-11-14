@@ -89,7 +89,12 @@ impl NameField {
     }
 
     pub fn draw(&self, f: &mut Frame, font: Option<&Font>) {
-        let (x, y, w, h) = FIELD;
+        self.draw_in(f, font, LABEL);
+    }
+
+    /// Desenha o campo dentro da plaqueta `label` (a do Ateliê é [`LABEL`]).
+    pub fn draw_in(&self, f: &mut Frame, font: Option<&Font>, label: Rect) {
+        let (x, y, w, h) = field_in(label);
         f.rect(x, y, w, h, [255, 255, 255]);
         let tw = match font {
             Some(fo) => fo.width(&self.text) as i32,
@@ -158,12 +163,35 @@ pub fn rename_last(dir: &Path, pal: &[Rgb], new: &str) -> Result<(), String> {
     std::fs::write(&name_file, new).map_err(|e| fail(e, &name_file))
 }
 
+/// Parte branca de uma plaqueta, onde o nome é escrito (a do Ateliê é
+/// `FIELD`).
+pub fn field_in(label: Rect) -> Rect {
+    (
+        label.0 + FIELD.0 - LABEL.0,
+        label.1 + FIELD.1 - LABEL.1,
+        label.2 + FIELD.2 - LABEL.2,
+        FIELD.3,
+    )
+}
+
 /// O balão [18] com a posição da plaqueta.
 pub fn balloon(assets: &Assets, user: &str) -> crate::balloon::Balloon {
-    super::room_talk::load(
+    balloon_in(&super::rooms_data::ARTIST_KIT, assets, user, BALLOON_POS)
+}
+
+/// O balão [18] ("Se você quiser, pode digitar outro nome!") do bloco do
+/// kit, em `pos`.
+pub fn balloon_in(
+    kit: &super::room_spec::RoomKit,
+    assets: &Assets,
+    user: &str,
+    pos: (i32, i32),
+) -> crate::balloon::Balloon {
+    super::room_talk::load_in(
+        kit,
         assets,
         super::room_talk::rec::NAME,
-        BALLOON_POS,
+        pos,
         user,
         crate::balloon::Balloon {
             x: 0,

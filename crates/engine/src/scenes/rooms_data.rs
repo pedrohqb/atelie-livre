@@ -317,6 +317,8 @@ pub const ARTIST_KIT: RoomKit = RoomKit {
     bag: &ARTIST_BAG_PICS,
     wand_cursor: objects::WAND_CURSOR,
     elevator_helper: (117, 102),
+    persist: None,
+    ctrl_o: false,
 };
 
 /// Balão "Wand - floors" do `WHAT 100d`.
@@ -390,6 +392,7 @@ pub const LOBBY_ROOM: RoomSpec = RoomSpec {
         helper: Helper::McZee,
         sound: MCZEE_SOUND,
         menu: (119, 221),
+        poses: &[],
     }),
     quit_pos: (214, 179),
     bag: objects::LOBBY_BAG,
@@ -402,6 +405,9 @@ pub const LOBBY_ROOM: RoomSpec = RoomSpec {
     elevator_sound: elevator::SND_DOORS,
     arrival_sound: None,
     elevator_arrival_sound: None,
+    lamp: None,
+    object_balloon: None,
+    wand_props: &[],
 };
 
 /// Ateliê de Pintura (andar 2): cavalete e quadro da parede com o último
@@ -451,6 +457,7 @@ pub const STUDIO_ROOM: RoomSpec = RoomSpec {
         helper: Helper::McZee,
         sound: MCZEE_SOUND,
         menu: (130, 232),
+        poses: &[],
     }),
     quit_pos: (215, 180),
     bag: objects::STUDIO_BAG,
@@ -469,10 +476,16 @@ pub const STUDIO_ROOM: RoomSpec = RoomSpec {
         wall_label: (363, 190),
         easel_label: (197, 277),
         label_rect: studio_wall::LABEL,
+        name_balloon: studio_wall::BALLOON_POS,
+        new_label: super::paint::rename::DEFAULT_NAME,
+        doc: None,
     }),
     elevator_sound: objects::SND_SKATE,
     arrival_sound: None,
     elevator_arrival_sound: Some(talk::snd::STUDIO_ARRIVAL),
+    lamp: None,
+    object_balloon: None,
+    wand_props: &[],
 };
 
 /// Oficina de Projetos (andar 3): vaca, cobra e porco; a Maggie.
@@ -519,6 +532,7 @@ pub const PROJECTS_ROOM: RoomSpec = RoomSpec {
         helper: Helper::Maggie,
         sound: MAGGIE_SOUND,
         menu: (109, 132),
+        poses: &[],
     }),
     quit_pos: (214, 180),
     bag: objects::PROJECTS_BAG,
@@ -531,6 +545,9 @@ pub const PROJECTS_ROOM: RoomSpec = RoomSpec {
     elevator_sound: objects::SND_SKATE,
     arrival_sound: None,
     elevator_arrival_sound: None,
+    lamp: None,
+    object_balloon: None,
+    wand_props: &[],
 };
 
 /// Obras-primas do McZee (cor, máscara) que aparecem na moldura do andar 4.
@@ -593,6 +610,7 @@ pub const TRICKS_ROOM: RoomSpec = RoomSpec {
         helper: Helper::Maggie,
         sound: MAGGIE_SOUND,
         menu: (109, 132),
+        poses: &[],
     }),
     quit_pos: (214, 200),
     bag: objects::TRICKS_BAG,
@@ -608,6 +626,9 @@ pub const TRICKS_ROOM: RoomSpec = RoomSpec {
     elevator_sound: objects::SND_SKATE,
     arrival_sound: None,
     elevator_arrival_sound: None,
+    lamp: None,
+    object_balloon: None,
+    wand_props: &[],
 };
 
 /// Sótão escuro (só pelo mastro): o aro leva ao saguão; o resto do escuro
@@ -630,6 +651,9 @@ pub const ATTIC_ROOM: RoomSpec = RoomSpec {
     elevator_sound: objects::SND_SKATE,
     arrival_sound: Some(attic::SND_ARRIVE),
     elevator_arrival_sound: None,
+    lamp: None,
+    object_balloon: None,
+    wand_props: &[],
 };
 
 /// Sala do Fine Artist em cada andar.

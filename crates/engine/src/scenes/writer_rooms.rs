@@ -98,6 +98,8 @@ pub const WRITER_KIT: RoomKit = RoomKit {
     wand_cursor: WAND_CURSOR,
     // menu do McZee no elevador ≈ (140,100) (`building-salas.md` §2; T8)
     elevator_helper: (140, 100),
+    persist: None,
+    ctrl_o: false,
 };
 
 /// Sala do Writer em cada andar.

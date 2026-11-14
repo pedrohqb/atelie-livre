@@ -18,8 +18,9 @@ use super::room::Floor;
 use super::room_objects::{BagLayout, BagPics, Surprises};
 use super::room_talk::{Helper, Pick};
 use super::rooms_data::{self, Element};
-use crate::assets::{CursorRef, Program, SoundRef};
+use crate::assets::{Assets, CursorRef, Program, SoundRef};
 use crate::ui::Rect;
+use std::path::{Path, PathBuf};
 
 /// O que um clique numa área faz.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +130,10 @@ pub struct CharacterSpec {
     pub sound: u16,
     /// Onde abre o menu "Você quer me ver menos?".
     pub menu: (i32, i32),
+    /// Poses com posição própria (o Max do Writer: em pé `7e0f` e
+    /// encostado `7e03`); quando há alguma, valem no lugar de `choices` e
+    /// `pos`.
+    pub poses: &'static [(u16, (i32, i32))],
 }
 
 /// Dica (balão sem opções) de um registro: posição, largura, texto reserva
@@ -165,6 +170,86 @@ pub struct Studio {
     pub easel_label: (i32, i32),
     /// Plaqueta da parede (campo de troca de nome).
     pub label_rect: Rect,
+    /// Onde abre o balão "Se você quiser, pode digitar outro nome!".
+    pub name_balloon: (i32, i32),
+    /// Texto da plaqueta do cavalete/prancheta ("Quadro Novo",
+    /// "Documento Novo").
+    pub new_label: &'static str,
+    /// O quadro da parede mostra um documento do programa (Writer), e não o
+    /// `ultimo.png` da pasta de desenhos.
+    pub doc: Option<&'static DocWall>,
+}
+
+/// Onde a sala procura o último trabalho do usuário: pasta dos usuários do
+/// port, apelido e pasta `MSKIDS` dos dados originais (exemplos).
+#[derive(Debug, Clone, Copy)]
+pub struct WorkPlace<'a> {
+    pub users: Option<&'a Path>,
+    pub user: &'a str,
+    pub data: &'a Path,
+}
+
+/// Último trabalho mostrado no quadro da parede, quando ele vem de um
+/// documento (Writer): miniatura, título e se é do próprio usuário.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LastWork {
+    pub image: Option<crate::Image>,
+    pub title: String,
+    /// É do usuário (pode trocar o título); senão é de outro (o exemplo do
+    /// Max): a dica e a plaqueta mudam.
+    pub own: bool,
+    pub path: PathBuf,
+}
+
+/// Lê o último trabalho do usuário.
+pub type LastWorkLoader = fn(&WorkPlace<'_>, &Assets) -> Option<LastWork>;
+/// Troca o título do último trabalho (só os do usuário).
+pub type LastWorkRename = fn(&WorkPlace<'_>, &LastWork, &str) -> Result<(), String>;
+
+/// Quadro da parede com um documento (escritório do Writer).
+#[derive(Debug, Clone, Copy)]
+pub struct DocWall {
+    pub load: LastWorkLoader,
+    pub rename: LastWorkRename,
+    /// Caixa da página na moldura (x, y, w, h): a miniatura é reduzida para
+    /// caber na altura `h`, centrada em x e encostada no topo.
+    pub thumb_box: Rect,
+    /// Dica do quadro quando o documento é de outra pessoa ("Esse
+    /// documento é do Max").
+    pub other_tip: usize,
+    /// "EPA! Você não pode mudar esse título": bloco e registro do `WHAT`,
+    /// posição e texto reserva.
+    pub not_yours: (u16, usize, (i32, i32), &'static str),
+}
+
+// funções comparadas pelo endereço (os specs são `const`, uma cópia só)
+impl PartialEq for DocWall {
+    fn eq(&self, o: &Self) -> bool {
+        std::ptr::fn_addr_eq(self.load, o.load)
+            && std::ptr::fn_addr_eq(self.rename, o.rename)
+            && (self.thumb_box, self.other_tip, self.not_yours)
+                == (o.thumb_box, o.other_tip, o.not_yours)
+    }
+}
+impl Eq for DocWall {}
+
+/// Luminária "Tchau" desenhada pela sala: a figura de sempre e, com o
+/// "EPA!" aberto, a da fumaça (Writer; o Fine Artist não tem a figura).
+/// Imagem colorida e posição; a máscara é a do `.PIC`, duas imagens adiante.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Lamp {
+    pub normal: (u16, (i32, i32)),
+    pub smoke: (u16, (i32, i32)),
+}
+
+/// Objeto enfeitado pela Varinha Mágica (bichos da parede dos Projetos do
+/// Writer): área, roteiros `ATAG` (um sorteado) e o ponto que se soma às
+/// origens gravadas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WandProp {
+    pub rect: Rect,
+    pub scripts: &'static [u16],
+    pub anchor: (i32, i32),
 }
 
 /// Uma sala do prédio.
@@ -201,6 +286,13 @@ pub struct RoomSpec {
     pub arrival_sound: Option<u16>,
     /// Som ao chegar à sala pelo elevador.
     pub elevator_arrival_sound: Option<u16>,
+    /// Luminária com a figura da fumaça (senão ela é um dos `elements`).
+    pub lamp: Option<Lamp>,
+    /// Onde abrem os balões dos objetos (cavalete/prancheta, quadro da
+    /// parede): no Writer saem da boca do McZee; `None` = na posição da dica.
+    pub object_balloon: Option<(i32, i32)>,
+    /// Objetos que a Varinha Mágica enfeita.
+    pub wand_props: &'static [WandProp],
 }
 
 impl RoomSpec {
@@ -286,7 +378,33 @@ pub struct RoomKit {
     pub wand_cursor: CursorRef,
     /// Onde abre o menu do McZee dentro do elevador.
     pub elevator_helper: (i32, i32),
+    /// Estado guardado por usuário (bolsa aberta, ajuda desligada), se o
+    /// programa o guarda.
+    pub persist: Option<Persist>,
+    /// Ctrl+O abre a pasta em qualquer sala.
+    pub ctrl_o: bool,
 }
+
+/// Estado das salas que vale entre salas e entre sessões (Writer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RoomState {
+    pub bag_open: bool,
+    pub help_off: bool,
+}
+
+/// Leitura e gravação do [`RoomState`] na pasta dos usuários.
+#[derive(Debug, Clone, Copy)]
+pub struct Persist {
+    pub load: fn(&Path, &str) -> RoomState,
+    pub save: fn(&Path, &str, RoomState),
+}
+
+impl PartialEq for Persist {
+    fn eq(&self, o: &Self) -> bool {
+        std::ptr::fn_addr_eq(self.load, o.load) && std::ptr::fn_addr_eq(self.save, o.save)
+    }
+}
+impl Eq for Persist {}
 
 impl RoomKit {
     pub fn sound(&self, id: u16) -> SoundRef {

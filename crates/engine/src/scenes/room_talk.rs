@@ -579,6 +579,33 @@ pub fn quit_balloon(assets: &Assets, pos: (i32, i32)) -> TextBalloon {
     b
 }
 
+/// Aviso "EPA!" do Rex sem opções (registro `k` do bloco `block` do
+/// programa `p`) em `pos`; sem os dados, o texto reserva. Fecha com
+/// qualquer clique.
+pub fn alert_balloon_in(
+    p: Program,
+    assets: &Assets,
+    (block, k): (u16, usize),
+    pos: (i32, i32),
+    text: &str,
+) -> TextBalloon {
+    match assets.dialogs(p, block).get(k) {
+        Some(r) if !r.plain().trim().is_empty() => {
+            TextBalloon::from_record(r, pos.0, pos.1, "", Vec::new())
+        }
+        _ => TextBalloon::new(
+            pos.0,
+            pos.1,
+            235,
+            vec![
+                crate::text_balloon::Part::Figure(crate::text_balloon::PIC_ALERT),
+                crate::text_balloon::Part::Text(text.into()),
+            ],
+            Vec::new(),
+        ),
+    }
+}
+
 /// Como [`quit_balloon`], com o "EPA!" do programa (`kit.quit`).
 pub fn quit_balloon_in(q: &QuitSpec, assets: &Assets, pos: (i32, i32)) -> TextBalloon {
     let mut b = Entry::quit_balloon_in(q, assets);
