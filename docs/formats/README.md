@@ -18,6 +18,7 @@ leitores sem consultar o código original.
 | [`winres-ui.md`](winres-ui.md) | Menus, atalhos e caixas de diálogo (`MENU`, `ACCELERATOR`, `DIALOG`) dos executáveis |
 | [`maxprefs.md`](maxprefs.md) | Preferências do usuário (`~MAXUSER.INF`, `~MAGUSER.INF`): parede da Biblioteca, cache de fontes, entradas da Máquina de Idéias |
 | [`pict.md`](pict.md) | Figuras do Mac que o Writer importa: `PICT` (bitmaps das versões 1 e 2) e MacPaint |
+| [`fontes-substitutas.md`](fontes-substitutas.md) | As 5 TrueType do produto (ausentes nos dados) e a escolha de substitutos instalados (`engine::paint::ttf::substitute`) |
 | [`animacao.md`](animacao.md) | Pasta `animacao-…/` gravada pelo Ateliê Livre (desenho animado): PNGs, `animacao.json` e GIF animado |
 
 ## Mapa dos arquivos
