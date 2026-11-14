@@ -1284,15 +1284,23 @@ mod tests {
     }
 
     #[test]
-    fn fill_crops_the_line_to_the_ink() {
-        let w = ShapedWords {
-            shape: WordShape::Arch,
-            ..words("ana")
-        };
-        let loose = shaped(&w, &arch());
-        let tight = shaped(&ShapedWords { fill: true, ..w }, &arch());
-        let density = |s: &Stamp| count(s, 1) as f32 / (s.w * s.h) as f32;
-        assert!(density(&tight) > density(&loose));
+    fn crop_keeps_sides_unless_fill() {
+        // tinta só em (3..5, 2..4) numa máscara de 10×8
+        let mut m = Mask::new(10, 8);
+        for y in 2..4 {
+            for x in 3..5 {
+                m.put(x, y, 255, 0);
+            }
+        }
+        // com forma: sempre sem a folga de cima e de baixo
+        let rows = crop_ink(&m, false);
+        assert_eq!((rows.w, rows.h), (10, 2));
+        // "Preencher": também sem a dos lados
+        let all = crop_ink(&m, true);
+        assert_eq!((all.w, all.h), (2, 2));
+        assert!(all.a.iter().all(|&v| v == 255));
+        // máscara vazia fica como está
+        assert_eq!(crop_ink(&Mask::new(4, 4), true).w, 4);
     }
 
     #[test]
