@@ -16,6 +16,7 @@ leitores sem consultar o código original.
 | [`mag.md`](mag.md) | Desenhos salvos do Fine Artist (`.MAG`, `.PTM`): chunks, paleta, miniaturas |
 | [`what.md`](what.md) | Balões de ajuda e dos assistentes (`WHAT` dos executáveis): texto formatado, opções, dicas, glossário |
 | [`winres-ui.md`](winres-ui.md) | Menus, atalhos e caixas de diálogo (`MENU`, `ACCELERATOR`, `DIALOG`) dos executáveis |
+| [`maxprefs.md`](maxprefs.md) | Preferências do usuário (`~MAXUSER.INF`, `~MAGUSER.INF`): parede da Biblioteca, cache de fontes, entradas da Máquina de Idéias |
 | [`animacao.md`](animacao.md) | Pasta `animacao-…/` gravada pelo Ateliê Livre (desenho animado): PNGs, `animacao.json` e GIF animado |
 
 ## Mapa dos arquivos
@@ -28,6 +29,7 @@ leitores sem consultar o código original.
 | `SHARED/MSKIDS.INF` | `CHNK` (usuários) | `chnk.md` |
 | `SHARED/USERS/*/*.MAG`, `*.PTM` (exemplos) e `USERS/*/` (usuários) | `CHNK` (desenhos do Fine Artist) | `mag.md`, `chnk.md` |
 | `SHARED/USERS/*/*.MAX` (exemplos) e `USERS/*/` (usuários) | `CHNK` (documentos do Creative Writer) | `chnk.md` |
+| `USERS/*/~MAXUSER.INF`, `~MAGUSER.INF` | `CHNK` (preferências do usuário) | `maxprefs.md` |
 | `SHARED/STUFF/*.ART`, `*.BOR`, `*.ANI`, `*.CHK` | `CHNK` (clip-art, molduras, animações, checks) | `chnk.md` |
 | `SHARED/STUFF/MAG100.SND`, `MAX100.SND` | `CHNK` com sons WAV | `chnk.md`, `sons.md` |
 | `SHARED/STUFF/PABLO.FON` | fonte bitmap do Windows (NE) | não interpretada |
