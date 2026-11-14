@@ -147,3 +147,25 @@ fn gallery_trash_removes_companion_files() {
         "sobraram arquivos do desenho jogado fora: {left:?}"
     );
 }
+
+/// Biblioteca do Writer: clique duplo numa moldura abre o documento na área
+/// de escrita (`Effect::OpenDocument`), com o título dele.
+#[test]
+fn library_double_click_opens_the_document() {
+    use engine::scene::CwScene;
+    let Some(a) = real_assets() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = Director::new(&a, tmp.path(), SceneId::Cw(CwScene::Library), Some("bia"));
+    d.idle(10);
+    d.click(450, 470); // fecha o balão de chegada
+    d.idle(5);
+    d.double_click(209, 60);
+    assert!(d.wait_for(SceneId::Writer, 10), "{:?}", d.trace_since(0));
+    assert!(
+        d.trace
+            .iter()
+            .any(|l| l.contains("abrir-documento") && l.contains("SAMP9")),
+        "{:?}",
+        d.trace_since(0)
+    );
+}
