@@ -9,10 +9,10 @@ use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::{balloon_font, draw_line};
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
 use crate::text_balloon::{Button, PIC_ALERT, PIC_ANIMAL0, Part, TextBalloon, blit_pic};
+use crate::ui::SoundQueue;
 use crate::users::{self, ANIMALS, Profile};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 use formats::what::Record;
-use std::collections::VecDeque;
 use std::path::PathBuf;
 
 pub const BACKGROUND: u16 = 0x4139;
@@ -168,8 +168,7 @@ pub struct Entry {
     /// Os sons de abertura já foram pedidos.
     opened: bool,
     /// Sons a tocar em sequência e quanto falta para o próximo.
-    queue: VecDeque<u16>,
-    queue_wait: f32,
+    sounds: SoundQueue,
     done: bool,
 }
 
@@ -241,8 +240,7 @@ impl Entry {
             home_selected: false,
             preset: None,
             opened: false,
-            queue: VecDeque::new(),
-            queue_wait: 0.0,
+            sounds: SoundQueue::new(),
             done: false,
         };
         e.name_form.focus = 0;
@@ -523,26 +521,12 @@ impl Entry {
     /// Toca sons em sequência: o primeiro já, os outros quando o anterior
     /// acabar. Uma ação nova interrompe a sequência pendente.
     fn play(&mut self, ids: &[u16]) {
-        self.queue.clear();
-        self.queue.extend(ids.iter().copied());
-        self.queue_wait = 0.0;
+        self.sounds.play(ids.iter().map(|&id| sound(id)));
     }
 
     /// Toca o próximo som da fila quando o anterior acabou.
     fn pump_sounds(&mut self, dt: f32, fx: &mut Vec<Effect>, assets: &Assets) {
-        self.queue_wait -= dt;
-        if self.queue_wait > 0.0 {
-            return;
-        }
-        if let Some(id) = self.queue.pop_front() {
-            let r = sound(id);
-            self.queue_wait = assets.sound(&r).map_or(0.5, |p| {
-                p.samples.len() as f32 / (p.sample_rate.max(1) as f32 * p.channels.max(1) as f32)
-            });
-            fx.push(Effect::PlaySound(r));
-        } else {
-            self.queue_wait = 0.0;
-        }
+        self.sounds.pump(dt, fx, assets);
     }
 
     fn go(&mut self, step: Step, assets: &Assets) {
