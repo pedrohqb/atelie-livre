@@ -299,19 +299,25 @@ seção 4. Resumo:
     uma coluna (com setas `02db`/`02df` quando não cabe): tipos de letra (a
     "Pablo Graphos" do programa e as famílias TrueType/OpenType instaladas no
     sistema, uma por família, só a face normal — `paint/ttf.rs` lê só as
-    tabelas `name` e `OS/2`), 11 formas (retângulo, arco embaixo, onda,
-    inflado, cresce, encolhe, zigue-zague, triângulo, triângulo para baixo,
-    arco e círculo; ícones desenhados), estilos (Normal, Negrito, Inclinado,
-    Contorno, MAIÚSCULAS, Vertical; ✓ `0295`), cores (as 38 da pintura e sete
-    combinações de duas ou três cores, que se alternam por letra), padrões
-    (os 38 da pintura; bit 1 = branco) e as oito sombras do original (Sem
-    sombra, normal, do amanhecer — deitada para a esquerda —, do anoitecer —
-    deitada para a direita, escura —, girar e sumir, girar em círculo — roda
-    de cópias em contorno —, convergente e tridimensional). O desenho é
-    `paint/shaped.rs`: máscara de cobertura do texto, envelope da forma (ou
-    enrolada em arco/círculo), cópias transformadas para as sombras e o
-    giro; tinta onde a cobertura passa da metade (sem meio-tom, como no
-    original). OK põe a palavra como objeto no meio do quadro (balão 1009
+    tabelas `name` e `OS/2`), 15 formas (o retângulo e os `SCRD` 1–14 do
+    executável: arco embaixo, onda, inflado, cresce, encolhe, zigue-zague,
+    triângulo, seta, arco-íris, S, coração, carro, peixe e cabeça; ícones
+    feitos com as próprias curvas, casas de 70×38 como no original), estilos
+    (os 9 do `TMEN 1`: Normal, **Negrito**, Inclinado, Contorno, MAIÚSCULAS,
+    Vertical, Preencher, Em cima/embaixo e Esquerda/direita — os dois últimos
+    espelham a forma; ✓ `0295`), cores (os 24 conjuntos do `CSCH`: preto,
+    branco, preto/branco, as cores 1–14 e sete mistas que se alternam por
+    letra), padrões (o cheio e os 13 do `PATS`) e as oito sombras do `TMEN 2`
+    (Sem sombra, normal, do amanhecer — deitada para a esquerda —, do
+    anoitecer — deitada para a direita, escura —, girar e sumir, girar em
+    círculo — 17 cópias em contorno de 20° em 20°, como no `SSHD` —,
+    convergente e tridimensional). Recursos em `paint/splot_res.rs`
+    (`docs/formats/scrd.md`, `splot.md`). O desenho é `paint/shaped.rs`:
+    máscara de cobertura do texto, recortada à tinta e entortada pelas
+    curvas do `SCRD` (o texto distribuído pelo índice dos pontos), cópias
+    transformadas para as sombras e o giro; tinta onde a cobertura passa da
+    metade (sem meio-tom, como no original). A prévia sempre enche a caixa.
+    OK põe a palavra como objeto no meio do quadro (balão 1009
     [15]); ao modificar, no mesmo centro. Tamanhos de + e −: 16, 24, 32, 48,
     64, 80, 96, 128 (inicial), 160 e 200 px de linha. Enter = OK, Esc = NÃO.
   - **Cavalete de balões de diálogo** (Oi!; (164, 122)–(474, 356)): prévia

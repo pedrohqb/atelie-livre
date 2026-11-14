@@ -79,7 +79,7 @@ montam e desenham.)
 | `paint::brush`, `geom`, `shape` | As 72 modalidades do pincel, formas geométricas, formas dos botões. |
 | `paint::bucket_fx` | Efeitos da lata de tinta e papéis de parede. |
 | `paint::objects`, `stamp` | Camada de objetos (adesivos e palavras soltos) e imagens coladas. |
-| `paint::text`, `shaped`, `ttf` | Palavras: fonte "Pablo", palavras com forma, fontes instaladas. |
+| `paint::text`, `shaped`, `splot_res`, `ttf` | Palavras: fonte "Pablo", palavras com forma (Splot) com as formas `SCRD`, menus `TMEN`, cores `CSCH` e padrões `PATS` do executável — iguais no Writer —, fontes instaladas. |
 | `paint::store` | Gravar/abrir PNG e `.MAG`, nomes com carimbo, último desenho, objetos. |
 | `paint::drawings` | **Desenhos guardados como as telas os listam**: `list_drawings` (pasta da criança, sem os arquivos de trabalho), `list_samples` (`SHARED/USERS/*/*.MAG`), `mag_meta` (título e autor), miniaturas `shrink` (1/n) e `shrink_darkest` (1/n preservando linhas finas). |
 | `paint::print` | Montagem das folhas impressas (esticar, pôster, fundo, branco e preto), `spawn_lp`, e as constantes da tela do McZee em `print::machine`. |
