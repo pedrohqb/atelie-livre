@@ -101,8 +101,9 @@ max.draw(frame, assets);      // figura da dobra e balões com cauda
 
 `click` devolve `None` quando o clique é do editor. Com o `3803[0]` aberto
 só ele responde (o balão do passo fica à vista, inerte, como em
-`projects_36_para`); clique fora dele é "ignorar". Clique dentro do
-balão do passo sem opção não é de ninguém (o balão é opaco).
+`projects_36_para`); clique fora dele é "ignorar". Clique dentro de um
+balão sem acertar nada vira `Dismiss` (fecha dica ou aviso; no balão do
+passo não faz nada, mas não chega ao editor: o balão é opaco).
 
 ### `Context` (a cena mantém em dia)
 

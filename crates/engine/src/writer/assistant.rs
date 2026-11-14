@@ -1355,8 +1355,8 @@ impl Assistant {
 
     /// Traduz um clique na tela no evento do assistente, se o clique for
     /// dele (balões, botões, dicas, o Max na porta); `None` deixa o clique
-    /// para o editor. Clique fora com dica, aviso ou `3803[0]` abertos é
-    /// [`Event::Dismiss`].
+    /// para o editor. Clique fora com dica, aviso ou `3803[0]` abertos, ou
+    /// dentro de um balão sem acertar nada, é [`Event::Dismiss`].
     pub fn click(&self, a: &Assets, x: i32, y: i32) -> Option<Event> {
         let mut placed = self.placed(a);
         if self.quitting() {
@@ -1396,8 +1396,9 @@ impl Assistant {
                 return Some(Event::NeedHelp);
             }
             if b.contains(a, x, y) {
-                // dica ou aviso: clicar nele o fecha; no do passo, nada
-                return matches!(p.shown.role, Role::Tip | Role::Alert).then_some(Event::Dismiss);
+                // dica ou aviso: clicar nele o fecha; o do passo é opaco
+                // (o clique não vai ao editor e não faz nada)
+                return Some(Event::Dismiss);
             }
         }
         if self.quitting() && !inside(MAX_RECT, x, y) {
@@ -1959,8 +1960,9 @@ pub(crate) mod tests {
         let stop = center(b.button_rect(&assets, BalloonButton::Stop).unwrap());
         assert_eq!(a.click(&assets, stop.0, stop.1), Some(Event::Stop));
         assert!(b.button_rect(&assets, BalloonButton::Back).is_none());
-        // clique no balão fora das opções não é de ninguém; fora dele, do editor
-        assert_eq!(a.click(&assets, b.x + 3, b.y + 3), None);
+        // clique no balão fora das opções não chega ao editor nem faz nada
+        assert_eq!(a.click(&assets, b.x + 3, b.y + 3), Some(Event::Dismiss));
+        assert!(a.clone().on_event(Event::Dismiss).is_empty());
         assert_eq!(a.click(&assets, 100, 300), None);
         // [0]: dicas e "Precisa de ajuda?"
         walk(
