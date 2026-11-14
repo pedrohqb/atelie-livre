@@ -26,7 +26,6 @@ use super::projects::ProjectKind;
 use super::room_objects::{BagPart, MagicBag, Target};
 use super::room_spec::{self, Action, LastWork, RoomKit, RoomSpec, RoomState, Rooms, WorkPlace};
 use super::room_talk::{self as talk, Helper, Pick, Start};
-use super::rooms_data;
 use super::studio_wall::{self, End, NameField};
 use crate::anim::Animator;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
@@ -81,15 +80,6 @@ const CYCLE: [Floor; 5] = [
 ];
 
 impl Floor {
-    pub(crate) fn background(self) -> u16 {
-        match self {
-            Floor::Lobby => rooms_data::LOBBY_BG,
-            Floor::Studio => rooms_data::STUDIO_BG,
-            Floor::Projects => rooms_data::PROJECTS_BG,
-            Floor::Tricks | Floor::Attic => rooms_data::TRICKS_BG,
-        }
-    }
-
     /// O andar `d` posições acima pelo mastro (negativo: abaixo), com volta.
     pub fn step(self, d: i32) -> Floor {
         let i = CYCLE.iter().position(|f| *f == self).unwrap_or(0) as i32;
@@ -1333,6 +1323,7 @@ mod writer_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scenes::rooms_data;
     use crate::scenes::testutil::empty_assets;
     use crate::scenes::{elevator, gags, room_objects as objects};
 

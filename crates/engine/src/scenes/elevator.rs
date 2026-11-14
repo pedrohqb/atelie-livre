@@ -704,7 +704,7 @@ mod tests {
         // no meio do vão aparece a parede da Oficina, não a porta roxa
         let bg = a.image(&ImageRef::Pic(
             Program::Artist,
-            Floor::Projects.background(),
+            super::super::rooms_data::PROJECTS_BG,
         ));
         let i = ((300 * bg.width + 320) * 4) as usize;
         assert_eq!(f.pixel(320, 300)[..3], bg.rgba[i..i + 3]);
