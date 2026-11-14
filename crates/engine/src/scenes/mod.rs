@@ -64,6 +64,7 @@ pub use splash::Splash;
 pub use story::Story;
 pub use street::Street;
 pub use writer::Writer;
+pub use writer_portfolio::WriterPortfolio;
 
 #[cfg(test)]
 pub(crate) mod testutil {

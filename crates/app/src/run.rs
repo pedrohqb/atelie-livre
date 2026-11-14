@@ -9,7 +9,7 @@ use engine::scenes::room::DEFAULT_USER;
 use engine::scenes::tricks_board::TricksBoard;
 use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
-    Writer,
+    Writer, WriterPortfolio,
 };
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
@@ -103,7 +103,14 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::BookStory | SceneId::Cw(CwScene::BookStory) => {
             Box::new(Story::for_program(p, cfg.click_sound.clone(), assets).over_room())
         }
-        SceneId::Portfolio | SceneId::Cw(CwScene::Portfolio) => Box::new(
+        SceneId::Cw(CwScene::Portfolio) => Box::new(WriterPortfolio::new(
+            cfg.click_sound.clone(),
+            users_dir(),
+            user.name(),
+            user.animal(),
+            assets,
+        )),
+        SceneId::Portfolio => Box::new(
             GalleryRoom::portfolio_for_program(p, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), user.animal()),
         ),

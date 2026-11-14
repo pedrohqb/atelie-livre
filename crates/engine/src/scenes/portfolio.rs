@@ -10,7 +10,7 @@
 //! Não há unidades de disco: as setas de "Esta Pasta" só fazem o som.
 
 use super::gallery_room::Item;
-use crate::assets::{Assets, ImageRef, Program};
+use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::{Balloon, balloon_font};
 use crate::scene::{Effect, Input, Key, MouseButton};
 use crate::text_balloon::{PIC_ANIMAL0, Part, TextBalloon, blit_pic};
@@ -87,16 +87,89 @@ const WHITE: [u8; 3] = [255, 255, 255];
 const GREEN: [u8; 3] = [71, 140, 80];
 const GRAY: [u8; 3] = [190, 190, 190];
 
-fn sound(id: u16) -> Effect {
-    Effect::PlaySound(super::room_objects::snd(id))
+/// O que muda entre a pasta do Fine Artist (quadros) e a do Creative
+/// Writer (documentos agrupados por área): balões, rótulos, sons e a
+/// caixa da prévia.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BinderSpec {
+    /// De que `.SND` são os sons (os ids são os mesmos nos dois).
+    pub program: Program,
+    /// "Para ver mais escolhas…": bloco e registro do `WHAT`.
+    pub help: (u16, usize),
+    /// "Digite o nome da figura…" (o cachorro/inseto).
+    pub search: (u16, usize),
+    /// Rótulo de quem fez ("Artista" / "Autor").
+    pub author_label: &'static str,
+    /// Dono dos exemplos.
+    pub samples_owner: &'static str,
+    /// Caixa da prévia na página direita.
+    pub thumb: Rect,
+}
+
+/// A pasta do Fine Artist.
+pub const ARTIST_BINDER: BinderSpec = BinderSpec {
+    program: Program::Artist,
+    help: (WHAT_ROOMS, HELP),
+    search: SEARCH_WHAT,
+    author_label: "Artista",
+    samples_owner: "Maggie",
+    thumb: THUMB,
+};
+
+/// Grupo de trabalhos na árvore, abaixo do dono: "Ateliê de Pintura" no
+/// Fine Artist; a área do documento no Writer ("Escritório", "Cartões"…).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Group {
+    /// Número do andar no ícone redondo.
+    pub floor: u8,
+    pub label: &'static str,
+}
+
+/// Grupo dos quadros do Fine Artist.
+pub const STUDIO_GROUP: Group = Group {
+    floor: 2,
+    label: "Ateliê de Pintura",
+};
+
+/// Um trabalho no fichário.
+pub trait BinderItem {
+    /// Nome na lista e no "Título".
+    fn name(&self) -> &str;
+    /// É um exemplo (fica com o dono dos exemplos, embaixo).
+    fn sample(&self) -> bool;
+    /// Autor gravado (para os exemplos; vazio = o dono dos exemplos).
+    fn author(&self) -> &str;
+    fn group(&self) -> Group;
+    /// Desenha a prévia na caixa `r`.
+    fn draw_thumb(&self, f: &mut Frame, r: Rect, pal: &[Rgb]);
+}
+
+impl BinderItem for Item {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn sample(&self) -> bool {
+        self.sample
+    }
+    fn author(&self) -> &str {
+        &self.author
+    }
+    fn group(&self) -> Group {
+        STUDIO_GROUP
+    }
+    fn draw_thumb(&self, f: &mut Frame, r: Rect, pal: &[Rgb]) {
+        let (x, y, w, h) = r;
+        f.rect(x - 1, y - 1, w + 2, h + 2, BLACK);
+        blit_canvas_fit(f, self.thumb(), pal, r);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Row {
     /// Dono dos quadros abaixo, com o bicho (nos exemplos, sem bicho).
     Owner(String, Option<usize>),
-    /// "Ateliê de Pintura".
-    Studio,
+    /// Grupo ("Ateliê de Pintura", área do documento).
+    Group(Group),
     /// Um quadro (índice em `items`).
     Item(usize),
 }
@@ -120,6 +193,7 @@ pub struct Binder {
     help: Option<Balloon>,
     search: Option<(TextBalloon, Vec<u16>)>,
     clicks: DoubleClick<usize>,
+    spec: &'static BinderSpec,
 }
 
 /// Compara nomes sem maiúsculas nem acentos.
@@ -150,27 +224,33 @@ impl Binder {
             help: None,
             search: None,
             clicks: DoubleClick::new(),
+            spec: &ARTIST_BINDER,
         }
     }
 
-    pub fn set_user(&mut self, user: &str, animal: Option<usize>, items: &[Item]) {
+    /// Fichário com os dados de outro programa.
+    pub fn with_spec(mut self, spec: &'static BinderSpec) -> Binder {
+        self.spec = spec;
+        self
+    }
+
+    fn sound(&self, id: u16) -> Effect {
+        Effect::PlaySound(SoundRef::Snd(self.spec.program, id))
+    }
+
+    pub fn set_user<T: BinderItem>(&mut self, user: &str, animal: Option<usize>, items: &[T]) {
         self.user = user.to_string();
         self.animal = animal;
         self.rebuild(items);
     }
 
     /// Refaz a árvore depois que a lista de quadros mudou.
-    pub fn rebuild(&mut self, items: &[Item]) {
-        let mut rows = vec![Row::Owner(self.user.clone(), self.animal), Row::Studio];
-        rows.extend(
-            (0..items.len())
-                .filter(|&i| !items[i].sample)
-                .map(Row::Item),
-        );
-        if items.iter().any(|it| it.sample) {
-            rows.push(Row::Owner("Maggie".into(), None));
-            rows.push(Row::Studio);
-            rows.extend((0..items.len()).filter(|&i| items[i].sample).map(Row::Item));
+    pub fn rebuild<T: BinderItem>(&mut self, items: &[T]) {
+        let mut rows = vec![Row::Owner(self.user.clone(), self.animal)];
+        Self::push_groups(&mut rows, items, false);
+        if items.iter().any(|it| it.sample()) {
+            rows.push(Row::Owner(self.spec.samples_owner.into(), None));
+            Self::push_groups(&mut rows, items, true);
         }
         self.rows = rows;
         if self.selected.is_some_and(|i| i >= items.len()) {
@@ -180,6 +260,32 @@ impl Binder {
             self.selected = self.first_item();
         }
         self.scroll = self.scroll.min(self.max_scroll());
+    }
+
+    /// Os trabalhos (exemplos ou não) por grupo, na ordem em que os grupos
+    /// aparecem; um dono sem trabalhos ainda mostra o primeiro grupo.
+    fn push_groups<T: BinderItem>(rows: &mut Vec<Row>, items: &[T], samples: bool) {
+        let mine: Vec<usize> = (0..items.len())
+            .filter(|&i| items[i].sample() == samples)
+            .collect();
+        let mut groups: Vec<Group> = Vec::new();
+        for &i in &mine {
+            let g = items[i].group();
+            if !groups.contains(&g) {
+                groups.push(g);
+            }
+        }
+        if groups.is_empty() {
+            groups.push(items.first().map_or(STUDIO_GROUP, |it| it.group()));
+        }
+        for g in groups {
+            rows.push(Row::Group(g));
+            rows.extend(
+                mine.iter()
+                    .filter(|&&i| items[i].group() == g)
+                    .map(|&i| Row::Item(i)),
+            );
+        }
     }
 
     fn first_item(&self) -> Option<usize> {
@@ -205,8 +311,14 @@ impl Binder {
     pub fn open(&mut self, help: bool, assets: &Assets) {
         self.search = None;
         self.help = if help {
-            let records = assets.dialogs(Program::Artist, WHAT_ROOMS);
-            Balloon::from_block(&records, HELP, HELP_POS.0, HELP_POS.1, &self.user)
+            let records = assets.dialogs(self.spec.program, self.spec.help.0);
+            Balloon::from_block(
+                &records,
+                self.spec.help.1,
+                HELP_POS.0,
+                HELP_POS.1,
+                &self.user,
+            )
         } else {
             None
         };
@@ -294,8 +406,8 @@ impl Binder {
 
     fn open_search(&mut self, assets: &Assets) {
         let (b, ids) = match assets
-            .dialogs(Program::Artist, SEARCH_WHAT.0)
-            .get(SEARCH_WHAT.1)
+            .dialogs(self.spec.program, self.spec.search.0)
+            .get(self.spec.search.1)
         {
             Some(r) => (
                 TextBalloon::from_record(r, SEARCH_POS.0, SEARCH_POS.1, "", Vec::new()),
@@ -323,7 +435,7 @@ impl Binder {
     }
 
     /// Procura o primeiro quadro (depois do escolhido) com o texto no nome.
-    fn find(&mut self, text: &str, items: &[Item]) -> bool {
+    fn find<T: BinderItem>(&mut self, text: &str, items: &[T]) -> bool {
         let t = fold(text.trim());
         if t.is_empty() {
             return false;
@@ -343,7 +455,7 @@ impl Binder {
         let n = order.len();
         for k in 0..n {
             let i = order[(start + k) % n];
-            if fold(&items[i].name).contains(&t) {
+            if fold(items[i].name()).contains(&t) {
                 self.select(i);
                 return true;
             }
@@ -352,7 +464,13 @@ impl Binder {
     }
 
     /// Teclas e texto para o campo da busca (os outros não usam teclado).
-    pub fn key(&mut self, i: &Input, items: &[Item], fx: &mut Vec<Effect>, assets: &Assets) {
+    pub fn key<T: BinderItem>(
+        &mut self,
+        i: &Input,
+        items: &[T],
+        fx: &mut Vec<Effect>,
+        assets: &Assets,
+    ) {
         let Some((b, _)) = &mut self.search else {
             if let Input::Key {
                 key: k @ (Key::Up | Key::Down),
@@ -360,7 +478,7 @@ impl Binder {
             } = i
             {
                 self.step_item(*k == Key::Down);
-                fx.push(sound(sfx::SELECT));
+                fx.push(self.sound(sfx::SELECT));
             }
             return;
         };
@@ -379,17 +497,23 @@ impl Binder {
         }
     }
 
-    fn answer_search(&mut self, id: Option<u16>, text: &str, items: &[Item], fx: &mut Vec<Effect>) {
+    fn answer_search<T: BinderItem>(
+        &mut self,
+        id: Option<u16>,
+        text: &str,
+        items: &[T],
+        fx: &mut Vec<Effect>,
+    ) {
         if id != Some(OPT_FIND) {
-            fx.push(sound(sfx::CHOICE));
+            fx.push(self.sound(sfx::CHOICE));
             self.search = None;
             return;
         }
         if self.find(text, items) {
-            fx.push(sound(sfx::CHOICE));
+            fx.push(self.sound(sfx::CHOICE));
             self.search = None;
         } else {
-            fx.push(sound(sfx::REFUSE));
+            fx.push(self.sound(sfx::REFUSE));
             if let Some((b, _)) = &mut self.search {
                 b.select_all = true;
             }
@@ -398,12 +522,12 @@ impl Binder {
 
     /// Um clique no fichário; `None` se não pede nada à sala. `clock` serve
     /// para o clique duplo numa linha.
-    pub fn click(
+    pub fn click<T: BinderItem>(
         &mut self,
         x: i32,
         y: i32,
         clock: f32,
-        items: &[Item],
+        items: &[T],
         fx: &mut Vec<Effect>,
         assets: &Assets,
     ) -> Option<Action> {
@@ -427,17 +551,17 @@ impl Binder {
             return None;
         }
         if inside(CLOSE_RECT, x, y) {
-            fx.push(sound(sfx::CLOSE));
+            fx.push(self.sound(sfx::CLOSE));
             return Some(Action::Close);
         }
         if inside(GO_RECT, x, y) {
             return self.selected.map(|i| {
-                fx.push(sound(sfx::GO));
+                fx.push(self.sound(sfx::GO));
                 Action::Open(i)
             });
         }
         if inside(BUG_RECT, x, y) {
-            fx.push(sound(sfx::SEARCH));
+            fx.push(self.sound(sfx::SEARCH));
             self.open_search(assets);
             return None;
         }
@@ -451,7 +575,7 @@ impl Binder {
             } else {
                 continue;
             };
-            fx.push(sound(sfx::ARROW));
+            fx.push(self.sound(sfx::ARROW));
             match n {
                 // uma só pasta: as setas das unidades só fazem o som
                 0 => {}
@@ -472,7 +596,7 @@ impl Binder {
                 continue;
             }
             if let Some(Row::Item(i)) = self.rows.get(self.scroll + k).cloned() {
-                fx.push(sound(sfx::SELECT));
+                fx.push(self.sound(sfx::SELECT));
                 if self.clicks.click(i, clock, (x, y)) {
                     return Some(Action::Open(i));
                 }
@@ -532,6 +656,30 @@ impl Binder {
         }
     }
 
+    /// Ícone redondo do andar ao lado do grupo: o "2" do `ARTIST.PIC`
+    /// (`STUDIO_ICON`); os outros andares, um círculo com o número.
+    fn floor_icon(f: &mut Frame, a: &Assets, floor: u8, x: i32, y: i32) {
+        if floor == 2 {
+            blit_pic(f, a, STUDIO_ICON, x, y, true);
+            return;
+        }
+        let color = match floor {
+            3 => [40, 60, 200],
+            4 => [40, 140, 60],
+            _ => [120, 120, 120],
+        };
+        for dy in 0..11 {
+            for dx in 0..11 {
+                let (cx, cy) = (dx * 2 - 10, dy * 2 - 10);
+                let d = cx * cx + cy * cy;
+                if d <= 100 {
+                    f.put(x + dx, y + dy, if d > 64 { BLACK } else { color });
+                }
+            }
+        }
+        f.text(x + 2, y + 2, &floor.to_string(), WHITE);
+    }
+
     fn arrows(f: &mut Frame, a: &Assets, r: (i32, i32, i32)) {
         let ids = a.pic_ids(Program::Artist);
         if ids.binary_search(&ARROW_RIGHT.0).is_ok() {
@@ -548,13 +696,7 @@ impl Binder {
         }
     }
 
-    fn draw_thumb(f: &mut Frame, it: &Item, pal: &[Rgb]) {
-        let (x, y, w, h) = THUMB;
-        f.rect(x - 1, y - 1, w + 2, h + 2, BLACK);
-        blit_canvas_fit(f, it.thumb(), pal, THUMB);
-    }
-
-    pub fn draw(&self, f: &mut Frame, a: &Assets, items: &[Item], pal: &[Rgb]) {
+    pub fn draw<T: BinderItem>(&self, f: &mut Frame, a: &Assets, items: &[T], pal: &[Rgb]) {
         let (x, y, w, h) = BINDER;
         f.rect(x, y, w, h, BLACK);
         f.rect(x + 2, y + 5, 2, h - 10, GRAY);
@@ -595,12 +737,12 @@ impl Binder {
                     }
                     Self::text(f, a, rx + 26, ry + 1, name, BLACK);
                 }
-                Row::Studio => {
-                    blit_pic(f, a, STUDIO_ICON, rx + 16, ry + 3, true);
-                    Self::text(f, a, rx + 30, ry + 1, "Ateliê de Pintura", BLACK);
+                Row::Group(g) => {
+                    Self::floor_icon(f, a, g.floor, rx + 16, ry + 3);
+                    Self::text(f, a, rx + 30, ry + 1, g.label, BLACK);
                 }
                 Row::Item(i) => {
-                    let name = Self::fit(a, &items[*i].name, rw - 34);
+                    let name = Self::fit(a, items[*i].name(), rw - 34);
                     if self.selected == Some(*i) {
                         f.rect(rx, ry, rw, rh, BLACK);
                         Self::text(f, a, rx + 30, ry + 1, &name, WHITE);
@@ -616,22 +758,22 @@ impl Binder {
         // página direita
         let it = self.selected.and_then(|i| items.get(i));
         if let Some(it) = it {
-            Self::draw_thumb(f, it, pal);
+            it.draw_thumb(f, self.spec.thumb, pal);
         }
         Self::label(f, a, LABEL_TITLE.0, LABEL_TITLE.1, "Título");
         Self::arrows(f, a, TITLE_ARROWS);
         Self::white_box(f, TITLE_BOX);
-        Self::label(f, a, LABEL_ARTIST.0, LABEL_ARTIST.1, "Artista");
+        Self::label(f, a, LABEL_ARTIST.0, LABEL_ARTIST.1, self.spec.author_label);
         Self::arrows(f, a, ARTIST_ARROWS);
         Self::white_box(f, ARTIST_BOX);
         if let Some(it) = it {
-            let title = Self::fit(a, &it.name, TITLE_BOX.2 - 8);
+            let title = Self::fit(a, it.name(), TITLE_BOX.2 - 8);
             Self::label(f, a, TITLE_BOX.0 + TITLE_BOX.2 / 2, TITLE_BOX.1 + 3, &title);
-            let artist = if it.sample {
-                if it.author.is_empty() {
-                    "Maggie".to_string()
+            let artist = if it.sample() {
+                if it.author().is_empty() {
+                    self.spec.samples_owner.to_string()
                 } else {
-                    it.author.clone()
+                    it.author().to_string()
                 }
             } else {
                 self.user.clone()
