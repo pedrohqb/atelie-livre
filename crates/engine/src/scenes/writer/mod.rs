@@ -713,6 +713,10 @@ mod tests {
         w.update(&[], 0.0, &a);
         // boas-vindas: "Oi! Aqui é o McZee!"
         assert_eq!(w.mczee().help(), Some(mczee::WELCOME));
+        // os cursores usados existem no WRITER.EXE
+        for c in [cursors::TEXT, cursors::WAND, cursors::BRUSH, cursors::CUT] {
+            assert!(a.cursor(&cursors::writer(c)).is_some(), "{c:x}");
+        }
         for id in ToolId::ALL {
             w.update(&[tool(id)], 0.0, &a);
             assert_eq!(w.mczee().help(), Some(id.def().help), "{id:?}");
