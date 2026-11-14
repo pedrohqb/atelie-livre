@@ -112,8 +112,17 @@ formato (`writer/ideas/store.rs`, ver `arquivos-do-port.md`).
 
 ## Figuras-rebus
 
-O caractere `c` (1–255) é desenhado com o bitmap `2c − 1` (colorido, 3–6
-cores) e a máscara `2c` (1 bit; preto = opaco) do `WRITER.PIC`, ≈30×28. Ex.:
-gato `c = 0x25` → `0x0049`/`0x004a`; casa `c = 0x1a` → `0x0033`/`0x0034`.
-São as mesmas figuras do Transformador "figuras junto com as palavras" do
-editor. Código: `crates/engine/src/writer/ideas/rebus.rs`.
+O caractere `c` (1–255) é desenhado com o bitmap `2c − 1` do `WRITER.PIC`
+(colorido, 3–6 cores, ≈30×28). Ex.: gato `c = 0x25` → `0x0049`; casa
+`c = 0x1a` → `0x0033`. São as mesmas figuras do Transformador "figuras junto
+com as palavras" do editor.
+
+O bitmap `2c` **não é máscara**: é a versão em 1 bit da figura (em 252 dos
+254 pares, exatamente os pixels pretos de `2c − 1`; nos outros dois, quase),
+como os pares "colorido / 1 bit" das salas. Nas capturas do original a
+figura aparece sobre o branco da página ou da janela da Máquina igual, pixel
+a pixel, ao bitmap colorido (gato: 539 brancos, 242 pretos e 29 laranja
+conferidos). Para desenhar sobre outros fundos o port calcula a máscara: o
+branco ligado à borda fica transparente e o de dentro (o pelo do gato)
+continua opaco. Código: `crates/engine/src/writer/ideas/rebus.rs`
+(`Assets::rebus`, `Assets::rebus_mono`, `rebus::draw`).

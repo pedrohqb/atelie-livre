@@ -4,5 +4,6 @@
 //! As cenas ficam em `scenes/`.
 
 pub mod machine;
+pub mod rebus;
 
 pub use machine::{Grammar, Machine, Mode, Piece, RemoveError, SPIN_MS, Slot, WINDOWS};
