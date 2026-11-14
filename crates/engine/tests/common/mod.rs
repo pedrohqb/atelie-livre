@@ -150,7 +150,9 @@ impl<'a> Director<'a> {
                     CwScene::Imaginopolis => Box::new(Imaginopolis::for_program(p, None)),
                     CwScene::Street => Box::new(Street::for_program(p, None)),
                     CwScene::Building(floor) => Box::new(
-                        Room::for_program(p, floor, None, None, assets).with_user(&user, assets),
+                        Room::for_program(p, floor, None, None, assets)
+                            .with_user(&user, assets)
+                            .with_users_dir(Some(self.users()), assets),
                     ),
                     CwScene::Library => Box::new(
                         GalleryRoom::for_program(p, None, None, assets)
@@ -160,7 +162,11 @@ impl<'a> Director<'a> {
                         GalleryRoom::portfolio_for_program(p, None, None, assets)
                             .with_user(&user, self.animal()),
                     ),
-                    CwScene::NewDocument => Box::new(Writer::new(Some(self.texts()), assets)),
+                    // a Máquina de Idéias e o Quadro de Figuras ainda são a
+                    // área de escrita (como em `run.rs`)
+                    CwScene::NewDocument | CwScene::IdeaMachine | CwScene::PictureBoard => {
+                        Box::new(Writer::new(Some(self.texts()), assets))
+                    }
                 }
             }
         }

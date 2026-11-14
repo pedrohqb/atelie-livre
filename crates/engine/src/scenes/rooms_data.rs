@@ -367,9 +367,9 @@ pub const LOBBY_ROOM: RoomSpec = RoomSpec {
     arrival: Some(Arrival {
         record: 1,
         fallback: Fallback {
-            x: 300,
-            y: 20,
-            w: 300,
+            x: 119,
+            y: 233,
+            w: 311,
             text: "Oi! Eu sou o McZee. O que você quer fazer?",
             options: &[
                 "Começar a desenhar por conta própria",
@@ -391,7 +391,7 @@ pub const LOBBY_ROOM: RoomSpec = RoomSpec {
         pos: gags::MCZEE_LOBBY,
         helper: Helper::McZee,
         sound: MCZEE_SOUND,
-        menu: (119, 221),
+        menu: (119, 233),
         poses: &[],
     }),
     quit_pos: (214, 179),
@@ -432,8 +432,8 @@ pub const STUDIO_ROOM: RoomSpec = RoomSpec {
     arrival: Some(Arrival {
         record: 26,
         fallback: Fallback {
-            x: 130,
-            y: 230,
+            x: 129,
+            y: 233,
             w: 200,
             text: "Oba! Este é o Ateliê de Pintura! O que você quer fazer?",
             options: &[
@@ -456,7 +456,7 @@ pub const STUDIO_ROOM: RoomSpec = RoomSpec {
         pos: gags::MCZEE_STUDIO,
         helper: Helper::McZee,
         sound: MCZEE_SOUND,
-        menu: (130, 232),
+        menu: (129, 233),
         poses: &[],
     }),
     quit_pos: (215, 180),
@@ -507,9 +507,9 @@ pub const PROJECTS_ROOM: RoomSpec = RoomSpec {
     arrival: Some(Arrival {
         record: 31,
         fallback: Fallback {
-            x: 70,
-            y: 150,
-            w: 300,
+            x: 109,
+            y: 153,
+            w: 285,
             text: "Aqui é a Maggie! Estamos no Andar dos Projetos! Vamos fazer alguma coisa juntos?",
             options: &[
                 "É, uma história em quadrinhos",
@@ -583,9 +583,9 @@ pub const TRICKS_ROOM: RoomSpec = RoomSpec {
     arrival: Some(Arrival {
         record: 42,
         fallback: Fallback {
-            x: 70,
-            y: 120,
-            w: 260,
+            x: 76,
+            y: 118,
+            w: 244,
             text: "Seja bem-vindo ao andar dos Truques de Desenho! Eu vou te mostrar os meus truques secretos para desenhar. Com que truque você quer que eu comece?",
             options: &[
                 "Um truque básico",

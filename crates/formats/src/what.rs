@@ -12,15 +12,20 @@
 //! | `01`   | hex até espaço             | altura do balão                      |
 //! | `02`   | hex até espaço             | estilo (2 nos balões dos personagens)|
 //! | `03`   | hex até espaço             | cor do texto (`F` preto, `9` roxo)   |
-//! | `04`   | `1`/`0` até espaço         | assinatura (texto à direita) liga/desliga |
+//! | `04`   | `1`/`0` até espaço         | centraliza o parágrafo liga/desliga (assinatura, "EPA!") |
 //! | `05`   | 8 hex até espaço           | figura: id << 16 \| parâmetro         |
 //! | `06`   | número até espaço          | recuo (0, 1 ou 2)                    |
-//! | `07`   | `1`/`0` até espaço         | nome de tecla liga/desliga           |
+//! | `07`   | `1`/`0` até espaço         | abre/fecha alternativas Mac/Windows  |
 //! | `0b`   | —                          | negrito liga/desliga                 |
-//! | `0c`   | —                          | separador de nomes de tecla equivalentes |
+//! | `0c`   | —                          | troca o trecho do Mac pelo do Windows (e volta) |
 //! | `0d`   | —                          | quebra de linha                      |
 //! | `0e`   | —                          | marca em volta das figuras (ignorada)|
 //! | `0f`   | 1 byte cru                 | espaçamento da figura (ignorado)     |
+//!
+//! Dentro de `07 1` … `07 0` o texto alterna entre o do Mac (primeiro) e o do
+//! Windows a cada `0c` (`segure <07>1 ⌘ e aperte Q <0c>Alt e aperte F4<0c><07>0`);
+//! um `0c` antes de `07 1` marca um trecho só do Windows. O leitor guarda só
+//! o que aparece no Windows.
 //!
 //! Figuras com significado próprio: `0x22c` opção de resposta (parâmetro =
 //! índice), `0x22e` opção com figura, `0x21b` dica (parâmetro = registro de
@@ -54,12 +59,20 @@ pub enum Item {
         /// Cor (índice hex do recurso; `0xf` = preto).
         color: u8,
         indent: u8,
-        /// Dentro de um nome de tecla (`Delete`, `Enter`).
+        /// Trecho do Windows de uma alternativa de plataforma (em geral um
+        /// nome de tecla: `Ctrl`, `Alt e aperte F4`); o do Mac é descartado.
         key: bool,
-        /// Assinatura ("Maggie", "Max"), alinhada à direita no original.
+        /// Parágrafo centralizado (assinatura "Maggie", "Rex"; cabeçalho "EPA!").
         signature: bool,
     },
     Newline,
+    /// Mudança de recuo (`06`) ou de centralização (`04`), com os
+    /// valores que passam a valer: as figuras seguintes (que não guardam
+    /// formatação) ficam com eles.
+    Format {
+        indent: u8,
+        center: bool,
+    },
     /// Figura embutida: id do `.PIC` e parâmetro (índice da opção, registro).
     Picture {
         id: u16,
@@ -86,6 +99,7 @@ impl Record {
                 Item::Text { text, .. } => s.push_str(text),
                 Item::Newline => s.push('\n'),
                 Item::Picture { .. } => s.push(' '),
+                Item::Format { .. } => {}
             }
         }
         s
@@ -113,7 +127,7 @@ impl Record {
                         out.push(c);
                     }
                 }
-                Item::Picture { .. } => {}
+                Item::Picture { .. } | Item::Format { .. } => {}
             }
         }
         if let Some(c) = current.take() {
@@ -155,7 +169,7 @@ impl Record {
                         out.push(c);
                     }
                 }
-                Item::Picture { .. } => {}
+                Item::Picture { .. } | Item::Format { .. } => {}
             }
         }
         if let Some(c) = current.take() {
@@ -245,6 +259,9 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
     let mut indent = 0;
     let mut key = false;
     let mut signature = false;
+    // alternativas de plataforma: `07 1` abre o trecho do Mac, `0c` alterna
+    // para o do Windows e de volta; só se vê o que não é só do Mac
+    let mut win = false;
     let mut text = Vec::new();
     let flush = |text: &mut Vec<u8>, items: &mut Vec<Item>, bold, color, indent, key, signature| {
         if !text.is_empty() {
@@ -262,6 +279,8 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
     while i < rec.len() {
         let c = rec[i];
         i += 1;
+        // o trecho só do Mac não aparece (mas os códigos de estado valem)
+        let shown = win || !key;
         match c {
             0x00..=0x07 => {
                 flush(&mut text, &mut r.items, bold, color, indent, key, signature);
@@ -272,13 +291,35 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
                     0x01 => r.height = v as u16,
                     0x02 => r.style = v as u16,
                     0x03 => color = (v & 0xff) as u8,
-                    0x04 => signature = v != 0,
-                    0x05 => r.items.push(Item::Picture {
+                    0x04 => {
+                        if signature != (v != 0) {
+                            signature = v != 0;
+                            r.items.push(Item::Format {
+                                indent,
+                                center: signature,
+                            });
+                        }
+                    }
+                    0x05 if shown => r.items.push(Item::Picture {
                         id: (v >> 16) as u16,
                         param: (v & 0xffff) as u16,
                     }),
-                    0x06 => indent = (v & 0xff) as u8,
-                    _ => key = v != 0,
+                    0x05 => {}
+                    0x06 => {
+                        if indent != (v & 0xff) as u8 {
+                            indent = (v & 0xff) as u8;
+                            r.items.push(Item::Format {
+                                indent,
+                                center: signature,
+                            });
+                        }
+                    }
+                    _ => {
+                        key = v != 0;
+                        if !key {
+                            win = false;
+                        }
+                    }
                 }
             }
             0x0b => {
@@ -286,29 +327,23 @@ fn parse_record(rec: &[u8], base: usize) -> Result<Record> {
                 bold = !bold;
             }
             0x0c => {
-                // separa nomes de tecla equivalentes (`Delete` / `Backspace`)
+                // troca entre o trecho do Mac e o do Windows
                 flush(&mut text, &mut r.items, bold, color, indent, key, signature);
-                if key {
-                    r.items.push(Item::Text {
-                        text: "/".into(),
-                        bold,
-                        color,
-                        indent,
-                        key: false,
-                        signature,
-                    });
-                }
+                win = !win;
             }
             0x0d => {
                 flush(&mut text, &mut r.items, bold, color, indent, key, signature);
-                r.items.push(Item::Newline);
+                if shown {
+                    r.items.push(Item::Newline);
+                }
             }
             0x0e | 0x08 | 0x09 | 0x0a => {}
             0x0f => {
                 i += 1;
             }
             0x10..=0x1f => {}
-            _ => text.push(c),
+            _ if shown => text.push(c),
+            _ => {}
         }
     }
     flush(&mut text, &mut r.items, bold, color, indent, key, signature);
@@ -396,7 +431,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(keys, vec!["Delete ", "Backspace"]);
+        // a região `07 1 … 0c … 0c 07 0` traz o texto do Mac e o do Windows:
+        // só o do Windows fica
+        assert_eq!(keys, vec!["Backspace"]);
+        assert!(r.plain().contains("Aperte Backspace."), "{}", r.plain());
         assert!(matches!(
             r.items.last(),
             Some(Item::Text {
@@ -405,6 +443,30 @@ mod tests {
                 ..
             }) if text == "Maggie"
         ));
+    }
+
+    #[test]
+    fn platform_regions_keep_only_the_windows_text() {
+        // `Saia do programa — segure <07>1 <11> e aperte Q <0c>Alt e aperte
+        // F4<0c><07>0`: o primeiro trecho é o do Mac (tecla Command)
+        let rec = b"\x081\tx\t\x00C8 \x03F segure \x071 \x11 e aperte Q \x0cAlt e aperte F4\x0c\x070 .\r\x0b1\x0b fim\r\x0c\x071 \x060 TrueType no Windows.\r\x0c\x070 \x041 Rex";
+        let r = &parse(&block(&[rec])).unwrap()[0];
+        assert_eq!(
+            r.plain(),
+            "segure Alt e aperte F4.\n1 fim\nTrueType no Windows.\nRex"
+        );
+        // o negrito ligado e desligado dentro do trecho escondido vale
+        let bold: Vec<_> = r
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Text {
+                    text, bold: true, ..
+                } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bold, vec!["1"]);
     }
 
     #[test]

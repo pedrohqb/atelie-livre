@@ -158,6 +158,7 @@ pub fn fallback(w: i32, text: &str, options: &[&str], links: &[(usize, &str)]) -
         options: options.iter().map(|o| o.to_string()).collect(),
         links: links.iter().map(|(k, t)| (*k, t.to_string())).collect(),
         figures: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -612,6 +613,14 @@ pub fn quit_balloon_in(q: &QuitSpec, assets: &Assets, pos: (i32, i32)) -> TextBa
     b.x = pos.0;
     b.y = pos.1;
     b
+}
+
+/// Ponta do rabicho dos balões do McZee nas salas: ele fica à esquerda,
+/// embaixo do balão, e o rabicho sai do topo, 20 px depois do canto, até 12
+/// px acima (medido no saguão, no Ateliê e na Galeria). A Maggie (Projetos,
+/// Truques) e o elevador não têm rabicho no original.
+pub fn mczee_tail(helper: Option<Helper>, elevator: bool, b: &Balloon) -> Option<(i32, i32)> {
+    (helper == Some(Helper::McZee) && !elevator).then_some((b.x + 20, b.y - 12))
 }
 
 #[cfg(test)]

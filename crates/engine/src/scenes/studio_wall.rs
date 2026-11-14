@@ -201,6 +201,7 @@ pub fn balloon_in(
             options: Vec::new(),
             links: Vec::new(),
             figures: Vec::new(),
+            ..Default::default()
         },
     )
 }

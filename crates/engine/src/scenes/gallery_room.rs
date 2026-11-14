@@ -85,7 +85,7 @@ const OPT_QUIT: u16 = 1;
 const ALERT_POS: (i32, i32) = (178, 145);
 const QUIT_POS: (i32, i32) = (214, 179);
 /// Balão de boas-vindas (medido na chegada do original).
-const WELCOME_POS: (i32, i32) = (130, 240);
+const WELCOME_POS: (i32, i32) = (129, 233);
 
 /// Sons da Galeria (ids do `ARTIST.SND`, identificados pelo tamanho no
 /// original; ver `report/gallery.md` da varredura).
@@ -553,6 +553,7 @@ impl GalleryRoom {
                 ],
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
             Ask::Welcome2 => Balloon {
                 x: 0,
@@ -565,6 +566,7 @@ impl GalleryRoom {
                 ],
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
             Ask::WorkOn(_) => Balloon {
                 x: 0,
@@ -577,11 +579,14 @@ impl GalleryRoom {
                 ],
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
             Ask::HelpOff | Ask::HelpOn => {
                 // o mesmo menu do McZee das salas
                 let off = kind == Ask::HelpOn;
-                let b = Helper::McZee.balloon(assets, super::room::DEFAULT_USER, off, WELCOME_POS);
+                let mut b =
+                    Helper::McZee.balloon(assets, super::room::DEFAULT_USER, off, WELCOME_POS);
+                b.tail = super::room_talk::mczee_tail(Some(Helper::McZee), false, &b);
                 self.balloon = Some((kind, b));
                 return;
             }
@@ -593,6 +598,7 @@ impl GalleryRoom {
                 options: Vec::new(),
                 links: Vec::new(),
                 figures: Vec::new(),
+                ..Default::default()
             },
         };
         let records = assets.dialogs(Program::Artist, WHAT);
@@ -608,6 +614,7 @@ impl GalleryRoom {
             Ask::WorkOn(_) => (0, 0),
             Ask::Tip => (150, 170),
         };
+        b.tail = super::room_talk::mczee_tail(Some(super::room_talk::Helper::McZee), false, &b);
         self.balloon = Some((kind, b));
     }
 

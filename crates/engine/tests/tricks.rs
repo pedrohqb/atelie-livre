@@ -210,6 +210,7 @@ fn balloon_figure_takes_the_height_of_the_icon() {
         options: Vec::new(),
         links: Vec::new(),
         figures: vec![engine::scenes::tricks_3d::ICON_LINE_BRUSH],
+        ..Default::default()
     };
     let without = Balloon {
         text: "Então, clique até ver".into(),
