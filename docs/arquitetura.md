@@ -412,6 +412,23 @@ impl Street {
   objetos do lampejo; o aro e o som de chegada já são dados do
   `RoomSpec` do sótão (`writer_attic::ATTIC`).
 
+Feitos (T2, T3, T8, T10), com os dados do Writer nos `writer_*` e o FA
+idêntico (as 59 capturas de `ATELIE_DUMP` dos testes da lib saem iguais):
+
+- `StorySpec` também diz se cliques no álbum/balão e as teclas viram a
+  página (`page_turns`: no Writer só os botões; fora do balão, a recusa
+  `217`).
+- `StreetSpec`: figuras por cima do fundo (`elements`; o hidrante e a lata
+  do Writer, que somem enquanto o roteiro deles toca) e bichos que passam
+  sozinhos (`gags`, `GagPlayer`; nenhum no FA).
+- `ElevatorSpec`: o motor pode tocar em laço (`motor_loops`: `PlayLoop` na
+  partida, `StopLoop` na chegada, como o `waveOutBreakLoop` do original);
+  o vão das portas mostra o fundo da sala do andar lido do `RoomSpec`
+  (`floor_room`), então segue as salas do Writer quando elas chegarem.
+- Sótão: `attic::AtticSpec` (aro, regiões, sons e lampejo) e o estado
+  `attic::Dark`, que a sala guarda (gancho de quatro linhas em `room.rs`:
+  campo, `update`, clique e desenho).
+
 ### Conferir que o Fine Artist não mudou
 
 - `ATELIE_SEED=<n>` fixa o sorteio (`XorShift::from_clock`): mesma fantasia
@@ -424,9 +441,9 @@ impl Street {
 ### Pendências conhecidas
 
 - O saguão, o Escritório, os Projetos, as Idéias e a pasta do Writer já
-  têm os dados dele (`docs/telas/creative-writer-salas.md`); a rua, a
-  Imaginópolis, a história, o elevador, o sótão e a Biblioteca ainda
-  mostram os dados do FA (com a navegação do Writer) até as tarefas acima.
+  têm os dados dele (`docs/telas/creative-writer-salas.md`), assim como a
+  rua, a Imaginópolis, a história, o elevador e o sótão; a Biblioteca ainda
+  mostra os dados do FA (com a navegação do Writer).
 - Ganchos das salas para o Writer (todos neutros no Fine Artist):
   `RoomSpec::lamp` (luminária com fumaça), `object_balloon` (balões dos
   objetos na boca do McZee), `wand_props` (varinha nos bichos da parede),

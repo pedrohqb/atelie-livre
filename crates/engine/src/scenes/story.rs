@@ -13,7 +13,7 @@
 use super::entry::BACKGROUND;
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::scene::{Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
-use crate::text_balloon::{Button, Part, TextBalloon, blit_pic, blit_pic_opaque};
+use crate::text_balloon::{Button, Part, TextBalloon, blit_pic_in};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 
 /// Álbum aberto com o McZee espiando por trás (máscara `4209`).
@@ -31,7 +31,7 @@ const PHOTO: (u32, u32) = (169, 119);
 /// Páginas do álbum (dentro dele): clicar na direita passa, na esquerda volta.
 const LEFT_PAGE: (i32, i32, i32, i32) = (8, 106, 232, 200);
 const RIGHT_PAGE: (i32, i32, i32, i32) = (246, 106, 230, 200);
-const STORY_WHAT: u16 = 0x4200;
+pub const STORY_WHAT: u16 = 0x4200;
 /// Canto inferior direito do balão (ele fica à esquerda da cabeça do McZee).
 const BALLOON_CORNER: (i32, i32) = (416, 197);
 
@@ -97,6 +97,40 @@ pub const PAGES: [Page; 7] = [
     },
 ];
 
+/// O que muda na história de um programa: fundo de nuvens (o da Entrada),
+/// álbum (máscara duas figuras adiante), bloco `WHAT`, páginas duplas,
+/// falas e os textos reserva. A mecânica, as posições e os sons dos botões
+/// são os mesmos nos dois programas.
+pub struct StorySpec {
+    pub program: Program,
+    pub background: u16,
+    pub album: u16,
+    pub what: u16,
+    pub pages: &'static [Page],
+    /// (registro do `WHAT`, página dupla) de cada fala.
+    pub speeches: &'static [(usize, usize)],
+    /// Texto reserva por registro (sem o `.EXE`).
+    pub fallback: &'static [&'static str],
+    /// Cliques nas páginas do álbum e no balão e as teclas (Enter, setas)
+    /// também viram a página; sem isso, só os botões do balão.
+    pub page_turns: bool,
+    /// Som de um clique fora do balão (recusa), se houver.
+    pub refuse: Option<u16>,
+}
+
+/// A história do Fine Artist.
+pub const ARTIST_STORY: StorySpec = StorySpec {
+    program: Program::Artist,
+    background: BACKGROUND,
+    album: ALBUM,
+    what: STORY_WHAT,
+    pages: &PAGES,
+    speeches: &SPEECHES,
+    fallback: &FALLBACK,
+    page_turns: true,
+    refuse: None,
+};
+
 /// As falas: registro do `WHAT 4200` e página dupla. Os registros 2 e 3 do
 /// original repetem o 1 ("Same as #2") e não aparecem: são 9 falas.
 pub const SPEECHES: [(usize, usize); 9] = [
@@ -112,7 +146,7 @@ pub const SPEECHES: [(usize, usize); 9] = [
 ];
 
 /// Textos do original (por registro), usados quando o `ARTIST.EXE` não está instalado.
-const FALLBACK: [&str; 11] = [
+pub const FALLBACK: [&str; 11] = [
     "Oi, eu sou o McZee! Seja bem-vindo ao meu mundo! Você provavelmente quer saber alguma coisa sobre mim e por que motivo eu estou aqui. A minha história começa com um garoto e uma garota como você: uma artista plástica chamada Maggie e um escritor chamado Max.",
     "Eles se mudaram no mesmo dia para casas vizinhas e se tornaram amigos inseparáveis!",
     "Eles se mudaram no mesmo dia para casas vizinhas e se tornaram amigos inseparáveis!",
@@ -127,6 +161,7 @@ const FALLBACK: [&str; 11] = [
 ];
 
 pub struct Story {
+    spec: &'static StorySpec,
     common: KidCommon,
     page: usize,
     balloon: TextBalloon,
@@ -143,14 +178,18 @@ impl Story {
         Story::for_program(Program::Artist, click, assets)
     }
 
-    /// História do programa `p`. Por enquanto o álbum é o do Fine Artist nos
-    /// dois; o do Writer vem com o `StorySpec` (`writer_story`, T2).
+    /// História do programa `p` (`ARTIST_STORY` ou `writer_story::WRITER_STORY`).
     pub fn for_program(p: Program, click: Option<SoundRef>, assets: &Assets) -> Story {
+        let spec = match p {
+            Program::Artist => &ARTIST_STORY,
+            Program::Writer => &super::writer_story::WRITER_STORY,
+        };
         Story {
+            spec,
             program: p,
             common: KidCommon::new(click),
             page: 0,
-            balloon: Self::balloon(0, assets),
+            balloon: Self::balloon(spec, 0, assets),
             done: false,
             over_room: false,
         }
@@ -179,26 +218,29 @@ impl Story {
 
     /// Página dupla do álbum aberta.
     pub fn spread(&self) -> usize {
-        SPEECHES[self.page].1
+        self.spec.speeches[self.page].1
     }
 
-    fn balloon(speech: usize, assets: &Assets) -> TextBalloon {
+    fn balloon(spec: &StorySpec, speech: usize, assets: &Assets) -> TextBalloon {
         let mut buttons = Vec::new();
         if speech > 0 {
             buttons.push(Button::Back);
         }
         buttons.push(Button::Stop);
         buttons.push(Button::Next);
-        let k = SPEECHES[speech].0;
-        let record = assets
-            .dialogs(Program::Artist, STORY_WHAT)
-            .into_iter()
-            .nth(k);
+        let k = spec.speeches[speech].0;
+        let record = assets.dialogs(spec.program, spec.what).into_iter().nth(k);
         let text = record
             .as_ref()
             .map(|r| r.plain().trim().to_string())
             .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| FALLBACK[k].to_string());
+            .unwrap_or_else(|| {
+                spec.fallback
+                    .get(k)
+                    .copied()
+                    .unwrap_or_default()
+                    .to_string()
+            });
         let w = record.map_or(275, |r| r.width as i32);
         let mut b = TextBalloon::new(0, 0, w, vec![Part::Text(text)], buttons);
         // à esquerda da cabeça do McZee, com a base logo acima do álbum
@@ -208,10 +250,10 @@ impl Story {
     }
 
     fn next(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
-        fx.push(sound(sfx::NEXT));
-        if self.page + 1 < SPEECHES.len() {
+        fx.push(self.sound(sfx::NEXT));
+        if self.page + 1 < self.spec.speeches.len() {
             self.page += 1;
-            self.balloon = Self::balloon(self.page, assets);
+            self.balloon = Self::balloon(self.spec, self.page, assets);
         } else {
             self.leave_story(fx);
         }
@@ -219,10 +261,26 @@ impl Story {
 
     fn back(&mut self, fx: &mut Vec<Effect>, assets: &Assets) {
         if self.page > 0 {
-            fx.push(sound(sfx::BACK));
+            fx.push(self.sound(sfx::BACK));
             self.page -= 1;
-            self.balloon = Self::balloon(self.page, assets);
+            self.balloon = Self::balloon(self.spec, self.page, assets);
         }
+    }
+
+    /// Área de um botão do balão da fala atual (testes).
+    #[cfg(test)]
+    pub(crate) fn balloon_button(&self, a: &Assets, b: Button) -> Option<(i32, i32, i32, i32)> {
+        self.balloon.button_rect(a, b)
+    }
+
+    /// Partes do balão da fala atual (testes).
+    #[cfg(test)]
+    pub(crate) fn balloon_parts(&self) -> &[Part] {
+        &self.balloon.parts
+    }
+
+    fn sound(&self, id: u16) -> Effect {
+        Effect::PlaySound(SoundRef::Snd(self.spec.program, id))
     }
 
     /// Página do álbum sob `(x, y)`: `Some(true)` na direita, `Some(false)` na esquerda.
@@ -248,11 +306,14 @@ impl Scene for Story {
             if self.done {
                 break;
             }
+            if !self.spec.page_turns && matches!(i, Input::Key { .. }) {
+                continue;
+            }
             match self.balloon.handle(assets, i) {
                 Some(Button::Next) => self.next(&mut fx, assets),
                 Some(Button::Back) => self.back(&mut fx, assets),
                 Some(Button::Stop) => {
-                    fx.push(sound(sfx::STOP));
+                    fx.push(self.sound(sfx::STOP));
                     self.leave_story(&mut fx);
                 }
                 None => match i {
@@ -261,7 +322,12 @@ impl Scene for Story {
                         x,
                         y,
                     } => {
-                        if self.balloon.contains(assets, *x, *y) {
+                        let inside = self.balloon.contains(assets, *x, *y);
+                        if !self.spec.page_turns {
+                            if !inside && let Some(id) = self.spec.refuse {
+                                fx.push(self.sound(id));
+                            }
+                        } else if inside {
                             self.next(&mut fx, assets);
                         } else {
                             match Self::album_page_at(*x, *y) {
@@ -293,38 +359,43 @@ impl Scene for Story {
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         if !self.over_room {
             frame.fill([136, 136, 230]);
-            let bg = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+            let bg = assets.image(&ImageRef::Pic(self.spec.program, self.spec.background));
             frame.blit(
                 &bg,
                 (SCREEN_W as i32 - bg.width as i32) / 2,
                 (SCREEN_H as i32 - bg.height as i32) / 2,
             );
         }
+        let p = self.spec.program;
         let (ax, ay) = ALBUM_POS;
-        blit_pic(frame, assets, ALBUM, ax, ay, true);
-        let page = &PAGES[self.spread()];
+        blit_pic_in(frame, assets, p, self.spec.album, ax, ay, true);
+        let page = &self.spec.pages[self.spread()];
         for (id, (px, py)) in [(page.left, LEFT_PHOTO), (page.right, RIGHT_PHOTO)] {
-            let img = assets.image(&ImageRef::Pic(Program::Artist, id));
+            // sem a figura, nada (o branco da foto é opaco)
+            if assets.pic_ids(p).binary_search(&id).is_err() {
+                continue;
+            }
+            let img = assets.image(&ImageRef::Pic(p, id));
             // as fotos menores (167×117) ficam centradas no lugar das maiores
             let dx = (PHOTO.0.saturating_sub(img.width) / 2) as i32;
             let dy = (PHOTO.1.saturating_sub(img.height) / 2) as i32;
-            blit_pic_opaque(frame, assets, id, ax + px + dx, ay + py + dy);
+            frame.blit(&img, ax + px + dx, ay + py + dy);
         }
         for &(id, x, y) in page.figures {
-            blit_pic(frame, assets, id, ax + x, ay + y, true);
+            blit_pic_in(frame, assets, p, id, ax + x, ay + y, true);
         }
         self.balloon.draw(frame, assets);
     }
-}
-
-fn sound(id: u16) -> Effect {
-    Effect::PlaySound(SoundRef::Snd(Program::Artist, id))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scenes::testutil::{assets, empty_assets};
+
+    fn sound(id: u16) -> Effect {
+        Effect::PlaySound(SoundRef::Snd(Program::Artist, id))
+    }
 
     fn click(x: i32, y: i32) -> Input {
         Input::Click {

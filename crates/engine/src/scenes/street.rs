@@ -12,11 +12,13 @@
 //! As áreas vêm da tabela de pontos quentes da rua em `ARTIST.EXE`
 //! (`docs/telas/fine-artist.md`, "Rua").
 
-use super::gags::{HYDRANT_RECT, STREET_HYDRANT, STREET_TRASH, TRASH_RECT};
+use super::gags::{GagPlayer, HYDRANT_RECT, STREET_HYDRANT, STREET_TRASH, TRASH_RECT};
 use crate::anim::{self, Animator};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
+use crate::rng::XorShift;
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
-use crate::ui::inside;
+use crate::text_balloon::blit_pic_in;
+use crate::ui::{Rect, inside};
 use crate::{Frame, SCREEN_H, SCREEN_W};
 
 pub const BACKGROUND: u16 = 0x6d01;
@@ -41,6 +43,71 @@ pub const SND_FACADE: u16 = 0x301;
 /// Som da troca para o saguão (1068 bytes; 0x2c0–0x2c5 são o mesmo som).
 pub const SND_ENTER: u16 = 0x253;
 
+/// Bichos que passam pela rua quando ninguém mexe: espera antes do
+/// primeiro e entre os outros (s), como nas salas.
+const GAG_FIRST: (f32, f32) = (20.0, 30.0);
+const GAG_BETWEEN: (f32, f32) = (20.0, 40.0);
+
+/// O que muda na rua de um programa (ids do `.PIC`/`.SND`/roteiros dele).
+/// Um roteiro com âncora começa com a origem gravada somada à âncora.
+#[derive(Debug, Clone, Copy)]
+pub struct StreetSpec {
+    pub program: Program,
+    pub background: u16,
+    /// Figuras por cima do fundo (cor, canto; máscara duas figuras adiante).
+    pub elements: &'static [(u16, (i32, i32))],
+    /// Porta giratória: roteiro e área (o canto é a âncora).
+    pub door: (u16, Rect),
+    /// Fachada em volta da porta: direto ao saguão, com `snd_lobby`.
+    pub lobby: &'static [Rect],
+    /// Bola de beisebol: roteiro, âncora e faixas da fachada.
+    pub ball: (u16, (i32, i32), &'static [Rect]),
+    pub hydrant: (u16, (i32, i32), Rect),
+    pub trash: (u16, (i32, i32), Rect),
+    /// Bichos que passam sozinhos (nenhum no Fine Artist).
+    pub gags: &'static [u16],
+    /// Clique na fachada da bola e na que leva ao saguão.
+    pub snd_ball: u16,
+    pub snd_lobby: u16,
+    /// Troca para o saguão.
+    pub snd_enter: u16,
+}
+
+/// A rua do Fine Artist.
+pub const ARTIST_STREET: StreetSpec = StreetSpec {
+    program: Program::Artist,
+    background: BACKGROUND,
+    elements: &[],
+    door: (DOOR_SCRIPT, DOOR),
+    lobby: &[AWNING, FACADE],
+    ball: (BALL_SCRIPT, (0, 0), &BALL_RECTS),
+    hydrant: (STREET_HYDRANT.0, STREET_HYDRANT.1, HYDRANT_RECT),
+    trash: (STREET_TRASH.0, STREET_TRASH.1, TRASH_RECT),
+    gags: &[],
+    snd_ball: SND_FACADE,
+    snd_lobby: SND_FACADE,
+    snd_enter: SND_ENTER,
+};
+
+impl StreetSpec {
+    /// Classifica o ponto (x, y); a ordem é a do original, de cima para baixo.
+    pub fn spot_at(&self, x: i32, y: i32) -> Spot {
+        if inside(self.hydrant.2, x, y) {
+            Spot::Hydrant
+        } else if inside(self.trash.2, x, y) {
+            Spot::Trash
+        } else if inside(self.door.1, x, y) {
+            Spot::Door
+        } else if self.lobby.iter().any(|r| inside(*r, x, y)) {
+            Spot::Lobby
+        } else if self.ball.2.iter().any(|r| inside(*r, x, y)) {
+            Spot::Ball
+        } else {
+            Spot::Town
+        }
+    }
+}
+
 /// O que um clique na rua faz.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Spot {
@@ -53,33 +120,23 @@ pub enum Spot {
     Town,
 }
 
-/// Classifica o ponto (x, y); a ordem é a do original, de cima para baixo.
+/// Classifica o ponto (x, y) na rua do Fine Artist.
 pub fn spot_at(x: i32, y: i32) -> Spot {
-    if inside(HYDRANT_RECT, x, y) {
-        Spot::Hydrant
-    } else if inside(TRASH_RECT, x, y) {
-        Spot::Trash
-    } else if inside(DOOR, x, y) {
-        Spot::Door
-    } else if inside(AWNING, x, y) || inside(FACADE, x, y) {
-        Spot::Lobby
-    } else if BALL_RECTS.iter().any(|r| inside(*r, x, y)) {
-        Spot::Ball
-    } else {
-        Spot::Town
-    }
-}
-
-fn snd(id: u16) -> SoundRef {
-    SoundRef::Snd(Program::Artist, id)
+    ARTIST_STREET.spot_at(x, y)
 }
 
 pub struct Street {
+    spec: &'static StreetSpec,
     common: KidCommon,
+    /// Bichos que passam sozinhos (só no Writer).
+    idle: GagPlayer,
     /// Roteiro em curso (porta, bola, hidrante ou lata).
     gag: Option<Animator>,
     /// Ao fim do roteiro, entra no saguão (porta giratória).
     then_lobby: bool,
+    /// Âncora do roteiro em curso: a figura fixa nesse canto (hidrante,
+    /// lata do Writer) some enquanto o roteiro a desenha.
+    hidden: Option<(i32, i32)>,
     /// Programa: a porta leva ao saguão dele; o resto, à Imaginópolis dele.
     program: Program,
 }
@@ -90,14 +147,21 @@ impl Street {
         Street::for_program(Program::Artist, click)
     }
 
-    /// Rua do programa `p`. Por enquanto a do Fine Artist nos dois; a do
-    /// Writer vem com o `StreetSpec` (`writer_street`, T3).
+    /// Rua do programa `p` (`ARTIST_STREET` ou `writer_street::WRITER_STREET`).
     pub fn for_program(p: Program, click: Option<SoundRef>) -> Street {
+        let spec = match p {
+            Program::Artist => &ARTIST_STREET,
+            Program::Writer => &super::writer_street::WRITER_STREET,
+        };
         Street {
+            spec,
+            idle: GagPlayer::with_rng(spec.gags, GAG_FIRST, GAG_BETWEEN, XorShift::from_clock())
+                .in_program(spec.program),
             program: p,
             common: KidCommon::new(click),
             gag: None,
             then_lobby: false,
+            hidden: None,
         }
     }
 
@@ -114,44 +178,53 @@ impl Street {
         assets: &Assets,
         fx: &mut Vec<Effect>,
     ) -> bool {
-        let Some(a) = anim::load_exe(assets, Program::Artist, id) else {
+        let Some(a) = anim::load_exe(assets, self.spec.program, id) else {
             return false;
         };
         let mut a = a.with_offset(anchor);
         fx.extend(a.update(0.0).into_iter().map(Effect::PlaySound));
         self.gag = Some(a);
+        self.hidden = Some(anchor);
         true
     }
 
-    fn enter_lobby(program: Program, fx: &mut Vec<Effect>) {
-        fx.push(Effect::PlaySound(snd(SND_ENTER)));
-        fx.push(Effect::ChangeScene(SceneId::Building.in_program(program)));
+    fn snd(&self, id: u16) -> Effect {
+        Effect::PlaySound(SoundRef::Snd(self.spec.program, id))
+    }
+
+    fn enter_lobby(&self, fx: &mut Vec<Effect>) {
+        fx.push(self.snd(self.spec.snd_enter));
+        fx.push(Effect::ChangeScene(
+            SceneId::Building.in_program(self.program),
+        ));
     }
 
     fn click(&mut self, x: i32, y: i32, assets: &Assets, fx: &mut Vec<Effect>) {
-        match spot_at(x, y) {
+        let spec = self.spec;
+        match spec.spot_at(x, y) {
             Spot::Door => {
+                let (id, r) = spec.door;
                 // sem os dados da porta, entra direto
-                if self.start_gag(DOOR_SCRIPT, (DOOR.0, DOOR.1), assets, fx) {
+                if self.start_gag(id, (r.0, r.1), assets, fx) {
                     self.then_lobby = true;
                 } else {
-                    Street::enter_lobby(self.program, fx);
+                    self.enter_lobby(fx);
                 }
             }
             Spot::Lobby => {
-                fx.push(Effect::PlaySound(snd(SND_FACADE)));
-                Street::enter_lobby(self.program, fx);
+                fx.push(self.snd(spec.snd_lobby));
+                self.enter_lobby(fx);
             }
             Spot::Ball => {
-                fx.push(Effect::PlaySound(snd(SND_FACADE)));
-                // origem absoluta: o roteiro já está em coordenadas da tela
-                self.start_gag(BALL_SCRIPT, (0, 0), assets, fx);
+                fx.push(self.snd(spec.snd_ball));
+                // no FA a origem é absoluta: o roteiro já está em coordenadas da tela
+                self.start_gag(spec.ball.0, spec.ball.1, assets, fx);
             }
             Spot::Hydrant => {
-                self.start_gag(STREET_HYDRANT.0, STREET_HYDRANT.1, assets, fx);
+                self.start_gag(spec.hydrant.0, spec.hydrant.1, assets, fx);
             }
             Spot::Trash => {
-                self.start_gag(STREET_TRASH.0, STREET_TRASH.1, assets, fx);
+                self.start_gag(spec.trash.0, spec.trash.1, assets, fx);
             }
             // o som e o carrinho são de Imaginópolis, ao chegar
             Spot::Town => fx.push(Effect::ChangeScene(
@@ -164,12 +237,27 @@ impl Street {
 impl Scene for Street {
     fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
+        if input
+            .iter()
+            .any(|i| matches!(i, Input::Click { .. } | Input::Key { .. }))
+        {
+            self.idle.poke();
+        }
+        if self.gag.is_none() || self.idle.is_playing() {
+            fx.extend(
+                self.idle
+                    .update(dt, assets)
+                    .into_iter()
+                    .map(Effect::PlaySound),
+            );
+        }
         if let Some(a) = &mut self.gag {
             fx.extend(a.update(dt).into_iter().map(Effect::PlaySound));
             if a.is_finished() {
                 self.gag = None;
+                self.hidden = None;
                 if std::mem::take(&mut self.then_lobby) {
-                    Street::enter_lobby(self.program, &mut fx);
+                    self.enter_lobby(&mut fx);
                     return fx;
                 }
             }
@@ -196,12 +284,19 @@ impl Scene for Street {
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         frame.fill([0, 0, 0]);
-        let img = assets.image(&ImageRef::Pic(Program::Artist, BACKGROUND));
+        let p = self.spec.program;
+        let img = assets.image(&ImageRef::Pic(p, self.spec.background));
         frame.blit(
             &img,
             (SCREEN_W as i32 - img.width as i32) / 2,
             (SCREEN_H as i32 - img.height as i32) / 2,
         );
+        for &(id, (x, y)) in self.spec.elements {
+            if self.gag.is_none() || self.hidden != Some((x, y)) {
+                blit_pic_in(frame, assets, p, id, x, y, true);
+            }
+        }
+        self.idle.draw(frame, assets);
         if let Some(a) = &self.gag {
             a.draw(frame, assets);
         }

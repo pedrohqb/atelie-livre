@@ -7,10 +7,15 @@
 //! Não achamos no `ARTIST.PIC` a figura do aro do original; ele é montado com
 //! a abertura do mastro dos andares (0x682b, virada de cabeça para baixo) e
 //! um pedaço do mastro.
+//!
+//! O que muda por programa é um [`AtticSpec`]; o do Creative Writer
+//! (`writer_attic`) tem o aro desenhado, só doze regiões que respondem no
+//! escuro e, com o som de tatear, o lampejo de um objeto da região (como
+//! se iluminado por uma lanterna), guardado num [`Dark`] pela sala.
 
 use crate::assets::{Assets, ImageRef, Program};
 use crate::rng::XorShift;
-use crate::ui::Rect;
+use crate::ui::{Rect, inside};
 use crate::{Frame, Image};
 
 /// Aro com o topo do mastro: a única área que leva a algum lugar.
@@ -33,24 +38,105 @@ const DARK_SOUNDS: [(u16, u32); 10] = [
     (0x254, 1),
 ];
 
-/// Som de um clique no escuro no sótão do programa `p` (id do `.SND` do
-/// programa do kit da sala). Por enquanto o do Fine Artist nos dois: o do
-/// Writer (som sorteado e lampejo de um objeto) vem em `writer_attic`.
-pub fn dark_sound_in(_p: Program, rng: &mut XorShift) -> u16 {
-    dark_sound(rng)
+/// Uma região do escuro: a área do clique e os objetos que podem acender
+/// nela (figura colorida, desenhada opaca, e o canto na tela).
+#[derive(Debug, Clone, Copy)]
+pub struct DarkRegion {
+    pub rect: Rect,
+    pub objects: &'static [(u16, (i32, i32))],
 }
 
-/// Sorteia o som de um clique no escuro.
+/// O que muda no sótão de um programa.
+#[derive(Debug, Clone, Copy)]
+pub struct AtticSpec {
+    pub program: Program,
+    /// Aro do mastro (cor, máscara, canto); `None`: o aro montado do FA.
+    pub ring: Option<(u16, u16, (i32, i32))>,
+    /// Regiões que respondem no escuro (as de baixo na lista ficam por
+    /// cima); vazio: a tela toda.
+    pub regions: &'static [DarkRegion],
+    /// Sons do clique no escuro e o peso de cada um.
+    pub sounds: &'static [(u16, u32)],
+    /// Som que acende um objeto da região clicada.
+    pub flash_sound: Option<u16>,
+    /// Quanto tempo o objeto fica aceso (s).
+    pub flash_time: f32,
+}
+
+/// O sótão do Fine Artist.
+pub const ARTIST_ATTIC: AtticSpec = AtticSpec {
+    program: Program::Artist,
+    ring: None,
+    regions: &[],
+    sounds: &DARK_SOUNDS,
+    flash_sound: None,
+    flash_time: 0.0,
+};
+
+/// O sótão do programa `p`.
+pub fn spec(p: Program) -> &'static AtticSpec {
+    match p {
+        Program::Artist => &ARTIST_ATTIC,
+        Program::Writer => &super::writer_attic::WRITER_ATTIC,
+    }
+}
+
+/// O escuro do sótão: o objeto aceso agora (lampejo), se houver.
+#[derive(Debug, Clone, Default)]
+pub struct Dark {
+    flash: Option<(u16, (i32, i32), f32)>,
+}
+
+impl Dark {
+    /// Clique no escuro em (x, y) no sótão do programa `p`: o som a tocar
+    /// (nenhum fora das regiões); com o som de tatear, acende um objeto.
+    pub fn click(&mut self, p: Program, x: i32, y: i32, rng: &mut XorShift) -> Option<u16> {
+        let spec = spec(p);
+        let region = if spec.regions.is_empty() {
+            None
+        } else {
+            Some(spec.regions.iter().rev().find(|r| inside(r.rect, x, y))?)
+        };
+        let id = weighted(spec.sounds, rng);
+        if Some(id) == spec.flash_sound
+            && let Some(r) = region.filter(|r| !r.objects.is_empty())
+        {
+            let (obj, pos) = r.objects[rng.below(r.objects.len())];
+            self.flash = Some((obj, pos, spec.flash_time));
+        }
+        Some(id)
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        if let Some((_, _, t)) = &mut self.flash {
+            *t -= dt;
+            if *t <= 0.0 {
+                self.flash = None;
+            }
+        }
+    }
+
+    /// Objeto aceso agora (figura e canto).
+    pub fn lit(&self) -> Option<(u16, (i32, i32))> {
+        self.flash.map(|(id, pos, _)| (id, pos))
+    }
+}
+
+/// Sorteia o som de um clique no escuro (Fine Artist).
 pub fn dark_sound(rng: &mut XorShift) -> u16 {
-    let total: u32 = DARK_SOUNDS.iter().map(|s| s.1).sum();
+    weighted(&DARK_SOUNDS, rng)
+}
+
+fn weighted(sounds: &[(u16, u32)], rng: &mut XorShift) -> u16 {
+    let total: u32 = sounds.iter().map(|s| s.1).sum();
     let mut n = rng.below(total as usize) as u32;
-    for (id, w) in DARK_SOUNDS {
+    for &(id, w) in sounds {
         if n < w {
             return id;
         }
         n -= w;
     }
-    DARK_SOUNDS[0].0
+    sounds[0].0
 }
 
 /// Abertura do mastro (cor, máscara) e mastro dos andares.
@@ -81,10 +167,18 @@ fn blit_flipped(f: &mut Frame, img: &Image, mask: &Image, x: i32, y: i32) {
     }
 }
 
-/// Desenha o sótão do programa `p` (por enquanto o do Fine Artist nos
-/// dois; ver `writer_attic`).
-pub fn draw_in(_p: Program, frame: &mut Frame, assets: &Assets) {
-    draw(frame, assets)
+/// Desenha o sótão do programa `p`, com o objeto aceso de `dark`.
+pub fn draw_in(p: Program, dark: &Dark, frame: &mut Frame, assets: &Assets) {
+    let spec = spec(p);
+    let Some((img, mask, (x, y))) = spec.ring else {
+        return draw(frame, assets);
+    };
+    frame.fill([0, 0, 0]);
+    let pic = |id| assets.image(&ImageRef::Pic(p, id));
+    frame.blit_masked(&pic(img), &pic(mask), x, y);
+    if let Some((id, (x, y))) = dark.lit() {
+        frame.blit(&pic(id), x, y);
+    }
 }
 
 pub fn draw(f: &mut Frame, a: &Assets) {
