@@ -202,15 +202,26 @@ pub fn step_balloon(assets: &Assets, step: Step) -> TextBalloon {
 /// Aviso "EPA!" do Rex (`block`, `k`) em `ALERT_POS`, ou a reserva. Vem
 /// com o fundo de balão (como na prévia da Galeria e no original); a
 /// máquina da pintura o pinta de branco com [`TextBalloon::as_alert`].
-pub fn alert_balloon(assets: &Assets, (block, k, fallback): (u16, usize, &str)) -> TextBalloon {
-    let recs = assets.dialogs(Program::Artist, block);
+pub fn alert_balloon(assets: &Assets, spec: (u16, usize, &str)) -> TextBalloon {
+    alert_balloon_in(assets, Program::Artist, spec, ALERT_POS)
+}
+
+/// Como [`alert_balloon`], com o bloco `WHAT` do programa `p`, em `pos`
+/// (a prévia da Biblioteca do Writer usa `0805`/`4c02` do `WRITER.EXE`).
+pub fn alert_balloon_in(
+    assets: &Assets,
+    p: Program,
+    (block, k, fallback): (u16, usize, &str),
+    pos: (i32, i32),
+) -> TextBalloon {
+    let recs = assets.dialogs(p, block);
     match recs.get(k) {
         Some(r) if !r.plain().trim().is_empty() => {
-            TextBalloon::from_record(r, ALERT_POS.0, ALERT_POS.1, "", vec![])
+            TextBalloon::from_record(r, pos.0, pos.1, "", vec![])
         }
         _ => TextBalloon::new(
-            ALERT_POS.0,
-            ALERT_POS.1,
+            pos.0,
+            pos.1,
             220,
             vec![Part::Figure(PIC_ALERT), Part::Text(fallback.into())],
             vec![],

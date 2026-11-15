@@ -249,6 +249,12 @@ pub enum Effect {
     RecordCancel,
     /// Usuário escolhido na Entrada (apelido), para o `@` dos balões.
     SetUser(String),
+    /// Troca para a área de escrita do Creative Writer com este `.MAX`
+    /// (`Writer::open`): clique duplo numa moldura da Biblioteca, que pode ser
+    /// um exemplo do Max fora da pasta do usuário. Como
+    /// `ChangeScene(SceneId::Writer)`, mas o `SceneId` é `Copy` e não leva o
+    /// caminho (e `Writer::new` abre o mais recente da pasta, não o `FILR 0`).
+    OpenDocument(std::path::PathBuf),
     Log(String),
     Quit,
 }

@@ -160,3 +160,9 @@ Gravados por `crates/engine/src/writer/prefs.rs`.
 | `*.MAX` | documentos do usuário; no `FILR` ficam como `USERS\<APELIDO>\ARQUIVO.MAX` (os outros caminhos são relativos à pasta `MSKIDS` dos dados) |
 | `predio-writer.txt` | estado das salas: `bolsa_aberta=0/1` e `ajuda_desligada=0/1` (o original também guarda, em bytes não localizados) |
 
+Biblioteca (`scenes/writer_library.rs`): lista os `*.MAX` da pasta do
+usuário (`store::list`) e os exemplos do Max; a parede vai nos `FILR` 1–4
+pelas mesmas funções (`prefs::library`, `wall_doc`, `set_slot`, `save`) e
+abrir um documento grava o `FILR 0` (`prefs::remember_last`). A prévia de
+impressão grava a folha mandada ao `lp` como
+`impressao-AAAAMMDD-HHMMSS.png` na pasta do usuário.

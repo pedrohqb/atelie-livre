@@ -94,10 +94,17 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
         SceneId::PaintNew => {
             Box::new(Paint::new_blank(drawings_dir(), assets).with_user(user.name()))
         }
-        SceneId::Gallery | SceneId::Cw(CwScene::Library) => Box::new(
-            GalleryRoom::for_program(p, cfg.click_sound.clone(), pictures(), assets)
-                .with_user(user.name(), user.animal()),
-        ),
+        SceneId::Gallery | SceneId::Cw(CwScene::Library) => {
+            // a Biblioteca do Writer mostra os documentos da pasta do usuário
+            let dir = match p {
+                Program::Artist => drawings_dir(),
+                Program::Writer => user.folder(),
+            };
+            Box::new(
+                GalleryRoom::for_program(p, cfg.click_sound.clone(), dir, assets)
+                    .with_user(user.name(), user.animal()),
+            )
+        }
         SceneId::Building => room(Floor::Lobby),
         SceneId::Cw(CwScene::Building(floor)) => room(floor),
         SceneId::Studio => room(Floor::Studio),
@@ -523,6 +530,26 @@ pub fn run(cfg: Config, args: &Args) -> i32 {
                     *top = make_scene(id, &cfg, &user, &assets);
                 }
                 Effect::Push(id) => stack.push(make_scene(id, &cfg, &user, &assets)),
+                Effect::OpenDocument(path) => {
+                    // como ChangeScene(Writer), com o documento da Biblioteca
+                    mic.cancel();
+                    if let Some(m) = mixer.as_mut() {
+                        m.stop_loop();
+                    }
+                    while stack.len() > 1 {
+                        let mut s = stack.pop().expect("cena");
+                        print_logs(s.leave());
+                    }
+                    let top = stack.last_mut().expect("cena");
+                    print_logs(top.leave());
+                    *top = match Writer::open(user.folder(), &path, &assets) {
+                        Ok(w) => Box::new(w.with_author(&user.author()).with_user(user.name())),
+                        Err(e) => {
+                            eprintln!("atelie-livre: {e}");
+                            make_scene(SceneId::Writer, &cfg, &user, &assets)
+                        }
+                    };
+                }
                 Effect::Back => {
                     if let Some(m) = mixer.as_mut() {
                         m.stop_loop();
@@ -601,6 +628,7 @@ fn trace_effect(effect: &Effect) {
         Effect::StopLoop => println!("TRACE fim-laço"),
         Effect::ChangeScene(id) => println!("TRACE cena {id:?}"),
         Effect::Push(id) => println!("TRACE push {id:?}"),
+        Effect::OpenDocument(p) => println!("TRACE abrir-documento {}", p.display()),
         Effect::Back => println!("TRACE back"),
         Effect::SetVolume(v) => println!("TRACE volume {v}"),
         Effect::RecordStart => println!("TRACE gravar"),
