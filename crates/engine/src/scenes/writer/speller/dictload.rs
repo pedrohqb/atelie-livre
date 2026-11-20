@@ -92,3 +92,34 @@ pub fn wait(data: &Path) -> State {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn carrega_em_segundo_plano() {
+        // pasta sem SPELL.DCT: a carga é a do dicionário livre do sistema
+        // (pronto ou ausente, conforme a máquina), compartilhada
+        let dir = tempfile::tempdir().unwrap();
+        preload(dir.path());
+        assert!(!matches!(get(dir.path()), State::NotStarted));
+        assert!(matches!(wait(dir.path()), State::Ready(_) | State::Missing));
+        // com os dados originais: o SPELL.DCT e o THES.DCT
+        let Some(data) = std::env::var_os("ATELIE_DATA").map(PathBuf::from) else {
+            return;
+        };
+        if !data.join("WRITER").join("SPELL.DCT").is_file() {
+            return;
+        }
+        preload(&data);
+        preload(&data); // a segunda chamada não recomeça
+        let State::Ready(d) = wait(&data) else {
+            panic!("o dicionário original não carregou");
+        };
+        assert!(d.contains("gato") && !d.contains("gatu"));
+        assert_eq!(d.suggestions("gatu", 12), ["gata", "gato", "tatu"]);
+        assert_eq!(d.anagrams("ramo"), ["amor", "mora", "oram", "ramo"]);
+        assert!(d.synonyms("casa").contains(&"lar".to_string()));
+    }
+}
