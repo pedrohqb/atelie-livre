@@ -9,14 +9,19 @@
 //!   `page_strip`, `speller`, `egg`, `removers`, `transformers`, `viewer`,
 //!   `print`), mais a porta (`exit`);
 //! - [`chrome`]: moldura, barra de ferramentas e barra de baixo;
-//! - [`mczee`]: balões automáticos e menu do McZee; [`cursors`]: cursores.
+//! - [`mczee`]: balões automáticos e menu do McZee (a Bolsa Mágica do
+//!   editor); [`notebook`]: o Caderno de Idéias aberto por ela;
+//!   [`control_center`]: a Central de Controle (Ctrl+Shift+A);
+//!   [`cursors`]: cursores.
 
 mod chrome;
+pub mod control_center;
 pub mod cursors;
 pub mod editor;
 mod egg;
 mod exit;
 pub mod mczee;
+pub mod notebook;
 mod page_strip;
 mod print;
 mod removers;
@@ -30,16 +35,21 @@ mod word_strip;
 
 use crate::Frame;
 use crate::assets::{Assets, CursorRef, Program};
-use crate::scene::{DEFAULT_CURSOR, Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{
+    CwScene, DEFAULT_CURSOR, Effect, Input, Key, KidCommon, MouseButton, Scene, SceneId,
+};
 use crate::scenes::paint::exit_dialog::{Choice, ExitDialog, Reason};
 use crate::scenes::paint::rename::{After as RenameAfter, Rename};
 use crate::writer::doc::{Document, Item};
 use crate::writer::ideas::machine::Piece;
 use crate::writer::ideas::{session, story};
+use crate::writer::prefs;
 use crate::writer::selection::Clip;
+use control_center::{Action as CenterAction, ControlCenter};
 use cursors::Pointer;
 pub use editor::{Editor, LIBRARIES, ORIGIN, PAGE, PAGE_GAP, PagePoint};
 use mczee::{McZee, Request};
+use notebook::NotebookOverlay;
 use std::path::{Path, PathBuf};
 use tools::HelpRef;
 pub use tools::{Cx, ToolId, ToolStrip};
@@ -102,6 +112,8 @@ const WHAT_PAGES: usize = 11;
 /// "Salvar": o título vira campo de nome (`0faa[14]`, som `0232`).
 const WHAT_SAVE: usize = 14;
 const SND_RENAME: u16 = 0x0232;
+/// Pasta abrindo (a maleta da Bolsa Mágica, Ctrl+O).
+const SND_PORTFOLIO: u16 = 0x02f1;
 /// Porta aberta: `02d6` + `02fe` e o "Epa!" (`0203[0]`).
 const SND_EPA: [u16; 2] = [0x02d6, 0x02fe];
 /// Ctrl+X/C/V: sons e balões dos Re-movedores (`0fa3[8]`, `[12]`, `[14]`).
@@ -153,6 +165,9 @@ pub enum After {
     New,
     /// Sair do programa (Ctrl+Q).
     Quit,
+    /// Abrir a pasta (maleta da Bolsa Mágica, Ctrl+O): o documento escolhido
+    /// substitui este.
+    Open,
 }
 
 /// Diálogo "Epa!" aberto.
@@ -203,26 +218,63 @@ pub struct Writer {
     exit_to: SceneId,
     /// Balão de boas-vindas.
     welcome: HelpRef,
+    /// Pasta `MSKIDS` dos dados originais (os exemplos do Max e o
+    /// `~MAXUSER.INF`, `writer::prefs`).
+    data: PathBuf,
+    /// Caderno de Idéias aberto (Bolsa Mágica).
+    notebook: Option<NotebookOverlay>,
+    /// Central de Controle aberta (Ctrl+Shift+A).
+    center: Option<ControlCenter>,
+}
+
+/// Pasta dos usuários e apelido a partir da pasta do usuário
+/// (`<usuários>/<apelido>`).
+fn split_user_dir(dir: &Path) -> Option<(&Path, String)> {
+    let user = dir.file_name()?.to_string_lossy().to_string();
+    Some((dir.parent()?, user))
+}
+
+/// O documento que o Escritório abre ao entrar: o último do usuário
+/// (`FILR 0` do `~MAXUSER.INF`, o do quadro da sala; para um usuário novo,
+/// o exemplo do Max). Um usuário sem `~MAXUSER.INF` que já tem documentos
+/// na pasta (gravados antes de o port guardar as preferências) abre o mais
+/// recente deles.
+pub fn last_document(dir: &Path, data: &Path) -> Option<PathBuf> {
+    let (users, user) = split_user_dir(dir)?;
+    if !prefs::path(users, &user).exists()
+        && let Some(f) = crate::writer::store::latest(dir)
+    {
+        return Some(f);
+    }
+    prefs::last_document(Some(users), &user, data).map(|(_, f)| f)
 }
 
 impl Writer {
     /// O Escritório com o último documento da pasta do usuário `dir` (ou um
     /// em branco).
     pub fn new(dir: Option<PathBuf>, assets: &Assets) -> Writer {
-        Writer::with_editor(Editor::new(dir, assets))
+        let mut ed = Editor::blank(dir.clone(), assets);
+        let opened = dir
+            .as_deref()
+            .and_then(|d| last_document(d, assets.data_dir()))
+            .is_some_and(|f| ed.open(&f).is_ok());
+        if !opened {
+            ed = Editor::new(dir, assets);
+        }
+        Writer::with_editor(ed, assets)
     }
 
     /// O Escritório com um documento em branco (prancheta da sala, NOVO,
     /// "Ir direto para o Escritório").
     pub fn new_blank(dir: Option<PathBuf>, assets: &Assets) -> Writer {
-        Writer::with_editor(Editor::blank(dir, assets))
+        Writer::with_editor(Editor::blank(dir, assets), assets)
     }
 
     /// O Escritório com o documento `path`.
     pub fn open(dir: Option<PathBuf>, path: &Path, assets: &Assets) -> Result<Writer, String> {
         let mut ed = Editor::blank(dir, assets);
         ed.open(path)?;
-        Ok(Writer::with_editor(ed))
+        Ok(Writer::with_editor(ed, assets))
     }
 
     /// O Escritório com a história começada na Oficina de Idéias
@@ -235,13 +287,13 @@ impl Writer {
             Some(s) => {
                 let (help, back) = (s.source.help(), s.source.back());
                 ed.open_story(s);
-                let mut w = Writer::with_editor(ed);
+                let mut w = Writer::with_editor(ed, assets);
                 w.floor = story::FLOOR_LABEL;
                 w.exit_to = back;
                 w.welcome = help;
                 w
             }
-            None => Writer::with_editor(ed),
+            None => Writer::with_editor(ed, assets),
         };
         w.user = user.to_string();
         w
@@ -253,7 +305,7 @@ impl Writer {
         self
     }
 
-    fn with_editor(ed: Editor) -> Writer {
+    fn with_editor(ed: Editor, assets: &Assets) -> Writer {
         Writer {
             common: KidCommon::new(None),
             ed,
@@ -275,7 +327,28 @@ impl Writer {
             floor: chrome::FLOOR_OFFICE,
             exit_to: SceneId::Studio.in_program(Program::Writer),
             welcome: mczee::WELCOME,
+            data: assets.data_dir().to_path_buf(),
+            notebook: None,
+            center: None,
         }
+    }
+
+    /// Torna `file` o último documento do usuário (`writer::prefs`); com
+    /// `replaced`, os lugares da parede que apontavam para o arquivo antigo
+    /// passam para o novo. Devolve o erro, se houver, para o registro.
+    fn remember(&self, file: &Path, title: &str, replaced: Option<&Path>) -> Option<String> {
+        let (users, user) = split_user_dir(self.ed.dir()?)?;
+        prefs::remember_saved(users, &user, &self.data, file, title, replaced)
+            .err()
+            .map(|e| format!("preferências: {e}"))
+    }
+
+    pub fn notebook(&self) -> Option<&NotebookOverlay> {
+        self.notebook.as_ref()
+    }
+
+    pub fn control_center(&self) -> Option<&ControlCenter> {
+        self.center.as_ref()
     }
 
     /// Andar da barra de baixo.
@@ -442,10 +515,8 @@ impl Writer {
         match r {
             Request::New => self.ask_or(After::New, fx, a),
             Request::Save => self.start_rename(After::Stay, fx, a),
-            Request::Open => fx.push(Effect::Log("Pasta: ainda não disponível".into())),
-            Request::Notebook => fx.push(Effect::Log(
-                "Caderno de Idéias: ainda não disponível".into(),
-            )),
+            Request::Open => self.ask_or(After::Open, fx, a),
+            Request::Notebook => self.open_notebook(fx, a),
         }
     }
 
@@ -466,7 +537,7 @@ impl Writer {
         fx.extend(SND_EPA.map(snd));
         self.door_open = after == After::Leave;
         self.mczee.close();
-        let reason = if after == After::New {
+        let reason = if matches!(after, After::New | After::Open) {
             Reason::New
         } else {
             Reason::Exit
@@ -537,12 +608,20 @@ impl Writer {
 
     fn save(&mut self, title: &str, keep_old: bool, fx: &mut Vec<Effect>) {
         let author = self.author.clone();
-        fx.push(Effect::Log(
-            match self.ed.save_as(title, &author, keep_old) {
-                Ok(p) => format!("documento \"{title}\" guardado em {}", p.display()),
-                Err(e) => e,
-            },
-        ));
+        let old = self.ed.file().map(Path::to_path_buf);
+        match self.ed.save_as(title, &author, keep_old) {
+            Ok(p) => {
+                fx.push(Effect::Log(format!(
+                    "documento \"{title}\" guardado em {}",
+                    p.display()
+                )));
+                let replaced = old.as_deref().filter(|o| !keep_old && *o != p);
+                if let Some(e) = self.remember(&p, title, replaced) {
+                    fx.push(Effect::Log(e));
+                }
+            }
+            Err(e) => fx.push(Effect::Log(e)),
+        }
     }
 
     fn finish(&mut self, after: After, fx: &mut Vec<Effect>) {
@@ -551,6 +630,127 @@ impl Writer {
             After::Leave => fx.push(Effect::ChangeScene(self.exit_to)),
             After::New => self.ed.new_document(),
             After::Quit => fx.push(Effect::Quit),
+            After::Open => {
+                fx.push(snd(SND_PORTFOLIO));
+                fx.push(Effect::Push(SceneId::Cw(CwScene::Portfolio)));
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Caderno de Idéias (W20) e Central de Controle (W23)
+
+    /// Caderno de Idéias da Bolsa Mágica: por cima da página, com o balão
+    /// `0faa[2]` do McZee.
+    fn open_notebook(&mut self, fx: &mut Vec<Effect>, a: &Assets) {
+        let users = self
+            .ed
+            .dir()
+            .and_then(split_user_dir)
+            .map(|(u, _)| u.to_path_buf());
+        let user = if self.user.is_empty() {
+            self.ed
+                .dir()
+                .and_then(split_user_dir)
+                .map(|(_, u)| u)
+                .unwrap_or_default()
+        } else {
+            self.user.clone()
+        };
+        fx.push(snd(notebook::SND_OPEN));
+        self.notebook = Some(NotebookOverlay::open(users.as_deref(), &user, a));
+        self.mczee
+            .show((WHAT_GENERAL, notebook::WHAT_NOTEBOOK), false, a);
+    }
+
+    /// Entrada com o Caderno aberto: os balões do McZee primeiro, depois o
+    /// caderno.
+    fn notebook_input(&mut self, i: &Input, fx: &mut Vec<Effect>, a: &Assets) {
+        if let Input::Click {
+            button: MouseButton::Left,
+            x,
+            y,
+        } = *i
+        {
+            if self.mczee.covers(a, x, y) {
+                self.mczee.front_click(x, y, fx, a);
+                return;
+            }
+            // clique fora do caderno com o balão do McZee aberto: só o fecha
+            if self.mczee.help().is_some() && !self.notebook_contains(x, y) {
+                self.mczee.close();
+                return;
+            }
+        }
+        let Some(nb) = self.notebook.as_mut() else {
+            return;
+        };
+        let (out, help) = nb.handle(i, fx, a);
+        if let Some(h) = help {
+            self.mczee.show(h, false, a);
+        }
+        if out.is_some() {
+            self.notebook = None;
+            self.mczee.close();
+        }
+    }
+
+    fn notebook_contains(&self, x: i32, y: i32) -> bool {
+        self.notebook.as_ref().is_some_and(|n| {
+            let (ox, oy) = n.view().origin();
+            let (w, h) = crate::scenes::writer_ideas::notebook::SIZE;
+            inside((ox, oy, w, h), x, y)
+        })
+    }
+
+    /// Central de Controle (Ctrl+Shift+A).
+    fn open_center(&mut self, a: &Assets) {
+        self.mczee.close();
+        self.center = Some(ControlCenter::new(a));
+    }
+
+    fn center_input(&mut self, i: &Input, fx: &mut Vec<Effect>, a: &Assets) {
+        let Some(c) = self.center.as_mut() else {
+            return;
+        };
+        let Some(act) = c.handle(i, a) else { return };
+        match act {
+            CenterAction::Close => self.center = None,
+            CenterAction::SaveAs => {
+                self.center = None;
+                self.start_rename(After::Stay, fx, a);
+            }
+            CenterAction::SaveText => {
+                self.center = None;
+                fx.push(Effect::Log(match self.ed.save_text() {
+                    Ok(p) => format!("texto guardado em {}", p.display()),
+                    Err(e) => format!("Salvar Como Texto: {e}"),
+                }));
+            }
+            CenterAction::Sound(on) => {
+                fx.push(Effect::SetVolume(if on { 100 } else { 0 }));
+            }
+            CenterAction::ResetIdeas => {
+                let dir = self
+                    .ed
+                    .dir()
+                    .and_then(split_user_dir)
+                    .map(|(u, n)| crate::writer::ideas::store::ideas_dir(u, &n));
+                if let Some(d) = dir {
+                    let empty: [Vec<String>; crate::writer::ideas::machine::WINDOWS] =
+                        Default::default();
+                    if let Err(e) = crate::writer::ideas::store::save_machine_entries(&d, &empty) {
+                        fx.push(Effect::Log(format!("Máquina de Idéias: {e}")));
+                    }
+                }
+                fx.push(Effect::Log(
+                    "Máquina de Idéias: entradas do usuário apagadas".into(),
+                ));
+            }
+            CenterAction::PrintOptions { global } => fx.push(Effect::Log(format!(
+                "Opções de Impressão ({}): o port imprime pelo lp, sem a caixa Impressora",
+                if global { "globais" } else { "locais" }
+            ))),
         }
     }
 
@@ -586,12 +786,14 @@ impl Writer {
                     fx.push(snd(if undo { SND_UNDO } else { SND_REDO }));
                 }
             }
+            Key::A if self.shift => self.open_center(a),
             Key::A => {
                 let d = self.ed.doc().clone();
                 self.ed.sel.select_all(&d);
             }
             Key::S => self.start_rename(After::Stay, fx, a),
             Key::Q => self.ask_or(After::Quit, fx, a),
+            Key::O => self.ask_or(After::Open, fx, a),
             _ => return false,
         }
         true
@@ -697,7 +899,7 @@ impl Writer {
     fn wanted_cursor(&self, a: &Assets) -> CursorRef {
         let (x, y) = self.mouse;
         let tool = self.tools.get(self.tool);
-        if self.dialog.is_some() {
+        if self.dialog.is_some() || self.center.is_some() || self.notebook.is_some() {
             DEFAULT_CURSOR
         } else if self.mczee.wand() {
             cursors::writer(cursors::WAND)
@@ -723,6 +925,23 @@ impl Scene for Writer {
             self.mczee.show(self.welcome, false, assets);
         }
         for i in input {
+            if let Input::Shift(on) = *i {
+                self.shift = on;
+            }
+            if let Input::Ctrl(on) = *i {
+                self.ctrl = on;
+            }
+            if self.center.is_some() {
+                self.center_input(i, &mut fx, assets);
+                continue;
+            }
+            if self.notebook.is_some() {
+                if let Input::MouseMove { x, y } = *i {
+                    self.mouse = (x, y);
+                }
+                self.notebook_input(i, &mut fx, assets);
+                continue;
+            }
             match *i {
                 Input::Click {
                     button: MouseButton::Left,
@@ -768,12 +987,19 @@ impl Scene for Writer {
             }
         }
         self.ed.tick(dt);
+        if let Some(n) = self.notebook.as_mut()
+            && dt.is_finite()
+        {
+            n.tick(dt.max(0.0));
+        }
         let t = self.tool;
         if dt.is_finite() {
             self.tools.get_mut(t).tick(&mut self.ed, dt.max(0.0));
         }
-        self.ed.caret_visible =
-            !self.tools.get(t).modal() && self.dialog.is_none() && self.rename.is_none();
+        self.ed.caret_visible = !self.tools.get(t).modal()
+            && self.dialog.is_none()
+            && self.rename.is_none()
+            && self.notebook.is_none();
         let want = self.wanted_cursor(assets);
         if let Some(e) = self.pointer.set(want) {
             fx.push(e);
@@ -796,19 +1022,30 @@ impl Scene for Writer {
             r.draw_in(f, a.font(8).as_deref(), TITLE_LABEL);
         }
         tool.draw_front(&self.ed, f, a);
+        if let Some(n) = &self.notebook {
+            n.draw(f, a);
+        }
         self.mczee.draw(f, a);
         if let Some(d) = &self.dialog {
             d.exit().draw(f, a);
+        }
+        if let Some(c) = &self.center {
+            c.draw(f, a);
         }
     }
 
     fn leave(&mut self) -> Vec<Effect> {
         // saiu sem escolher no "Epa!" (janela fechada): guarda num KIDSnnnn.MAX
         match self.ed.save_auto() {
-            Some(Ok(p)) => vec![Effect::Log(format!(
-                "documento guardado em {}",
-                p.display()
-            ))],
+            Some(Ok(p)) => {
+                let title = self.ed.title().unwrap_or_default().to_string();
+                let mut fx = vec![Effect::Log(format!(
+                    "documento guardado em {}",
+                    p.display()
+                ))];
+                fx.extend(self.remember(&p, &title, None).map(Effect::Log));
+                fx
+            }
             Some(Err(e)) => vec![Effect::Log(e)],
             None => Vec::new(),
         }
@@ -1265,22 +1502,32 @@ mod tests {
         );
         let b = bullet(&w, &a, 0);
         w.update(&[b], 0.0, &a);
-        let mut names: Vec<String> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        names.sort();
-        assert_eq!(names, vec!["GATO_T11.MAX", "GATO_TES.MAX"]);
-        // "só a nova": o arquivo do documento é substituído
+        let names = |d: &Path| {
+            let mut v: Vec<String> = std::fs::read_dir(d)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|n| !n.starts_with('~'))
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(names(dir.path()), vec!["GATO_T11.MAX", "GATO_TES.MAX"]);
+        // "só a nova", como o original: grava com um nome novo e apaga o
+        // arquivo do documento
         let mut w = Writer::open(Some(dir.path().to_path_buf()), &p, &a).unwrap();
         w.update(&[text("x"), ctrl(Key::S)], 0.0, &a);
         w.update(&[key(Key::Enter)], 0.0, &a);
         let b = bullet(&w, &a, 1);
         w.update(&[b], 0.0, &a);
         assert!(!w.editor().changed());
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
-        let (doc, _) = crate::writer::store::load(&p).unwrap();
+        assert_eq!(names(dir.path()), vec!["GATO_T11.MAX", "GATO_T12.MAX"]);
+        let p12 = dir.path().join("GATO_T12.MAX");
+        assert_eq!(w.editor().file(), Some(p12.as_path()));
+        let (doc, _) = crate::writer::store::load(&p12).unwrap();
         assert_eq!(doc.paras[0].text(), "xO gato");
+        // e ele é o último documento (o que o Escritório abre ao entrar)
+        let again = Writer::new(Some(dir.path().to_path_buf()), &a);
+        assert_eq!(again.editor().file(), Some(p12.as_path()));
     }
 
     #[test]
@@ -1481,13 +1728,18 @@ mod tests {
         assert!(!w.mczee().menu_open());
         assert_eq!(w.mczee().talk(), Some(mczee::Talk::Dismiss));
         assert!(w.mczee().help_on());
-        // pedidos do menu sem tela ainda: registro
+        // Caderno de Idéias: por cima da página; NÃO fecha
         w.update(&[click(300, 300), click(556, 80)], 0.0, &a);
         let fx = w.update(&[click(556, 300)], 0.0, &a);
-        assert!(logs(&fx).contains("Caderno"));
+        assert_eq!(sounds(&fx), vec![SND_CHOOSE, notebook::SND_OPEN]);
+        assert!(w.notebook().is_some());
+        let (ox, oy) = w.notebook().unwrap().view().origin();
+        w.update(&[click(ox + 210, oy + 300)], 0.0, &a);
+        assert!(w.notebook().is_none());
+        // o livro verde: a história do Writer por cima
         w.update(&[click(556, 80)], 0.0, &a);
         let fx = w.update(&[click(556, 430)], 0.0, &a);
-        assert!(fx.contains(&Effect::Push(SceneId::BookStory)));
+        assert!(fx.contains(&Effect::Push(SceneId::Cw(CwScene::BookStory))));
         // Varinha: cursor de varinha até escolher uma ferramenta
         w.update(&[click(556, 80), click(556, 345)], 0.0, &a);
         assert!(w.mczee().wand());
@@ -1497,6 +1749,160 @@ mod tests {
         // SALVAR do menu: o campo de nome
         w.update(&[click(556, 80), click(556, 255)], 0.0, &a);
         assert!(w.renaming().is_some());
+    }
+
+    /// Máscara da Bolsa Mágica: uma piada do `0201` num balão sem
+    /// rabicho, centrado em (320,240), com o som `0226`; um clique fecha.
+    #[test]
+    fn mask_tells_a_joke_in_the_middle_without_tail() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[], 0.0, &a);
+        w.update(&[click(556, 80)], 0.0, &a);
+        let fx = w.update(&[click(556, 389)], 0.0, &a);
+        let s = sounds(&fx);
+        assert_eq!(s[0], SND_CHOOSE);
+        assert!(mczee::SND_JOKE.contains(&s[1]), "{s:?}");
+        assert_eq!(w.mczee().talk(), Some(mczee::Talk::Joke));
+        let b = w.mczee().talk_balloon().unwrap();
+        assert!(b.tail.is_none());
+        let h = b.height(&a);
+        assert!((b.x + b.box_width() / 2 - 320).abs() <= 1, "{}", b.x);
+        assert!((b.y + h / 2 - 240).abs() <= 1, "{}", b.y);
+        w.update(&[click(30, 300)], 0.0, &a);
+        assert_eq!(w.mczee().talk(), None);
+    }
+
+    /// Maleta da Bolsa Mágica e Ctrl+O: a pasta por cima (som `02f1`); com
+    /// mudanças, o "Epa!" antes.
+    #[test]
+    fn suitcase_and_ctrl_o_open_the_portfolio() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
+        w.update(&[click(556, 80)], 0.0, &a);
+        let fx = w.update(&[click(556, 213)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Cw(CwScene::Portfolio))));
+        assert!(sounds(&fx).contains(&SND_PORTFOLIO));
+        let fx = w.update(&[ctrl(Key::O)], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Cw(CwScene::Portfolio))));
+        w.update(&[text("a")], 0.0, &a);
+        let fx = w.update(&[ctrl(Key::O)], 0.0, &a);
+        assert!(!fx.contains(&Effect::Push(SceneId::Cw(CwScene::Portfolio))));
+        assert!(matches!(w.dialog(), Some(Dialog::Epa(_, After::Open))));
+        assert!(!w.door_open());
+        // jogar fora: a pasta abre
+        let b = bullet(&w, &a, 1);
+        let fx = w.update(&[b], 0.0, &a);
+        assert!(fx.contains(&Effect::Push(SceneId::Cw(CwScene::Portfolio))));
+    }
+
+    /// Ctrl+Shift+A: a Central de Controle por cima de tudo; Salvar Como
+    /// Texto grava o `.TXT`, Controle de Som desliga, Esc volta.
+    #[test]
+    fn ctrl_shift_a_opens_the_control_center() {
+        let (_d, a) = empty_assets();
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = Writer::new_blank(Some(dir.path().join("ana")), &a);
+        std::fs::create_dir_all(dir.path().join("ana")).unwrap();
+        w.update(&[text("Oi")], 0.0, &a);
+        w.update(
+            &[Input::Shift(true), ctrl(Key::A), Input::Shift(false)],
+            0.0,
+            &a,
+        );
+        let c = w.control_center().expect("Central aberta");
+        // tudo vai para a Central: digitar não muda o documento
+        let (tx, ty) = center(c.title_rects(&a)[0]);
+        w.update(&[text("zzz")], 0.0, &a);
+        assert_eq!(para(&w, 0), "Oi");
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.draw(&mut f, &a);
+        assert_eq!(f.pixel(320, 20), [0, 0, 0, 255]);
+        // Arquivo › Salvar Como Texto...
+        w.update(&[click(tx, ty)], 0.0, &a);
+        let c = w.control_center().unwrap();
+        let (_, items) = c.list_rects(&a, 0);
+        let k = c.columns()[0]
+            .items
+            .iter()
+            .position(|e| e.id == control_center::cmd::SAVE_TEXT)
+            .unwrap();
+        let (x, y) = center(items[k]);
+        let fx = w.update(&[click(x, y)], 0.0, &a);
+        assert!(logs(&fx).contains("TEXTO.TXT"), "{}", logs(&fx));
+        assert!(w.control_center().is_none());
+        let t = std::fs::read_to_string(dir.path().join("ana").join("TEXTO.TXT")).unwrap();
+        assert!(t.starts_with("Oi"));
+        // Ferramentas › Controle de Som › Desligar sons
+        w.update(
+            &[Input::Shift(true), ctrl(Key::A), Input::Shift(false)],
+            0.0,
+            &a,
+        );
+        let c = w.control_center().unwrap();
+        let (tx, ty) = center(c.title_rects(&a)[2]);
+        w.update(&[click(tx, ty)], 0.0, &a);
+        let (_, items) = w.control_center().unwrap().list_rects(&a, 2);
+        let (x, y) = center(items[0]);
+        w.update(&[click(x, y)], 0.0, &a);
+        let d = w.control_center().unwrap().dialog().unwrap().clone();
+        let off = d
+            .buttons
+            .iter()
+            .find(|b| b.1 == control_center::dlg::SOUND_OFF)
+            .unwrap();
+        let (x, y) = center(off.0);
+        let fx = w.update(&[click(x, y)], 0.0, &a);
+        assert!(fx.contains(&Effect::SetVolume(0)));
+        // Esc volta ao Creative Writer
+        w.update(&[key(Key::Escape)], 0.0, &a);
+        assert!(w.control_center().is_none());
+        // Salvar Como: o campo de nome
+        w.update(
+            &[Input::Shift(true), ctrl(Key::A), Input::Shift(false)],
+            0.0,
+            &a,
+        );
+        let c = w.control_center().unwrap();
+        let (tx, ty) = center(c.title_rects(&a)[0]);
+        w.update(&[click(tx, ty)], 0.0, &a);
+        let (_, items) = w.control_center().unwrap().list_rects(&a, 0);
+        let (x, y) = center(items[2]);
+        w.update(&[click(x, y)], 0.0, &a);
+        assert!(w.renaming().is_some());
+    }
+
+    /// Caderno de Idéias do editor: a câmera copia uma sentença da aba
+    /// Máquina (balão `0faa[19]`), OK grava, e o Ctrl+V a cola na página.
+    #[test]
+    fn notebook_copies_a_sentence_that_the_editor_pastes() {
+        use crate::scenes::writer_ideas::notebook::ToolMode;
+        use crate::writer::ideas::store::{Notebook, ideas_dir};
+        let (_d, a) = empty_assets();
+        let users = tempfile::tempdir().unwrap();
+        let user = format!("cad{}", std::process::id());
+        let mut nb = Notebook::default();
+        nb.sentences
+            .push(vec![Piece::Text("Um gato no telhado".into())]);
+        nb.save(&ideas_dir(users.path(), &user)).unwrap();
+        session::set_tab(&user, session::Tab::Machine);
+        let mut w = Writer::new_blank(Some(users.path().join(&user)), &a).with_user(&user);
+        w.update(&[click(556, 80), click(556, 300)], 0.0, &a);
+        let (ox, oy) = w.notebook().expect("caderno").view().origin();
+        assert_eq!(w.notebook().unwrap().view().sentences().len(), 1);
+        // câmera, depois a sentença
+        w.update(&[click(ox + 69, oy + 302)], 0.0, &a);
+        assert_eq!(w.notebook().unwrap().view().mode(), Some(ToolMode::Copy));
+        w.update(&[click(ox + 80, oy + 20)], 0.0, &a);
+        assert!(matches!(
+            session::clip(&user),
+            Some(session::Clip::Text(p)) if p == vec![Piece::Text("Um gato no telhado".into())]
+        ));
+        // OK fecha (e grava); o texto digitado volta ao editor
+        w.update(&[click(ox + 243, oy + 302)], 0.0, &a);
+        assert!(w.notebook().is_none());
+        w.update(&[ctrl(Key::V)], 0.0, &a);
+        assert_eq!(para(&w, 0), "Um gato no telhado");
     }
 
     #[test]
@@ -1568,6 +1974,53 @@ mod tests {
         let mut f = Frame::new(SCREEN_W, SCREEN_H);
         w.draw(&mut f, &a);
         crate::scenes::testutil::dump(&f, "writer_idea_story");
+    }
+
+    /// Com os dados reais: um usuário novo entra no Escritório com o último
+    /// documento das preferências, o exemplo do Max ("O Ponto de Fuga"),
+    /// aberto como cópia (salvar grava na pasta dele); o último gravado por
+    /// `prefs::remember_last` é o que ele abre da próxima vez.
+    #[test]
+    fn real_assets_writer_new_opens_the_last_document() {
+        let Some(a) = assets() else { return };
+        let users = tempfile::tempdir().unwrap();
+        let dir = users.path().join("ana");
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = Writer::new(Some(dir.clone()), &a);
+        assert_eq!(w.title(), "O Ponto de Fuga");
+        assert!(w.editor().file().is_none());
+        let samp = crate::paths::find_ci(a.data_dir(), "SHARED/USERS/MAX/SAMP9.MAX").unwrap();
+        // a pasta e a Biblioteca o gravam como último antes do OpenDocument
+        let w = Writer::open(Some(dir.clone()), &samp, &a).unwrap();
+        let t = w.title().to_string();
+        prefs::remember_last(users.path(), "ana", a.data_dir(), &samp, &t).unwrap();
+        let (d, f) = prefs::last_document(Some(users.path()), "ana", a.data_dir()).unwrap();
+        assert_eq!(
+            (d.file.as_str(), d.title.as_str()),
+            ("SAMP9.MAX", t.as_str())
+        );
+        assert_eq!(f, samp);
+        assert_eq!(Writer::new(Some(dir), &a).title(), t);
+    }
+
+    /// Com os dados reais: o Caderno do editor abre com o balão do McZee
+    /// `0faa[2]` ("Caderno de Idéias") e a moldura pontilhada.
+    #[test]
+    fn real_assets_notebook_opens_with_the_mczee_balloon() {
+        let Some(a) = assets() else { return };
+        let mut w = Writer::new_blank(None, &a).with_user("ana");
+        w.update(&[], 0.0, &a);
+        w.update(&[click(556, 80), click(556, 300)], 0.0, &a);
+        assert!(w.notebook().is_some());
+        assert_eq!(
+            w.mczee().help(),
+            Some((WHAT_GENERAL, notebook::WHAT_NOTEBOOK))
+        );
+        let mut f = Frame::new(SCREEN_W, SCREEN_H);
+        w.draw(&mut f, &a);
+        crate::scenes::testutil::dump(&f, "cw_notebook_editor");
+        // pontilhado cinza 100 na barra de ferramentas
+        assert_eq!(f.pixel(10, 30), [100, 100, 100, 255]);
     }
 
     #[test]

@@ -32,9 +32,14 @@ const HELP_TAIL: (i32, i32) = (545, 101);
 const WHAT_ON: usize = 0;
 const WHAT_OFF: usize = 1;
 const WHAT_WAND: usize = 7;
-/// Ditados e piadas do McZee (cara de sol do menu): `WHAT 0201` do Writer.
+/// Ditados e piadas do McZee (máscara, 7º botão da Bolsa Mágica do editor):
+/// `WHAT 0201` do Writer, uma sorteada, num balão sem rabicho centrado na
+/// tela (centro em (320,240) nas quatro capturas `ideas_96`/`97`), com o
+/// som `0226` (o mesmo PCM de `0283` e `0312`; `ideas.md` §7).
 const WHAT_JOKES: u16 = 0x0201;
-const JOKE_POS: (i32, i32, i32) = (218, 197, 200);
+const JOKE_CENTER: (i32, i32) = (320, 240);
+const JOKE_W: i32 = 200;
+pub const SND_JOKE: [u16; 3] = [0x0226, 0x0283, 0x0312];
 /// Abrir o menu do McZee.
 const SND_MENU: u16 = 0x02ce;
 /// Balão de boas-vindas e som da entrada no Escritório.
@@ -113,6 +118,11 @@ impl McZee {
 
     pub fn talk(&self) -> Option<Talk> {
         self.talk.as_ref().map(|(_, t)| *t)
+    }
+
+    /// Balão de opções (ou da piada) aberto.
+    pub fn talk_balloon(&self) -> Option<&Balloon> {
+        self.talk.as_ref().map(|(b, _)| b)
     }
 
     /// Retângulo da bolinha `k` do balão de opções aberto.
@@ -285,8 +295,14 @@ impl McZee {
             b.options = options.into_iter().map(str::to_string).collect();
         }
         if kind == Talk::Joke {
-            (b.x, b.y, b.w) = JOKE_POS;
+            if b.w <= 0 {
+                b.w = JOKE_W;
+            }
             b.options.clear();
+            b.tail = None;
+            let h = b.height(a);
+            b.x = JOKE_CENTER.0 - b.box_width() / 2;
+            b.y = JOKE_CENTER.1 - h / 2;
         } else {
             b.x = (HELP_RIGHT - b.w).max(5);
         }
@@ -324,10 +340,12 @@ impl McZee {
             }
             Item::Joke => {
                 let n = self.records(WHAT_JOKES, a).len().max(1);
-                let k = crate::rng::XorShift::from_clock().below(n);
+                let mut rng = crate::rng::XorShift::from_clock();
+                let k = rng.below(n);
+                fx.push(super::tools::snd(SND_JOKE[rng.below(SND_JOKE.len())]));
                 self.open_talk(WHAT_JOKES, k, Talk::Joke, a);
             }
-            Item::Story => fx.push(Effect::Push(SceneId::BookStory)),
+            Item::Story => fx.push(Effect::Push(SceneId::BookStory.in_program(Program::Writer))),
             // a cartola é só do Fine Artist
             Item::Tricks => {}
         }
