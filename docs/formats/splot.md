@@ -69,7 +69,10 @@ cavalete: **463 × 335** no `SMNM 1` (o do Fine Artist, igual ao medido na
 tela) e 418 × 245 no `SMNM 2`. Os demais (49, 47, 75, 96, 15, 661, 68, 36,
 2, 150, 20, 1, 150, 20, 60, 12, 48, 16) devem ser botões e prévia.
 
-## `TDRL` (forma bruta)
+## `TDRL` — os "preferidos"
 
-`u16 13` + 13 registros de 12 bytes (`ff ff`, `u16`, 4 bytes, `04 00`,
-`u8`, `ff`). Não interpretado.
+`u16 13` + 13 registros de 12 bytes: `ff ff`, `i16` giro, forma, sombra,
+padrão, conjunto de cores, estilo das letras, fonte (4; 0 com estilo 0),
+estilos, `ff` — as mesmas escolhas, na mesma ordem, dos bytes `+0x40..+0x47`
+do `SPLE` ([`sple.md`](sple.md)). No Writer os botões ＋ e − do cavalete
+percorrem esses registros (`splot_res::favorite`).

@@ -15,6 +15,7 @@ leitores sem consultar o código original.
 | [`atag.md`](atag.md) | Roteiros de animação `ATAG` (recursos dos executáveis e adesivos animados) |
 | [`mag.md`](mag.md) | Desenhos salvos do Fine Artist (`.MAG`, `.PTM`): chunks, paleta, miniaturas |
 | [`max.md`](max.md) | Documentos do Creative Writer (`.MAX`): texto, sprms de caractere/parágrafo/moldura/documento, páginas FKP, PLC, fontes, molduras, objetos, senha do Agente secreto, miniatura |
+| [`sple.md`](sple.md) | Palavras com forma (Splots) no `.MAX`: escolhas do cavalete, forma, cores e o desenho em polígonos; os "preferidos" do `TDRL` |
 | [`writer-exe-recursos.md`](writer-exe-recursos.md) | Catálogo dos recursos do `WRITER.EXE`: `STR#`, `STRING`, `MENU`, `ACCELERATOR`, `DIALOG`, `TMEN`, `CSCH`, `SSHD`, `PATS`, `SMNM`, `TDRL`, bitmaps, cursores, mapa dos blocos `WHAT` |
 | [`writer-atag.md`](writer-atag.md) | Os 155 `ATAG` do `WRITER.EXE`: travessias, gags, chapéus e poses do McZee, interface |
 | [`writer-pic-snd.md`](writer-pic-snd.md) | `WRITER.PIC` por faixa de ids e tela, `WRITER.SND` (122 sons, 99 iguais aos do `ARTIST.SND`) e bibliotecas de `SHARED/STUFF` usadas pelo Writer |
