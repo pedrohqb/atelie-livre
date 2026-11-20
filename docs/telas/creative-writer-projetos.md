@@ -187,15 +187,79 @@ passo não faz nada, mas não chega ao editor: o balão é opaco).
   existem) e que todos cabem na tela; `dump_balloons_for_comparison` grava
   quadros com `ATELIE_DUMP`.
 
-## Próxima onda (P6/P7)
+## A cena (P6, P7, P12, P17–P20)
 
-1. `scenes/writer_project.rs` (ou um modo do `Writer` do Escritório
-   integrado): hospeda o `Writer` e um `Assistant`; troca a porta Saída
-   pelo Max; traduz as ações das ferramentas em `Event`s e executa os
-   `Out`s; mantém o `Context`.
-2. Andar dos Projetos (`writer_floors::pick`): "começar" abre o editor em
-   modo projeto com `Assistant::new(kind, …)` no lugar de
-   `Cw(NewDocument)`; "um que você já criou" abre a pasta filtrada e o
-   documento **sem** assistente; Ctrl+clique no troféu começa direto.
-3. Reabrir um `.MAX` com `WIZA` de projeto pela pasta do Escritório abre
-   sem assistente (porta Saída normal), como no original.
+`crates/engine/src/scenes/writer_project.rs` (`ProjectScene`,
+`SceneId::Cw(CwScene::Project(kind))`, `--scene jornal|cartao|faixa`)
+hospeda o `Writer` do Escritório em modo projeto (`Writer::for_project`:
+andar "Oficina de Projetos", título "Estamos fazendo um …" até ter nome,
+sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
+`writer::project::blank(kind)`.
+
+- **Cliques**: aviso do Rex aberto (qualquer clique fecha) → balões e Max
+  (`Assistant::click`; a porta Saída inteira, `DOOR_RECT`, é o Max) →
+  pasta de amostras → editor. Os que vão ao editor viram eventos pelo
+  lugar (`HITS`: Forma, Cria-colunas, Alto/Largo, Nº de página, rolos
+  BORDA, Visão normal, rolos de adesivos, lápis de cera, McZee do
+  Imprimir; a alavanca de Página e Visor troca a página da faixa que a
+  cena acompanha) ou `PageClicked` (dentro de `PAGE`). Nada vira evento
+  com a faixa modal, um "Epa!", o campo de nome ou o McZee por cima.
+- **Mudanças do documento** (`writer::project::{Snapshot, events}`): a
+  cena guarda o documento como o assistente o viu por último (depois dos
+  próprios comandos) e manda o que mudou: colunas → `MenuItem(Columns,
+  n)`, orientação → `MenuItem(Orientation, TALL/WIDE)`, etiquetas →
+  `MenuItem(PageNumber, código)`, borda nova → `BorderPicked`, palavra com
+  forma nova → `ShapedOk`, adesivo novo → `StickerPicked` +
+  `StickerPlaced`, a 5ª folha do cartão → `FifthPage`. Funciona com
+  qualquer interface das ferramentas (menus da Preparação da página,
+  cavalete de Forma), que são de outros ramos. Limitação: escolher no menu
+  o valor que já estava (2 colunas no jornal) não muda nada e não avança.
+- **Restrições** (`writer::project::restrict`, P20): a faixa não muda de
+  Alto/Largo (`0805[17]`) e cartão e faixa não têm fundo (`0805[32]`): a
+  mudança é desfeita e o Rex avisa no meio da tela (som `02fe`).
+- **Teclado**: com o campo de páginas da faixa no balão, os dígitos,
+  Backspace/Delete e Enter (= Segue) vão ao assistente; com a pasta
+  aberta, ao fichário; senão ao editor (o nome na barra de baixo é o
+  `Rename` do Escritório).
+- **Comandos**: `OpenSamples` abre o fichário da pasta por cima do editor
+  só com as amostras do Max daquele `WIZA` (P19: miniatura `THMB`,
+  Título/Autor, setas do Título para "mais amostras"; os balões
+  `Folder(More)`/`Folder(Ok)` apontam para (496,287) e (263,356), medidos
+  em `projects_07`/`projects_95`); Já abre a amostra **como cópia** e manda
+  `SampleChosen`; o X volta ao passo anterior (`Back`). `SetPages(n)`
+  estica as palavras com forma (P12, `stretch_banner`; desfazível). Na
+  faixa, uma palavra com forma nova também é esticada na hora através das
+  folhas que a faixa tem. `AskName` copia a borda da folha para o
+  documento (`copy_border`, P18), garante as marcas do projeto e abre o
+  campo de nome (`Writer::ask_name`); quando ele fecha com o documento
+  gravado (Enter, ou as duas versões), a cena manda `Saved`. `Discard`,
+  `NewDocument` (`Editor::new_from` com o projeto em branco) e `Leave`
+  (sons `02d7`+`02c0`, andar dos Projetos).
+- **Ganchos**: `SetView` só é registrado até as visões de página
+  existirem (cw-tool-page); o McZee do Imprimir termina a impressão na hora
+  (`Printed`) até a máquina de impressão do Writer existir (cw-print) —
+  `ProjectScene::print` é o lugar de chamá-la.
+
+### Faixa: palavra através das folhas (P12)
+
+`Document::min_pages` (o `PGD ` dos cartões e faixas, lido por
+`convert::from_max`) fixa as folhas; `Document::object_span` dá as folhas
+que um objeto atravessa na faixa (`dop.banner`): a palavra de 1587 pt de
+`FAIXA_PA.MAX` vai da folha 0 à 2. A diagramação lista o objeto em cada
+folha que ele atravessa e o editor o desenha deslocado e recortado em cada
+uma.
+
+### Andar dos Projetos (P7)
+
+`writer_floors::pick` começa `CwScene::Project(kind)` (primeira opção e
+Ctrl+clique no troféu); a segunda opção (`writer_floors::folder`) abre a
+pasta por cima do andar filtrada pela área (`CwScene::ProjectFolder`,
+`WriterPortfolio::only`). O documento escolhido abre no Escritório **sem**
+assistente; um documento de `FLOR 3` reaberto tem o andar "Oficina de
+Projetos" na barra e a Saída volta ao andar.
+
+### Gravação (P18)
+
+O `.MAX` de um projeto sai com `WIZA` (`news`/`card`/`banr`), `FLOR 3`,
+`ADD[10]` = 3, `ADD[11]` = 1/2/3 (`view_code`), a borda `BDR ` copiada e o
+nome DOS do título (`store::path_for`: "Jornal Teste" → `JORNAL_T.MAX`).

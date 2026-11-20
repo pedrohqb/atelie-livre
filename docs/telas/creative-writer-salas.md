@@ -71,8 +71,10 @@ seta.
 
 - Alce JORNAL `[36]`, burro CARTÃO `[35]`, rinoceronte FAIXA `[37]` (a placa
   "FAIXA" não reage); "Ignorar" → `[38]`; Ctrl+clique começa direto. A
-  primeira bolinha abre, por enquanto, a área de escrita com um documento
-  novo (`writer_floors::PROJECT_START`), até os projetos do Writer existirem.
+  primeira bolinha abre o projeto com o assistente do Max
+  (`CwScene::Project`, `creative-writer-projetos.md`); a segunda, a pasta
+  filtrada pelo projeto (`CwScene::ProjectFolder`), e o documento abre sem
+  assistente.
 - Chegada `[31]`: as três primeiras opções abrem direto o balão do bicho; a
   quarta, `[69]` (mastro).
 - **Varinha nos bichos**: um acessório sorteado por 3 s (som `293`),

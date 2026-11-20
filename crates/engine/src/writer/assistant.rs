@@ -242,6 +242,10 @@ impl Anchor {
             // primeiro rolo BORDA (104, 57), 108×42
             Anchor::Button(Button::BorderRoll) => (158, 78),
             Anchor::Bag => (555, 95),
+            // seta "mais amostras" do Título e o Já da pasta
+            // (`projects_07_jornal_amostra`, `projects_95_seta`)
+            Anchor::Folder(Spot::More) => (496, 287),
+            Anchor::Folder(Spot::Ok) => (263, 356),
             Anchor::NameBar => (320, 461),
             _ => return None,
         })
@@ -259,6 +263,13 @@ pub fn place(anchor: Anchor, w: i32, h: i32) -> ((i32, i32), Option<(i32, i32)>)
     let clamp_x = |x: i32| x.clamp(4, (636 - w).max(4));
     match anchor.point() {
         Some(tail) if anchor == Anchor::Max => ((clamp_x(620 - w), 115), Some(tail)),
+        // na pasta: à direita da seta (522,277) e embaixo do Já (240,380)
+        Some((px, py)) if anchor == Anchor::Folder(Spot::More) => {
+            ((clamp_x(px + 26), py - 10), Some((px, py)))
+        }
+        Some((px, py)) if anchor == Anchor::Folder(Spot::Ok) => {
+            ((clamp_x(px - 23), py + 24), Some((px, py)))
+        }
         Some((px, py)) if py > 240 => ((clamp_x(px - w / 2), py - 16 - h), Some((px, py))),
         Some((px, py)) if px < 320 => ((clamp_x(px - 25), py + 44), Some((px, py + 14))),
         Some((px, py)) => ((clamp_x(px + 22 - w), py + 44), Some((px, py + 14))),

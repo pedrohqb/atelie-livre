@@ -18,10 +18,10 @@
 //! - `ADD[11]` foi 1 no jornal, 2 na faixa e 3 no cartão nos arquivos
 //!   gravados ([`view_code`]); `ADD[10]` e `FLOR` = 3.
 
-use super::assistant::Kind;
+use super::assistant::{Event, Kind, LABEL_NONE, Menu, TALL, WIDE};
 use super::convert::{self, MaxExtra};
-use super::doc::{Document, DopProps};
-use super::object::ObjectKind;
+use super::doc::{Document, DopProps, Orientation, PageNumber};
+use super::object::{ObjRef, ObjectKind};
 use formats::chnk::{self, OwnedChunk};
 use formats::max::{self, FLOOR_PROJECTS};
 
@@ -32,6 +32,17 @@ pub const BANNER_PAGE: (u16, u16) = (577, 595);
 /// Bibliotecas de bordas e fundos do Writer (`SHARED/STUFF`).
 pub const BORDER_LIBRARIES: [&str; 4] =
     ["0MAX100.BOR", "1MAX100.BOR", "2MAX100.BOR", "0MAG100.BOR"];
+
+/// Andar na barra de baixo durante um projeto (e nos projetos reabertos).
+pub const FLOOR_LABEL: &str = "Oficina de Projetos";
+/// Avisos do Rex do bloco `0805` (`projects-faixa.md`): "Você não pode
+/// mudar para Alto. As faixas são sempre impressas como Largo." e "Você não
+/// pode pôr um fundo…" (cartão e faixa).
+pub const ALERT_BLOCK: u16 = 0x0805;
+pub const ALERT_BANNER_TALL: usize = 17;
+pub const ALERT_NO_BACKGROUND: usize = 32;
+/// O cartão tem 4 folhas: a quinta não é impressa (`3c00[106]`).
+pub const CARD_FIFTH_PAGE: usize = 5;
 
 /// Código do projeto no `.MAX`.
 pub fn project_of(kind: Kind) -> max::Project {
@@ -157,10 +168,104 @@ pub fn copy_border(doc: &Document, extra: &mut MaxExtra, libraries: &[(&str, &[u
     false
 }
 
+/// O que o assistente acompanha no documento entre dois quadros: a cena
+/// compara o antes e o depois de cada leva de entradas e manda ao
+/// assistente os eventos que as ferramentas causaram ([`events`]), qualquer
+/// que seja a interface delas (menus da Preparação da página, cavalete de
+/// palavras com forma, rolos).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snapshot {
+    pub columns: u16,
+    pub orientation: Orientation,
+    /// Largura e altura da folha (a faixa é "largo" com 577×595).
+    pub size: (u16, u16),
+    pub page_number: PageNumber,
+    pub border: Option<ObjRef>,
+    pub background: Option<ObjRef>,
+    /// Palavras com forma e adesivos na página.
+    pub shaped: usize,
+    pub stickers: usize,
+    /// Folhas na diagramação.
+    pub pages: usize,
+}
+
+impl Snapshot {
+    pub fn of(doc: &Document, pages: usize) -> Snapshot {
+        let count = |k: ObjectKind| doc.objects.iter().filter(|o| o.kind == k).count();
+        let d = &doc.dop;
+        Snapshot {
+            columns: d.columns,
+            orientation: d.orientation(),
+            size: (d.page_width, d.page_height),
+            page_number: d.page_number,
+            border: d.border,
+            background: d.background,
+            shaped: count(ObjectKind::Shaped),
+            stickers: count(ObjectKind::Sticker),
+            pages,
+        }
+    }
+}
+
+/// Eventos do assistente que a mudança `before` → `after` do projeto
+/// `kind` representa: item do menu de colunas, de Alto/Largo ou de
+/// etiquetas; borda escolhida; palavra com forma posta (OK do cavalete);
+/// adesivo escolhido e posto; a quinta folha do cartão.
+pub fn events(kind: Kind, before: &Snapshot, after: &Snapshot) -> Vec<Event> {
+    let mut v = Vec::new();
+    if after.columns != before.columns {
+        v.push(Event::MenuItem(
+            Menu::Columns,
+            after.columns.clamp(1, 4) as u8,
+        ));
+    }
+    if after.orientation != before.orientation {
+        let o = match after.orientation {
+            Orientation::Tall => TALL,
+            Orientation::Wide => WIDE,
+        };
+        v.push(Event::MenuItem(Menu::Orientation, o));
+    }
+    if after.page_number != before.page_number {
+        let code = after.page_number.code().unwrap_or(LABEL_NONE);
+        v.push(Event::MenuItem(Menu::PageNumber, code));
+    }
+    if after.border != before.border && after.border.is_some() {
+        v.push(Event::BorderPicked);
+    }
+    if after.shaped > before.shaped {
+        v.push(Event::ShapedOk);
+    }
+    if after.stickers > before.stickers {
+        v.extend([Event::StickerPicked, Event::StickerPlaced]);
+    }
+    if kind == Kind::Card && before.pages < CARD_FIFTH_PAGE && after.pages >= CARD_FIFTH_PAGE {
+        v.push(Event::FifthPage);
+    }
+    v
+}
+
+/// O que o projeto não aceita (`projects-faixa.md`, `projects-bordas-fundos.md`):
+/// a faixa não muda de Alto/Largo e cartões e faixas não têm fundo. Desfaz
+/// a mudança no `doc` e devolve o aviso do Rex (`0805[N]`).
+pub fn restrict(kind: Kind, before: &Snapshot, doc: &mut Document) -> Option<(u16, usize)> {
+    let d = &mut doc.dop;
+    if kind == Kind::Banner && (d.page_width, d.page_height) != before.size {
+        (d.page_width, d.page_height) = before.size;
+        d.page_number_rect = None;
+        return Some((ALERT_BLOCK, ALERT_BANNER_TALL));
+    }
+    if kind != Kind::News && d.background.is_some() && d.background != before.background {
+        d.background = before.background;
+        return Some((ALERT_BLOCK, ALERT_NO_BACKGROUND));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::writer::object::{FloatObject, ObjRef, ObjectKind};
+    use crate::writer::object::FloatObject;
     use formats::Tag;
 
     fn shaped(doc: &mut Document) {
@@ -244,6 +349,85 @@ mod tests {
         shaped(&mut d);
         d.objects[0].width = 2000;
         assert_eq!(d.object_span(0), 0..1);
+    }
+
+    #[test]
+    fn document_changes_become_assistant_events() {
+        let (mut d, _) = blank(Kind::Card);
+        let s0 = Snapshot::of(&d, 4);
+        assert!(events(Kind::Card, &s0, &s0).is_empty());
+        d.dop.set_columns(3);
+        d.dop.set_orientation(Orientation::Wide);
+        d.dop.page_number = PageNumber::Label;
+        d.dop.border = Some(ObjRef {
+            tag: *b"BDR ",
+            id: 2,
+        });
+        shaped(&mut d);
+        let s1 = Snapshot::of(&d, 5);
+        assert_eq!(
+            events(Kind::Card, &s0, &s1),
+            [
+                Event::MenuItem(Menu::Columns, 3),
+                Event::MenuItem(Menu::Orientation, WIDE),
+                Event::MenuItem(Menu::PageNumber, super::super::assistant::LABEL_PAGE),
+                Event::BorderPicked,
+                Event::ShapedOk,
+                Event::FifthPage,
+            ]
+        );
+        // a quinta folha só conta no cartão, e só ao chegar nela
+        assert!(!events(Kind::News, &s0, &s1).contains(&Event::FifthPage));
+        let s2 = Snapshot::of(&d, 6);
+        assert!(events(Kind::Card, &s1, &s2).is_empty());
+        // apagar a borda não é escolher uma
+        d.dop.border = None;
+        assert!(events(Kind::Card, &s2, &Snapshot::of(&d, 6)).is_empty());
+    }
+
+    #[test]
+    fn stickers_are_picked_and_placed() {
+        let (mut d, _) = blank(Kind::Card);
+        let s0 = Snapshot::of(&d, 4);
+        let r = ObjRef {
+            tag: *b"PICT",
+            id: 1,
+        };
+        d.objects
+            .push(FloatObject::new(ObjectKind::Sticker, r, 0, 10, 10, 40, 40));
+        assert_eq!(
+            events(Kind::Card, &s0, &Snapshot::of(&d, 4)),
+            [Event::StickerPicked, Event::StickerPlaced]
+        );
+    }
+
+    #[test]
+    fn banners_stay_wide_and_have_no_background() {
+        let (mut d, _) = blank(Kind::Banner);
+        let s0 = Snapshot::of(&d, 1);
+        std::mem::swap(&mut d.dop.page_width, &mut d.dop.page_height);
+        assert_eq!(
+            restrict(Kind::Banner, &s0, &mut d),
+            Some((ALERT_BLOCK, ALERT_BANNER_TALL))
+        );
+        assert_eq!((d.dop.page_width, d.dop.page_height), BANNER_PAGE);
+        let fundo = Some(ObjRef {
+            tag: *b"BDR ",
+            id: 9,
+        });
+        d.dop.background = fundo;
+        assert_eq!(
+            restrict(Kind::Banner, &s0, &mut d),
+            Some((ALERT_BLOCK, ALERT_NO_BACKGROUND))
+        );
+        assert_eq!(d.dop.background, None);
+        // o jornal aceita fundo e muda de orientação
+        let (mut n, _) = blank(Kind::News);
+        let s0 = Snapshot::of(&n, 1);
+        n.dop.background = fundo;
+        n.dop.set_orientation(Orientation::Wide);
+        assert_eq!(restrict(Kind::News, &s0, &mut n), None);
+        assert_eq!(n.dop.background, fundo);
     }
 
     #[test]

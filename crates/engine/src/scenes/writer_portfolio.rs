@@ -13,7 +13,9 @@
 //! usuário (`FILR 0` do `~MAXUSER.INF`) e a cena vai à área de escrita com
 //! ele (`Effect::OpenDocument`), saindo da sala ou do Escritório por baixo
 //! (a pasta da Bolsa Mágica do editor, Ctrl+O). Os cartões, faixas e jornais
-//! também vão à área de escrita enquanto os projetos do Writer não existem.
+//! reabertos vão à área de escrita sem o assistente do Max (como no
+//! original); a Saída deles volta ao andar dos Projetos. Pelos troféus do
+//! andar a pasta abre filtrada ([`WriterPortfolio::only`]).
 
 use super::portfolio::{self, Action as BinderAction, Binder, BinderItem, BinderSpec, Group};
 use super::writer_office_room::bitmap_image;
@@ -21,6 +23,7 @@ use crate::assets::{Assets, Program, SoundRef};
 use crate::paths::find_ci;
 use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene};
 use crate::ui::{Rect, inside};
+use crate::writer::assistant::Kind;
 use crate::writer::prefs;
 use crate::{Frame, Image};
 use formats::max::{FLOOR_PROJECTS, Project};
@@ -68,6 +71,15 @@ pub fn area(project: Project, floor: u16) -> Group {
         Project::Newspaper => NEWSPAPERS,
         _ if floor == FLOOR_PROJECTS => CARDS,
         _ => OFFICE,
+    }
+}
+
+/// Área de um projeto da Oficina de Projetos.
+pub fn project_area(kind: Kind) -> Group {
+    match kind {
+        Kind::News => NEWSPAPERS,
+        Kind::Card => CARDS,
+        Kind::Banner => BANNERS,
     }
 }
 
@@ -208,6 +220,15 @@ impl WriterPortfolio {
 
     pub fn items(&self) -> &[DocItem] {
         &self.items
+    }
+
+    /// Só os documentos da área `group` (os do usuário e os exemplos): a
+    /// pasta aberta pelos troféus do andar dos Projetos, já em
+    /// "<usuário> › Jornais|Cartões|Faixas" (`projects.md` §2).
+    pub fn only(mut self, group: Group) -> WriterPortfolio {
+        self.items.retain(|it| it.group == group);
+        self.binder.rebuild(&self.items);
+        self
     }
 
     pub fn binder(&self) -> &Binder {

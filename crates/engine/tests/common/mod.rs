@@ -189,6 +189,26 @@ impl<'a> Director<'a> {
                     CwScene::IdeaStory(_) => {
                         Box::new(Writer::idea_story(Some(self.texts()), &user, assets))
                     }
+                    CwScene::Project(kind) => {
+                        Box::new(engine::scenes::writer_project::ProjectScene::new(
+                            kind,
+                            Some(self.users()),
+                            &user,
+                            self.animal(),
+                            "",
+                            assets,
+                        ))
+                    }
+                    CwScene::ProjectFolder(kind) => Box::new(
+                        WriterPortfolio::new(
+                            None,
+                            Some(self.users()),
+                            &user,
+                            self.animal(),
+                            assets,
+                        )
+                        .only(engine::scenes::writer_portfolio::project_area(kind)),
+                    ),
                 }
             }
         }

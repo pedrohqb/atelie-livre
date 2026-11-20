@@ -537,7 +537,8 @@ impl Room {
                     self.start_pick(p, fx, assets);
                 } else {
                     fx.push(self.snd(self.kit().snd.portfolio));
-                    fx.push(Effect::Push(self.go(SceneId::Portfolio)));
+                    let to = super::writer_floors::folder(p);
+                    fx.push(Effect::Push(self.go(to)));
                 }
             }
             Talk::Helper { off: false } => match k {

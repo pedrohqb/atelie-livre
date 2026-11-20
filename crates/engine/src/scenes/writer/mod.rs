@@ -238,6 +238,11 @@ pub struct Writer {
     center: Option<ControlCenter>,
     /// Cavalete de palavras com forma (FORMA).
     shaped: shaped::ShapedHost,
+    /// Título na barra de baixo enquanto o documento não tem nome
+    /// ("Documento Novo"; nos projetos, "Estamos fazendo um Jornal").
+    untitled: &'static str,
+    /// O McZee dá as boas-vindas ao entrar (nos projetos, quem fala é o Max).
+    greet: bool,
 }
 
 /// Pasta dos usuários e apelido a partir da pasta do usuário
@@ -344,7 +349,43 @@ impl Writer {
             notebook: None,
             center: None,
             shaped: shaped::ShapedHost::default(),
+            untitled: chrome::DEFAULT_TITLE,
+            greet: true,
         }
+        .with_project_exit()
+    }
+
+    /// Documento da Oficina de Projetos reaberto pela pasta (sem o Max): a
+    /// Saída volta ao andar dos Projetos (`projects.md` §2).
+    fn with_project_exit(mut self) -> Writer {
+        if self.ed.extra.add.floor == formats::max::FLOOR_PROJECTS {
+            self.floor = crate::writer::project::FLOOR_LABEL;
+            self.exit_to = SceneId::Cw(crate::scene::CwScene::Building(
+                crate::scenes::room::Floor::Projects,
+            ));
+        }
+        self
+    }
+
+    /// Modo projeto (`scenes::writer_project`): andar "Oficina de Projetos",
+    /// `untitled` no lugar do título enquanto não há nome e sem as
+    /// boas-vindas do McZee.
+    pub fn for_project(mut self, untitled: &'static str) -> Writer {
+        self.floor = crate::writer::project::FLOOR_LABEL;
+        self.untitled = untitled;
+        self.greet = false;
+        self.exit_to = SceneId::Cw(crate::scene::CwScene::Building(
+            crate::scenes::room::Floor::Projects,
+        ));
+        self
+    }
+
+    /// O título vira campo de nome (o `AskName` do assistente, que mostra
+    /// o próprio balão `0faa[14]`): Enter grava, como SALVAR.
+    pub fn ask_name(&mut self, fx: &mut Vec<Effect>) {
+        fx.push(snd(SND_RENAME));
+        let r = Rename::new(self.title(), RenameAfter::Stay);
+        self.rename = Some((r, After::Stay));
     }
 
     /// Torna `file` o último documento do usuário (`writer::prefs`); com
@@ -513,7 +554,7 @@ impl Writer {
 
     /// Título na barra de baixo.
     pub fn title(&self) -> &str {
-        self.ed.title().unwrap_or(chrome::DEFAULT_TITLE)
+        self.ed.title().unwrap_or(self.untitled)
     }
 
     /// Cursor do mouse atual.
@@ -1047,7 +1088,7 @@ impl Scene for Writer {
         let mut fx = self.common.update(input);
         // Ctrl+Q pergunta antes de sair (o "Epa!"), em vez de sair direto
         fx.retain(|e| *e != Effect::Quit);
-        if !std::mem::replace(&mut self.started, true) {
+        if !std::mem::replace(&mut self.started, true) && self.greet {
             fx.push(snd(mczee::SND_ENTER));
             speller::preload(assets);
             self.mczee.show(self.welcome, false, assets);

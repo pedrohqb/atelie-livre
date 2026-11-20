@@ -12,6 +12,7 @@ use engine::scenes::{
     Browser, Chooser, Entry, Floor, GalleryRoom, Imaginopolis, Paint, Room, Splash, Story, Street,
     Writer, WriterPortfolio,
 };
+use engine::writer::assistant::Kind;
 use engine::{Frame, SCREEN_H, SCREEN_W};
 use sdl3::event::{Event, WindowEvent};
 use sdl3::keyboard::{Keycode, Mod};
@@ -132,6 +133,28 @@ fn make_scene(id: SceneId, cfg: &Config, user: &UserContext, assets: &Assets) ->
             user.animal(),
             assets,
         )),
+        // "um que você já criou": a pasta filtrada pelo projeto
+        SceneId::Cw(CwScene::ProjectFolder(kind)) => Box::new(
+            WriterPortfolio::new(
+                cfg.click_sound.clone(),
+                users_dir(),
+                user.name(),
+                user.animal(),
+                assets,
+            )
+            .only(engine::scenes::writer_portfolio::project_area(kind)),
+        ),
+        // jornal, cartão ou faixa com o assistente do Max
+        SceneId::Cw(CwScene::Project(kind)) => {
+            Box::new(engine::scenes::writer_project::ProjectScene::new(
+                kind,
+                users_dir(),
+                user.name(),
+                user.animal(),
+                &user.author(),
+                assets,
+            ))
+        }
         SceneId::Portfolio => Box::new(
             GalleryRoom::portfolio_for_program(p, cfg.click_sound.clone(), pictures(), assets)
                 .with_user(user.name(), user.animal()),
@@ -219,6 +242,9 @@ fn scene_for(name: &str, program: ProgramChoice) -> Option<SceneId> {
         "ideas" => SceneId::Cw(CwScene::Building(Floor::Tricks)),
         "idea-machine" => SceneId::Cw(CwScene::IdeaMachine),
         "picture-board" => SceneId::Cw(CwScene::PictureBoard),
+        "newspaper" | "jornal" => SceneId::Cw(CwScene::Project(Kind::News)),
+        "card" | "cartao" => SceneId::Cw(CwScene::Project(Kind::Card)),
+        "banner" | "faixa" => SceneId::Cw(CwScene::Project(Kind::Banner)),
         _ => scene_by_name(name)?,
     };
     Some(match program {

@@ -8,6 +8,7 @@ use crate::scenes::room_spec::Action;
 use crate::scenes::testutil::{assets, empty_assets};
 use crate::scenes::writer_rooms::{self, WRITER_KIT, rec, snd};
 use crate::scenes::{writer_floors, writer_gags as g, writer_lobby, writer_office_room};
+use crate::writer::assistant::Kind;
 
 fn click(x: i32, y: i32) -> Input {
     Input::Click {
@@ -214,10 +215,18 @@ fn projects_and_ideas_objects() {
     let b = r.balloon.as_ref().unwrap();
     assert_eq!((b.x, b.y), (28, 121));
     assert_eq!(b.options.len(), 3);
-    for (pt, pick) in [
-        ((130, 70), Pick::Newspaper),
-        ((300, 50), Pick::Card),
-        ((300, 170), Pick::Banner),
+    // "um que você já criou": a pasta filtrada pelo projeto
+    let o = option(&r, &a, 1);
+    let fx = r.update(&[o], 0.0, &a);
+    assert!(
+        fx.contains(&Effect::Push(SceneId::Cw(CwScene::ProjectFolder(
+            Kind::News
+        ))))
+    );
+    for (pt, pick, kind) in [
+        ((130, 70), Pick::Newspaper, Kind::News),
+        ((300, 50), Pick::Card, Kind::Card),
+        ((300, 170), Pick::Banner, Kind::Banner),
     ] {
         let mut r = writer(Floor::Projects, &a);
         r.close();
@@ -225,7 +234,7 @@ fn projects_and_ideas_objects() {
         let fx = r.update(&[click(pt.0, pt.1)], 0.0, &a);
         assert_eq!(
             changes(&fx),
-            [SceneId::Cw(CwScene::NewDocument)],
+            [SceneId::Cw(CwScene::Project(kind))],
             "{pick:?}"
         );
     }

@@ -1450,6 +1450,12 @@ impl Editor {
         self.load(doc, extra, None);
     }
 
+    /// Começa um documento novo já montado (o projeto em branco da Oficina
+    /// de Projetos, `writer::project::blank`).
+    pub fn new_from(&mut self, doc: Document, extra: MaxExtra) {
+        self.load(doc, extra, None);
+    }
+
     fn load(&mut self, doc: Document, extra: MaxExtra, file: Option<PathBuf>) {
         self.doc = doc;
         self.extra = extra;

@@ -10,14 +10,16 @@
 //!
 //! A primeira bolinha de um objeto (ou Ctrl+clique) começa o trabalho:
 //!
-//! - **Projetos**: o jornal, o cartão e a faixa ainda não existem; até lá
-//!   [`PROJECT_START`] abre a área de escrita com um documento novo
-//!   (`CwScene::NewDocument`), o *placeholder* combinado.
+//! - **Projetos**: o jornal, o cartão e a faixa abrem o editor em modo
+//!   projeto com o assistente do Max (`CwScene::Project`,
+//!   `scenes::writer_project`).
 //! - **Idéias**: a Máquina de Idéias e o Quadro de Figuras são as telas
 //!   `CwScene::IdeaMachine` e `CwScene::PictureBoard` (`writer_ideas`).
 //!
-//! A segunda bolinha abre a pasta (no original, já filtrada pela área:
-//! "Máquina de Idéias", `STR#03ac[9]`; a pasta do port ainda não filtra).
+//! A segunda bolinha abre a pasta: nos projetos, filtrada pela área
+//! ([`folder`]: "<usuário> › Jornais", `CwScene::ProjectFolder`), e o
+//! documento escolhido abre sem o assistente; nas Idéias (no original,
+//! "Máquina de Idéias", `STR#03ac[9]`) a pasta do port ainda não filtra.
 
 use super::room_objects::BagLayout;
 use super::room_spec::{Action, Arrival, CharacterSpec, Fallback, RoomSpec, Tip, WandProp, hot};
@@ -26,6 +28,7 @@ use super::rooms_data::Element;
 use super::writer_gags as g;
 use super::writer_rooms::{MAX_MENU, QUIT_POS, WRITER_KIT, rec, snd};
 use crate::scene::{CwScene, SceneId};
+use crate::writer::assistant::Kind;
 
 const fn el(id: u16, mask: u16, x: i32, y: i32) -> Element {
     Element { id, mask, x, y }
@@ -239,9 +242,24 @@ pub const PROJECTS: &RoomSpec = &PROJECTS_ROOM;
 /// Oficina de Idéias do Writer.
 pub const IDEAS: &RoomSpec = &IDEAS_ROOM;
 
-/// Enquanto o jornal, o cartão e a faixa do Writer não existem, a primeira
-/// opção dos bichos abre a área de escrita com um documento novo.
-pub const PROJECT_START: Start = Start::Scene(SceneId::Cw(CwScene::NewDocument));
+/// Projeto de um bicho da parede dos Projetos.
+pub fn project_of(p: Pick) -> Option<Kind> {
+    match p {
+        Pick::Newspaper => Some(Kind::News),
+        Pick::Card => Some(Kind::Card),
+        Pick::Banner => Some(Kind::Banner),
+        _ => None,
+    }
+}
+
+/// "Um que você já criou": a pasta filtrada pelo projeto (os outros
+/// objetos abrem a pasta inteira).
+pub fn folder(p: Pick) -> SceneId {
+    match project_of(p) {
+        Some(k) => SceneId::Cw(CwScene::ProjectFolder(k)),
+        None => SceneId::Portfolio,
+    }
+}
 
 /// Balão de escolha dos objetos do Writer (`WHAT 0bb8`; posições medidas,
 /// `building-salas.md` §4–5).
@@ -306,7 +324,10 @@ pub fn pick(p: Pick) -> PickSpec {
     let start = match p {
         Pick::IdeaMachine => Start::Scene(SceneId::Cw(CwScene::IdeaMachine)),
         Pick::PictureBoard => Start::Scene(SceneId::Cw(CwScene::PictureBoard)),
-        _ => PROJECT_START,
+        _ => match project_of(p) {
+            Some(k) => Start::Scene(SceneId::Cw(CwScene::Project(k))),
+            None => Start::Scene(SceneId::Cw(CwScene::NewDocument)),
+        },
     };
     PickSpec {
         record,

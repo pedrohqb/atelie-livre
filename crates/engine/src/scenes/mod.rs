@@ -50,6 +50,7 @@ pub mod writer_library;
 pub mod writer_lobby;
 pub mod writer_office_room;
 pub mod writer_portfolio;
+pub mod writer_project;
 pub mod writer_rooms;
 pub mod writer_story;
 pub mod writer_street;

@@ -159,6 +159,11 @@ pub enum CwScene {
     /// Área de escrita com a história começada na Máquina ou no Quadro
     /// (conteúdo em `writer::ideas::session::take_story`).
     IdeaStory(crate::writer::ideas::story::IdeaSource),
+    /// Jornal, Cartão ou Faixa com o assistente do Max (`writer_project`).
+    Project(crate::writer::assistant::Kind),
+    /// Pasta por cima do andar dos Projetos, filtrada pelo projeto ("um que
+    /// você já criou"); o documento abre sem assistente.
+    ProjectFolder(crate::writer::assistant::Kind),
 }
 
 impl SceneId {
@@ -205,6 +210,8 @@ impl SceneId {
                     // sem equivalente no Fine Artist: o andar dos Truques
                     CwScene::IdeaMachine | CwScene::PictureBoard => SceneId::TricksFloor,
                     CwScene::IdeaStory(_) => SceneId::PaintNew,
+                    CwScene::Project(_) => SceneId::Projects,
+                    CwScene::ProjectFolder(_) => SceneId::Portfolio,
                 },
                 other => other,
             },
