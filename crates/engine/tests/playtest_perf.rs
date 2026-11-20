@@ -10,9 +10,11 @@
 mod common;
 
 use common::{Director, Rng, real_assets};
-use engine::scene::{Input, SceneId};
+use engine::scene::{CwScene, Input, SceneId};
 use engine::scenes::projects::ProjectKind;
+use engine::scenes::room::Floor;
 use engine::scenes::wizard::TrickKind;
+use engine::writer::assistant::Kind as WriterProject;
 
 /// Tempo de CPU desta thread, em ms (`/proc/thread-self/stat`, campos 14 e 15).
 fn cpu_ms() -> f64 {
@@ -41,6 +43,13 @@ fn frame_cost_per_scene() {
         SceneId::Project(ProjectKind::Comics),
         SceneId::Project(ProjectKind::Flipbook),
         SceneId::Tricks(TrickKind::Basic),
+        // Creative Writer (teste de jogo do Writer)
+        SceneId::Cw(CwScene::Building(Floor::Lobby)),
+        SceneId::Cw(CwScene::Library),
+        SceneId::Cw(CwScene::NewDocument),
+        SceneId::Writer,
+        SceneId::Cw(CwScene::Project(WriterProject::Card)),
+        SceneId::Cw(CwScene::IdeaMachine),
     ];
     let mut report = Vec::new();
     for id in scenes {
