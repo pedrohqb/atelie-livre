@@ -23,6 +23,8 @@
 //! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
 //!   "Salvar como texto".
 //! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
+//! - [`print`]: as folhas impressas (página por folha, cartão em quatro,
+//!   faixa em folhas deitadas), com borda e fundo.
 
 pub mod assistant;
 pub mod assistant_banner;
@@ -38,6 +40,7 @@ pub mod ideas;
 pub mod layout;
 pub mod object;
 pub mod prefs;
+pub mod print;
 pub mod selection;
 pub mod store;
 pub mod undo;
