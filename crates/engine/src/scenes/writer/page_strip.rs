@@ -8,7 +8,8 @@
 //! - Os rolos abrem uma tira de filme de 86 px (y 98..421): "Nada" e as
 //!   miniaturas `PKBM` dos `.BOR` (`0MAX100` para os fundos e a borda 1,
 //!   `1MAX100` e `2MAX100` para as bordas 2 e 3), 4 por vista (77 px), com
-//!   o atual em amarelo e as setas ↑↓ embaixo (som `02bc`). Escolher toca
+//!   a borda atual em amarelo (o FUNDO é todo pontilhado de amarelo) e as
+//!   setas ↑↓ embaixo (som `02bc`). Escolher toca
 //!   `022d` + `021c` e arma o rolo de pintar: o clique seguinte numa margem
 //!   da folha põe o fundo ou a borda em todas as folhas (som `0220`); "Nada"
 //!   tira na hora. O documento guarda cópias dos chunks (`BDR`, `IBGF` com o
@@ -660,7 +661,15 @@ impl PageStrip {
                     .get(k - 1)
                     .is_some_and(|it| current.as_deref() == Some(it.name.as_str())),
             };
-            if on && k <= items.len() {
+            if roll == Roll::Background {
+                // o FUNDO é todo pontilhado de amarelo e branco (`office_57`,
+                // `w26_110`), sem destaque do atual
+                for yy in ry + 1..ry + rh - 1 {
+                    for xx in (rx + 1 + (yy + rx + 1) % 2..rx + rw - 1).step_by(2) {
+                        f.put(xx, yy, YELLOW);
+                    }
+                }
+            } else if on && k <= items.len() {
                 f.rect(rx + 1, ry + 1, rw - 2, rh - 2, YELLOW);
             }
             if k == 0 {

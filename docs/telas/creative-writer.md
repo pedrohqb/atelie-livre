@@ -145,8 +145,9 @@ Visor de páginas funcionam; as outras faixas são só desenhadas. Botão sem fu
   Alto: `0805[17]`.
 - **Rolos** FUNDO (pág. 1) e BORDA 1–3 (pág. 2): tira de 86 px de largura
   com x = começo do corpo do rolo + 10 (62, 128, 222, 316), linhas de 77 px
-  a partir de y 98 (4 à vista: "Nada" e 3 miniaturas `PKBM`, a atual em
-  amarelo 255,238,76), setas ↑↓ `02db`/`02df` em (x + 19, 408) e (x + 53,
+  a partir de y 98 (4 à vista: "Nada" e 3 miniaturas `PKBM`; nos BORDA a
+  atual em amarelo 255,238,76, o FUNDO todo pontilhado de amarelo e branco),
+  setas ↑↓ `02db`/`02df` em (x + 19, 408) e (x + 53,
   408) que rolam um item (som `02bc`). FUNDO lista os fundos de
   `0MAX100.BOR` da orientação da folha; as bordas vêm de `0MAX100`,
   `1MAX100` e `2MAX100.BOR`. "Nada" tira na hora; uma miniatura toca `022d`
