@@ -935,7 +935,7 @@ mod tests {
         assert!(ed.doc().dop.border.is_some());
         assert_eq!(ed.doc().dop.border_inner, Some(33));
         // a folha ganha tinta na margem (borda e fundo)
-        let f = ed.render_page(&a, 0);
+        let f = ed.render_page_with_art(&a, 0);
         let inked = (0..60).filter(|&y| f.pixel(30, y * 10)[0] < 128).count();
         assert!(inked > 0);
         // gravar e abrir de novo
@@ -946,7 +946,9 @@ mod tests {
         assert_eq!(d.obstacles.len(), 4);
         assert!(back.extra.object(d.background.unwrap()).is_some());
         assert!(back.extra.object(d.border.unwrap()).is_some());
-        assert_eq!(back.render_page(&a, 0).pixels(), f.pixels());
+        assert_eq!(back.render_page_with_art(&a, 0).pixels(), f.pixels());
+        // a impressão recebe a folha sem a arte (ela a redesenha)
+        assert_ne!(ed.render_page(&a, 0).pixels(), f.pixels());
         // Nada tira o fundo (desfazível)
         press(&mut s, &mut back, &a, 515, 70);
         press(&mut s, &mut back, &a, 100, 75);

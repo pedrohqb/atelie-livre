@@ -491,7 +491,7 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.page()`, `ed.show_page(n)` | folha no meio da vista; rolar até o alto da folha `n` |
 | `ed.follow_caret()` | rolar o mínimo para o cursor aparecer |
 | `ed.draw_sheet(f, a, page, x, y, seleção)` | desenha a folha inteira em tamanho real em qualquer quadro (Visor: reduza o quadro; Imprimir: monte a folha) |
-| `ed.render_page(a, page)` | a folha num `Frame` próprio |
+| `ed.render_page(a, page)` | a folha num `Frame` próprio, sem a borda e o fundo (a impressão os redesenha); `ed.render_page_with_art(a, page)` com eles, como na tela |
 | `ed.thumbnail()` | miniatura da folha 1 (`pkbm::Bitmap` 4 bits, a do `THMB`) |
 
 ### Mudar (cada uma é uma ação do Ovo)

@@ -1086,7 +1086,7 @@ impl Editor {
         if let Some(f) = self.scaled.borrow().get(&(page, w, h)) {
             return f.clone();
         }
-        let f = Rc::new(resample(&self.render_page(a, page), w, h));
+        let f = Rc::new(resample(&self.render_page_with_art(a, page), w, h));
         self.scaled.borrow_mut().insert((page, w, h), f.clone());
         f
     }
@@ -1104,11 +1104,12 @@ impl Editor {
         oy: i32,
         selection: bool,
     ) {
-        self.sheet(v, Some(a), page, ox, oy, selection);
+        self.sheet(v, Some(a), page, ox, oy, selection, true);
     }
 
     /// [`Editor::draw_sheet`] sem os recursos (as figuras do Maçã ficam
     /// como retângulos): a miniatura gravada no arquivo.
+    #[allow(clippy::too_many_arguments)]
     fn sheet(
         &self,
         v: &mut Frame,
@@ -1117,6 +1118,7 @@ impl Editor {
         ox: i32,
         oy: i32,
         selection: bool,
+        art: bool,
     ) {
         let l = self.layout();
         let (pw, ph) = (
@@ -1124,7 +1126,7 @@ impl Editor {
             i32::from(self.doc.dop.page_height),
         );
         v.rect(ox, oy, pw, ph, WHITE);
-        if let Some(art) = self.art_ink() {
+        if let Some(art) = self.art_ink().filter(|_| art) {
             for &(i, rgb) in &art.ink {
                 v.put(
                     ox + (i % art.width) as i32,
@@ -1192,16 +1194,13 @@ impl Editor {
             return Some(ink.clone());
         }
         let to_max = |r: ObjRef| max::ObjRef::new(&r.tag, r.id);
-        let art = borders::PageArt::from_refs(
-            d.border.map(to_max),
-            d.background.map(to_max),
-            &|r| {
+        let art =
+            borders::PageArt::from_refs(d.border.map(to_max), d.background.map(to_max), &|r| {
                 self.extra.object(ObjRef {
                     tag: r.tag.0,
                     id: r.id,
                 })
-            },
-        );
+            });
         let geom = borders::PageGeom {
             width: f64::from(d.page_width),
             height: f64::from(d.page_height),
@@ -1225,13 +1224,24 @@ impl Editor {
         Some(ink)
     }
 
-    /// A folha `page` num quadro do tamanho dela (sem seleção nem cursor).
+    /// A folha `page` num quadro do tamanho dela (sem seleção nem cursor) e
+    /// sem a borda e o fundo, que a impressão redesenha na resolução da
+    /// folha (`writer::print`).
     pub fn render_page(&self, a: &Assets, page: usize) -> Frame {
+        self.sheet_frame(a, page, false)
+    }
+
+    /// A folha `page` como na tela (com a borda e o fundo), em tamanho real.
+    pub fn render_page_with_art(&self, a: &Assets, page: usize) -> Frame {
+        self.sheet_frame(a, page, true)
+    }
+
+    fn sheet_frame(&self, a: &Assets, page: usize, art: bool) -> Frame {
         let mut f = Frame::new(
             u32::from(self.doc.dop.page_width),
             u32::from(self.doc.dop.page_height),
         );
-        self.draw_sheet(&mut f, a, page, 0, 0, false);
+        self.sheet(&mut f, Some(a), page, 0, 0, false, art);
         f
     }
 
@@ -1450,7 +1460,7 @@ impl Editor {
         let dop = &self.doc.dop;
         let (pw, ph) = (dop.page_width, dop.page_height);
         let mut page = Frame::new(u32::from(pw), u32::from(ph));
-        self.sheet(&mut page, None, 0, 0, 0, false);
+        self.sheet(&mut page, None, 0, 0, 0, false, true);
         let (tw, th) = max::thumb_size(pw, ph);
         let mut pixels = Vec::with_capacity(usize::from(tw) * usize::from(th));
         for ty in 0..u32::from(th) {
