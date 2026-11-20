@@ -422,7 +422,7 @@ pub fn apply_background(ed: &mut Editor, a: &Assets, id: u16) -> Option<()> {
     let bg = file.background(id)?;
     let chunk = |tag: &[u8; 4], id: u16| f.chunks.iter().find(|c| c.tag.0 == *tag && c.id == id);
     let ic = chunk(b"IBGF", id)?;
-    let mut ibgf = Ibgf::parse(&ic.parts.iter().find(|p| p.tag.0 == *b"IBGF")?.data[..]).ok()?;
+    let mut ibgf = Ibgf::parse(ic.parts.iter().find(|p| p.tag.0 == *b"IBGF")?.data).ok()?;
     for (_, pid) in bg.pictures() {
         if let Some(p) = chunk(b"PICT", pid) {
             keep_chunk(ed, to_owned(p), true);
