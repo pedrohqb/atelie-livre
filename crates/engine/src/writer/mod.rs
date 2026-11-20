@@ -23,12 +23,15 @@
 //! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
 //!   "Salvar como texto".
 //! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
+//! - [`rebus_apply`]: Coloca-figuras (Maçã): figuras depois das palavras.
+//! - [`cipher`]: Agente Secreto 009 (texto embaralhado na tela, senha).
 
 pub mod assistant;
 pub mod assistant_banner;
 pub mod assistant_card;
 pub mod assistant_news;
 pub mod borders;
+pub mod cipher;
 pub mod convert;
 pub mod dict;
 pub mod doc;
@@ -38,6 +41,7 @@ pub mod ideas;
 pub mod layout;
 pub mod object;
 pub mod prefs;
+pub mod rebus_apply;
 pub mod selection;
 pub mod store;
 pub mod undo;
