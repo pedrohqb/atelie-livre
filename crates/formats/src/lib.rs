@@ -27,6 +27,7 @@ pub mod pkbm;
 pub mod reader;
 pub mod render;
 pub mod scrd;
+pub mod sple;
 pub mod splot_res;
 pub mod tag;
 pub mod twpb;

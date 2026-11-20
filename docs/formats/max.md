@@ -293,13 +293,10 @@ tipo 4 na página 3 (`27 03 00 28 04 29 02 2e 02 00 2f 02 00`), de 2 × 2 pt.
   (`0x58`/`0x5a`) ou por uma moldura.
 - **`SND n`**: WAVE completo; o número é o da biblioteca (`MAX100.SND`, ou
   `WRITER.SND` ≥ 0x209 ~); referenciado por `FRAM 0x37` ou `SNDT`.
-- **`SPLE 0`** (Splot, parcialmente interpretado): cabeçalho de 0x48 bytes
-  (`u16 1`, `i16 −13`, `+0x04` tamanho/estilo, `+0x0a` provável forma
-  `SCRD`, `+0x0c` nº de letras do texto, `+0x10..+0x17` caixa em coordenadas
-  SCRD, `+0x20` provável sombra 0–7 do `TMEN` 2, `+0x40..0x47` estilos e
-  cores), nome da fonte (Pascal em `+0x48`, 32 bytes), texto (Pascal em
-  `+0x149`), e o restante (≈6–15 KB) com a figura já montada. Os campos
-  devem ser fechados com documentos criados no original (tarefa F-7 do plano).
+- **`SPLE n`** (Splot, palavra com forma): cabeçalho com as escolhas do
+  cavalete, nome da fonte, texto, forma (`SCRD`), cores e o desenho pronto em
+  polígonos coloridos (um glifo por letra e por cópia de sombra). Formato
+  completo em [`sple.md`](sple.md).
 
 ## Demais chunks
 

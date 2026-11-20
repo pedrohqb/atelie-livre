@@ -25,6 +25,7 @@ pub mod notebook;
 mod page_strip;
 mod print;
 mod removers;
+pub mod shaped;
 mod sounds;
 mod speller;
 mod stickers;
@@ -43,6 +44,7 @@ use crate::scenes::paint::rename::{After as RenameAfter, Rename};
 use crate::writer::doc::{Document, Item};
 use crate::writer::ideas::machine::Piece;
 use crate::writer::ideas::{session, story};
+use crate::writer::object::ObjectKind;
 use crate::writer::prefs;
 use crate::writer::selection::Clip;
 use control_center::{Action as CenterAction, ControlCenter};
@@ -225,6 +227,8 @@ pub struct Writer {
     notebook: Option<NotebookOverlay>,
     /// Central de Controle aberta (Ctrl+Shift+A).
     center: Option<ControlCenter>,
+    /// Cavalete de palavras com forma (FORMA).
+    shaped: shaped::ShapedHost,
 }
 
 /// Pasta dos usuários e apelido a partir da pasta do usuário
@@ -330,6 +334,7 @@ impl Writer {
             data: assets.data_dir().to_path_buf(),
             notebook: None,
             center: None,
+            shaped: shaped::ShapedHost::default(),
         }
     }
 
@@ -488,10 +493,48 @@ impl Writer {
         cx.ctrl = self.ctrl;
         cx.shift = self.shift;
         let r = f(self.tools.get_mut(id), &mut self.ed, &mut cx);
+        let shaped = cx.take_shaped();
+        let clip = cx.take_clip();
         if let Some((h, forced)) = cx.take_help() {
             self.mczee.show(h, forced, a);
         }
+        if let Some(editing) = shaped {
+            self.open_shaped(editing, fx, a);
+        }
+        if let Some(c) = clip {
+            self.clip_request(c, fx, a);
+        }
         r
+    }
+
+    /// Cavalete de palavras com forma aberto.
+    pub fn shaped(&self) -> &shaped::ShapedHost {
+        &self.shaped
+    }
+
+    /// Abre o cavalete: palavra nova com o nome do usuário, ou o objeto `k`.
+    fn open_shaped(&mut self, editing: Option<usize>, fx: &mut Vec<Effect>, a: &Assets) {
+        let name = if self.user.is_empty() {
+            self.author.split_whitespace().next().unwrap_or("")
+        } else {
+            &self.user
+        }
+        .to_string();
+        if let Some(h) = self.shaped.open(&self.ed, editing, &name, fx, a) {
+            self.mczee.show(h, false, a);
+        }
+    }
+
+    /// Entrada com o cavalete aberto (os balões do McZee vêm antes).
+    fn shaped_input(&mut self, i: &Input, fx: &mut Vec<Effect>, a: &Assets) {
+        if let Input::Click { x, y, .. } = *i
+            && self.mczee.front_click(x, y, fx, a).is_some()
+        {
+            return;
+        }
+        if let Some(h) = self.shaped.input(i, &mut self.ed, fx, a) {
+            self.mczee.show(h, false, a);
+        }
     }
 
     /// Escolhe a ferramenta `id` na barra: som, aba, balão do McZee.
@@ -897,6 +940,13 @@ impl Writer {
         if self.with_tool(tool, fx, a, |t, ed, cx| t.press(ed, cx, x, y)) {
             return;
         }
+        // clique numa palavra com forma reabre o cavalete
+        if let Some(k) = self.ed.object_at(x, y)
+            && self.ed.doc().objects[k].kind == ObjectKind::Shaped
+        {
+            self.open_shaped(Some(k), fx, a);
+            return;
+        }
         let shift = self.shift;
         self.ed.press_page(x, y, shift);
     }
@@ -905,7 +955,11 @@ impl Writer {
     fn wanted_cursor(&self, a: &Assets) -> CursorRef {
         let (x, y) = self.mouse;
         let tool = self.tools.get(self.tool);
-        if self.dialog.is_some() || self.center.is_some() || self.notebook.is_some() {
+        if self.dialog.is_some()
+            || self.center.is_some()
+            || self.notebook.is_some()
+            || self.shaped.is_open()
+        {
             DEFAULT_CURSOR
         } else if self.mczee.wand() {
             cursors::writer(cursors::WAND)
@@ -946,6 +1000,13 @@ impl Scene for Writer {
                     self.mouse = (x, y);
                 }
                 self.notebook_input(i, &mut fx, assets);
+                continue;
+            }
+            if self.shaped.is_open() && !matches!(i, Input::Shift(_) | Input::Ctrl(_)) {
+                if let Input::MouseMove { x, y } | Input::Click { x, y, .. } = *i {
+                    self.mouse = (x, y);
+                }
+                self.shaped_input(i, &mut fx, assets);
                 continue;
             }
             match *i {
@@ -1001,6 +1062,9 @@ impl Scene for Writer {
         {
             n.tick(dt.max(0.0));
         }
+        if dt.is_finite() {
+            self.shaped.tick(dt.max(0.0));
+        }
         let t = self.tool;
         if dt.is_finite() {
             self.tools.get_mut(t).tick(&mut self.ed, dt.max(0.0));
@@ -1008,7 +1072,8 @@ impl Scene for Writer {
         self.ed.caret_visible = !self.tools.get(t).modal()
             && self.dialog.is_none()
             && self.rename.is_none()
-            && self.notebook.is_none();
+            && self.notebook.is_none()
+            && !self.shaped.is_open();
         let want = self.wanted_cursor(assets);
         if let Some(e) = self.pointer.set(want) {
             fx.push(e);
@@ -1034,6 +1099,7 @@ impl Scene for Writer {
         if let Some(n) = &self.notebook {
             n.draw(f, a);
         }
+        self.shaped.draw(f, a);
         self.mczee.draw(f, a);
         if let Some(d) = &self.dialog {
             d.exit().draw(f, a);
@@ -1328,7 +1394,8 @@ mod tests {
         assert_eq!(w.tool(), ToolId::Removers);
         let (x, y) = center(removers::EXPLOSION.rect());
         assert_eq!((x, y), (457, 77));
-        let fx = w.update(&[click(x, y)], 0.0, &a);
+        // a explosão é escolhida; o clique na página apaga
+        let fx = w.update(&[click(x, y), click(300, 300)], 0.0, &a);
         assert!(w.doc().is_empty());
         assert!(sounds(&fx).contains(&0x025f));
         w.update(&[ctrl(Key::Z)], 0.0, &a);

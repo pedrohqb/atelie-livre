@@ -625,6 +625,21 @@ impl Editor {
         self.edit(|d, _| d.add_object(o))
     }
 
+    /// Troca o objeto `k` (desfazível); `chunk` é o conteúdo novo, guardado
+    /// com um número livre (o cavalete de palavras com forma reaberto).
+    pub fn replace_object(&mut self, k: usize, mut o: FloatObject, chunk: Option<OwnedChunk>) {
+        if k >= self.doc.objects.len() {
+            return;
+        }
+        if let Some(c) = chunk {
+            o.object = self.extra.add_object(c);
+        }
+        if let Some(e) = self.extra.frame_extra.get_mut(k) {
+            e.0 = o.object;
+        }
+        self.edit(|d, _| d.objects[k] = o);
+    }
+
     /// Tira o objeto `k` (desfazível).
     pub fn remove_object(&mut self, k: usize) -> Option<FloatObject> {
         if k >= self.doc.objects.len() {
@@ -755,11 +770,17 @@ impl Editor {
         if let Some(p) = self.pictures.borrow().get(&key) {
             return p.clone();
         }
-        let img = self
-            .extra
-            .object(o.object)
-            .and_then(decode_pict)
-            .map(|i| Rc::new(scaled(&i, u32::from(o.width), u32::from(o.height))));
+        let (w, h) = (u32::from(o.width), u32::from(o.height));
+        let img = self.extra.object(o.object).and_then(|c| match &c.tag.0 {
+            // palavra com forma: os glifos desenhados já no tamanho da moldura
+            b"SPLE" => c
+                .parts
+                .iter()
+                .find(|p| p.tag.0 == *b"SPLE")
+                .and_then(|p| formats::sple::read(&p.data).ok())
+                .map(|s| Rc::new(crate::writer::splot::draw(&s, w, h))),
+            _ => decode_pict(c).map(|i| Rc::new(scaled(&i, w, h))),
+        });
         self.pictures.borrow_mut().insert(key, img.clone());
         img
     }
@@ -1029,7 +1050,7 @@ impl Editor {
                 }
             }
             None => {
-                // sem desenho (Splot, figura sem metarquivo): o lugar dele
+                // sem desenho (figura sem metarquivo): o lugar dele
                 let (w, h) = (i32::from(o.width), i32::from(o.height));
                 v.frame_rect(x, y, w, h, 1, BACKDROP);
             }

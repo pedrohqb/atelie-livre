@@ -122,6 +122,10 @@ pub struct ShapedEasel {
     dirty: bool,
     pub help: Option<HelpBalloon>,
     fonts: Vec<String>,
+    /// "Preferidos" do Creative Writer (`TDRL`): com eles, ＋ e − passam de
+    /// um ao outro em vez de mudar o tamanho (vazio no Fine Artist).
+    pub favorites: Vec<formats::sple::Choices>,
+    favorite: Option<usize>,
 }
 
 /// Imagem da palavra no estado do cavalete.
@@ -154,6 +158,8 @@ impl ShapedEasel {
             dirty: true,
             help: None,
             fonts: shaped::font_names(),
+            favorites: Vec::new(),
+            favorite: None,
         }
     }
 
@@ -302,7 +308,10 @@ impl ShapedEasel {
         } else if inside(NO, x, y) {
             r.done = Some(false);
         } else if inside(PLUS, x, y) || inside(MINUS, x, y) {
-            if self.words.step_size(inside(PLUS, x, y)) {
+            let up = inside(PLUS, x, y);
+            if !self.favorites.is_empty() {
+                self.next_favorite(up, ctx);
+            } else if self.words.step_size(up) {
                 self.dirty = true;
             }
         } else if inside(ROT_LEFT, x, y) || inside(ROT_RIGHT, x, y) {
@@ -323,6 +332,21 @@ impl ShapedEasel {
             self.field.click();
         }
         r
+    }
+
+    /// O próximo (ou o anterior) dos [`ShapedEasel::favorites`]; o texto e a
+    /// fonte ficam.
+    fn next_favorite(&mut self, up: bool, ctx: &Ctx) {
+        let n = self.favorites.len();
+        let k = match (self.favorite, up) {
+            (None, true) => 0,
+            (None, false) => n - 1,
+            (Some(k), true) => (k + 1) % n,
+            (Some(k), false) => (k + n - 1) % n,
+        };
+        self.favorite = Some(k);
+        crate::writer::splot::apply(&mut self.words, &self.favorites[k], ctx.color_sets);
+        self.dirty = true;
     }
 
     /// Passagem do tempo: cursor e giro com o botão segurado.

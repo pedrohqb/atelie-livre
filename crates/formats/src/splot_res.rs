@@ -210,9 +210,37 @@ pub fn read_tdrl(data: &[u8]) -> Result<Vec<[u8; 12]>> {
     Ok(v)
 }
 
+/// Um "preferido" do cavalete (botões ＋ e − no Creative Writer): um
+/// registro do `TDRL`, com as escolhas na ordem dos bytes `+0x40..+0x47` do
+/// cabeçalho do `SPLE` (`docs/formats/sple.md`).
+///
+/// ```text
+/// ff ff  i16 giro  u8 forma  u8 sombra  u8 padrão  u8 cores
+/// u8 estilo das letras  u8 fonte (4, ou 0 com estilo 0)  u8 estilos  ff
+/// ```
+pub fn favorite(rec: &[u8; 12]) -> crate::sple::Choices {
+    crate::sple::Choices {
+        angle: i16::from_le_bytes([rec[2], rec[3]]),
+        shape: rec[4],
+        shadow: rec[5],
+        pattern: rec[6],
+        color_set: rec[7],
+        letter_style: rec[8],
+        style: rec[10],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tdrl_record_is_a_favorite() {
+        let f = favorite(&[0xff, 0xff, 0x54, 0x01, 1, 5, 0, 10, 4, 0, 2, 0xff]);
+        assert_eq!(f.angle, 340);
+        assert_eq!((f.shape, f.shadow, f.pattern, f.color_set), (1, 5, 0, 10));
+        assert_eq!((f.letter_style, f.style), (4, 2));
+    }
 
     #[test]
     fn tmen_items_and_styles() {
