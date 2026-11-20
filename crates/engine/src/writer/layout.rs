@@ -71,6 +71,11 @@ pub trait Measure {
     /// `(ascendente, descendente)`: a linha tem a soma de altura e a base
     /// fica a `ascendente` do topo.
     fn metrics(&self, font: &FontKey) -> (i32, i32);
+    /// Altura das maiúsculas (do alto do 'H' à base). Padrão: 3/4 do
+    /// ascendente.
+    fn cap_height(&self, font: &FontKey) -> i32 {
+        (self.metrics(font).0 * 3 + 2) / 4
+    }
     /// `(largura, altura)` da figura do Maçã `id` numa linha com a fonte
     /// `font` (a figura fica em pé na base). Padrão: um quadrado da altura
     /// da linha.
@@ -192,7 +197,10 @@ struct Metric {
     space: bool,
 }
 
-/// Capitular do parágrafo em diagramação.
+/// Capitular do parágrafo em diagramação. A letra é ampliada até as
+/// maiúsculas irem do alto das maiúsculas da 1ª linha à base da última
+/// (`lines`) — ~32×40 px na fonte padrão (`office-complemento.md` §3, Mix
+/// "Era uma vez").
 #[derive(Debug, Clone, Copy)]
 struct DropCap {
     m: Metric,
@@ -230,6 +238,27 @@ impl Cand {
     }
 }
 
+/// Área ao lado de uma capitular já posta: as linhas que começam nela (até
+/// as de parágrafos seguintes) começam depois da letra.
+#[derive(Debug, Clone, Copy)]
+struct DropZone {
+    page: usize,
+    col: usize,
+    /// Onde o texto começa (depois da letra e da folga).
+    x: i32,
+    bottom: i32,
+}
+
+impl DropZone {
+    fn left(&self, page: usize, col: usize, y: i32, left: i32) -> i32 {
+        if page == self.page && col == self.col && y < self.bottom {
+            left.max(self.x)
+        } else {
+            left
+        }
+    }
+}
+
 struct Builder<'a> {
     doc: &'a Document,
     m: &'a dyn Measure,
@@ -243,6 +272,8 @@ struct Builder<'a> {
     y: i32,
     col_has_lines: bool,
     page_has_lines: bool,
+    /// Capitular de um parágrafo anterior que ainda não acabou.
+    zone: Option<DropZone>,
 }
 
 impl Builder<'_> {
@@ -272,6 +303,33 @@ impl Builder<'_> {
                     space: false,
                 }
             }
+        }
+    }
+
+    /// A 1ª letra no tamanho da capitular de `lines` linhas de altura
+    /// `line_h`: o tamanho cujas maiúsculas mais se aproximam da altura das
+    /// linhas de cima mais as maiúsculas da última.
+    fn drop_cap_metric(&self, par: &Paragraph, para: usize, lines: i32, line_h: i32) -> Metric {
+        let Item::Char(_, p) = par.items[0] else {
+            return self.measure(par, para, 0, lines as u16);
+        };
+        let f = FontKey::of(self.doc, &p);
+        let want = (lines - 1) * line_h + self.m.cap_height(&f);
+        let pt = (f.size_pt..=255)
+            .min_by_key(|&pt| {
+                let k = FontKey { size_pt: pt, ..f };
+                (self.m.cap_height(&k) - want).abs()
+            })
+            .unwrap_or(f.size_pt);
+        let key = FontKey { size_pt: pt, ..f };
+        let (asc, desc) = self.m.metrics(&key);
+        let c = par.items[0].char().unwrap_or(' ');
+        Metric {
+            w: self.m.advance(&key, c),
+            asc,
+            desc,
+            size: pt,
+            space: false,
         }
     }
 
@@ -444,7 +502,7 @@ impl Builder<'_> {
         if let Some(lines) = props.drop_cap.filter(|&l| l > 0 && first_word) {
             let lines = i32::from(lines);
             let normal = ms.get(1).copied().unwrap_or(ms[0]);
-            let big = self.measure(par, pi, 0, lines as u16);
+            let big = self.drop_cap_metric(par, pi, lines, normal.asc + normal.desc);
             drop = Some(DropCap {
                 m: big,
                 line_h: normal.asc + normal.desc,
@@ -499,17 +557,29 @@ impl Builder<'_> {
         loop {
             let (cl, cr) = self.cols[self.col];
             let dc = drop.map_or(0, |d| d.extra(line_no, self.page, self.col, self.y));
-            let left = (cl + extra + dc).min(cr - 1);
+            let mut left = cl + extra + dc;
+            if drop.is_none()
+                && let Some(z) = self.zone
+            {
+                left = z.left(self.page, self.col, self.y, left);
+            }
+            // "Recuar todas as linhas" recua também do lado direito
+            let right = if par.props.indent == Indent::All {
+                (cr - INDENT).max(cl + 1)
+            } else {
+                cr
+            };
+            let left = left.min(right - 1);
             let ignore = stuck > 2 * self.cols.len();
             let h_est = match drop {
                 Some(d) if line_no == 0 => d.line_h,
                 _ => ms.get(k).map_or(mark.asc + mark.desc, |m| m.asc + m.desc),
             };
-            let mut cand = self.fill(ms, mark, k, left, cr, self.y, h_est, ignore);
+            let mut cand = self.fill(ms, mark, k, left, right, self.y, h_est, ignore);
             if let Ok(c) = &cand
                 && c.height() > h_est
             {
-                cand = self.fill(ms, mark, k, left, cr, self.y, c.height(), ignore);
+                cand = self.fill(ms, mark, k, left, right, self.y, c.height(), ignore);
             }
             let c = match cand {
                 Err(next_y) => {
@@ -641,13 +711,13 @@ impl Builder<'_> {
         // "entre as linhas": entrelinha dupla
         self.y += h + if props.line_spacing { h } else { 0 };
         if last && let Some(d) = drop {
-            // o parágrafo seguinte não passa por baixo da capitular
-            if let Some((p, col, t)) = d.placed
-                && p == self.page
-                && col == self.col
-            {
-                self.y = self.y.max(t + d.lines * d.line_h);
-            }
+            // os parágrafos seguintes continuam ao lado da capitular
+            self.zone = d.placed.map(|(page, col, t)| DropZone {
+                page,
+                col,
+                x: cl + extra + d.m.w + DROP_GAP,
+                bottom: t + d.lines * d.line_h,
+            });
         }
         self.col_has_lines = true;
         self.page_has_lines = true;
@@ -674,6 +744,7 @@ impl Layout {
             y: top,
             col_has_lines: false,
             page_has_lines: false,
+            zone: None,
         };
         for pi in 0..doc.paras.len() {
             b.lay_paragraph(pi);
@@ -1058,6 +1129,13 @@ mod tests {
                 "{ind:?}"
             );
         }
+        // "Recuar todas as linhas" recua dos dois lados (Poesia: x 130..509)
+        d.apply_para(d.all(), ParaChange::Indent(Indent::All));
+        let l = lay(&d);
+        for ln in &l.lines {
+            let ink = ln.boxes.iter().rev().find(|b| !b.space).unwrap();
+            assert!(ink.x + ink.w <= 523 - INDENT, "{}", ink.x + ink.w);
+        }
         d.apply_para(d.all(), ParaChange::Indent(Indent::None));
         d.apply_para(d.all(), ParaChange::Style(ParaStyle::Bullets));
         let l = lay(&d);
@@ -1260,7 +1338,22 @@ mod tests {
         let l = lay(&d);
         let first = &l.lines[0];
         let cap = first.boxes[0];
-        assert_eq!((cap.index, cap.x, cap.size_pt), (0, 72, 36));
+        assert_eq!((cap.index, cap.x), (0, 72));
+        // a maiúscula vai do alto das maiúsculas da 1ª linha à base da 3ª
+        // (office-complemento.md §3: ~32×40 px na fonte padrão)
+        let key = |pt| FontKey {
+            name: "",
+            size_pt: pt,
+            bold: false,
+            italic: false,
+        };
+        let want = 2 * 13 + M.cap_height(&key(12));
+        assert!(
+            (M.cap_height(&key(cap.size_pt)) - want).abs() <= 1,
+            "{}",
+            cap.size_pt
+        );
+        assert!(cap.size_pt > 36);
         // base da capitular = base da 3ª linha
         assert_eq!(cap.baseline, l.lines[2].baseline);
         let indent = 72 + cap.w + DROP_GAP;
@@ -1272,14 +1365,26 @@ mod tests {
         assert_eq!(l.lines[0].start, 0);
         assert_eq!(l.caret(Pos::new(0, 0)).x, 72);
         assert_eq!(l.caret(Pos::new(0, 1)).x, indent);
-        // parágrafo curto: o seguinte começa abaixo da capitular
-        let mut d = doc("abc\nx");
+        // parágrafo curto: o seguinte continua recuado ao lado da
+        // capitular enquanto ela não acaba (Mix "Era uma vez")
+        let mut d = doc(&format!("abc\n{}\n{}", words(2), words(30)));
         d.apply_para(
             Range::at(Pos::new(0, 0)),
             ParaChange::Style(ParaStyle::DropCap),
         );
         let l = lay(&d);
-        assert_eq!(l.lines[1].top, 72 + 3 * 13);
+        let cap = l.lines[0].boxes[0];
+        let beside = 72 + cap.w + DROP_GAP;
+        assert_eq!(l.lines[1].top, 72 + 13);
+        assert_eq!(l.lines[1].boxes[0].x, beside);
+        assert_eq!(l.lines[2].boxes[0].x, beside);
+        // a 4ª linha já está abaixo da capitular
+        assert_eq!(l.lines[3].top, 72 + 3 * 13);
+        assert_eq!(l.lines[3].boxes[0].x, 72);
+        // um recuo próprio maior que a capitular vale (Poesia ao lado)
+        d.apply_para(Range::at(Pos::new(1, 0)), ParaChange::Indent(Indent::All));
+        let l = lay(&d);
+        assert_eq!(l.lines[1].boxes[0].x, beside.max(72 + INDENT));
         // destacada: a 1ª letra cresce e a linha também
         let mut d = doc("abc");
         d.apply_para(d.all(), ParaChange::Style(ParaStyle::RaisedCap));

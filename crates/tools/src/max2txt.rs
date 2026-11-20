@@ -24,7 +24,6 @@ fn effect_name(e: Effect) -> String {
         Effect::Vupt => "Vupt".into(),
         Effect::Glow => "Brilho".into(),
         Effect::Shake => "Treme-treme".into(),
-        Effect::Crazy => "Maluco".into(),
         Effect::Other(v) => format!("efeito {v}"),
     }
 }

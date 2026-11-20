@@ -1070,6 +1070,16 @@ impl Measure for WriterFonts {
         let m = self.line_metrics(&RunFont::from_key(font));
         (m.ascent, m.descent + m.leading)
     }
+
+    /// Altura das maiúsculas da TrueType original (as substitutas são
+    /// ajustadas a ela); na Pablo, 3/4 do ascendente.
+    fn cap_height(&self, font: &FontKey) -> i32 {
+        let f = RunFont::from_key(font);
+        match f.family.truetype() {
+            Some(o) => (o.cap_height * f32::from(f.pts())).round() as i32,
+            None => (self.line_metrics(&f).ascent * 3 + 2) / 4,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1115,6 +1125,20 @@ mod tests {
             .iter()
             .map(|&s| line_metrics(&RunFont::new(f, s)).height())
             .collect()
+    }
+
+    #[test]
+    fn cap_height_follows_the_original_metrics() {
+        let f = WriterFonts::embedded(Vec::new());
+        let key = |name, size_pt| FontKey {
+            name,
+            size_pt,
+            bold: false,
+            italic: false,
+        };
+        // Lucida Sans: 0,7227 do em
+        assert_eq!(f.cap_height(&key("Lucida Sans", 12)), 9);
+        assert_eq!(f.cap_height(&key("Lucida Sans", 54)), 39);
     }
 
     #[test]

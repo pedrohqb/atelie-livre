@@ -47,7 +47,7 @@ seja campo a campo. As unidades são as do arquivo: **pontos** (1/72 pol.).
 | `color: Option<Rgb>` | `0x0c` + `0x10` | `None` = preto; RGB e não índice, porque os exemplos têm cores fora do `CSCH` (`#d016de`) |
 | `highlight: Option<Rgb>` | `0x0d` + `0x11` | Iluminador |
 | `bold`, `italic`, `underline` | `0x04`–`0x06` | Seleciona-estilos: "Simples" tira os três, os outros ligam o seu (`TextStyle`) |
-| `effect: Option<Effect>` | `0x0b` | 1 Pisca-pisca, 2 Formiguinhas, 3 Vapt, 4 Vupt, 5 Brilho, 6 Treme-treme, 7 Maluco; outro valor fica em `Effect::Other` |
+| `effect: Option<Effect>` | `0x0b` | 1 Pisca-pisca, 2 Formiguinhas, 3 Vapt, 4 Vupt, 5 Brilho, 6 Treme-treme (o "Maluco" é um Mix, não um efeito); outro valor fica em `Effect::Other` |
 
 `CSCH` tem as 16 cores do Seleciona-cores/Iluminador na ordem da lista.
 `CharChange` é o "pincel" de cada lista (`Font`, `Size`, `Color`,

@@ -167,7 +167,8 @@ impl MacColor {
     }
 }
 
-/// Efeito especial do texto (sprm `0x0b`; nomes da `STR#` 0x807).
+/// Efeito especial do texto (sprm `0x0b`; nomes da `STR#` 0x807). Não há
+/// efeito "Maluco": o Mix de estilos "Maluco" grava o Brilho (5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Effect {
     /// 1 "Pisca-pisca".
@@ -182,8 +183,6 @@ pub enum Effect {
     Glow,
     /// 6 "Treme-treme".
     Shake,
-    /// 7 "Maluco".
-    Crazy,
     /// Outro valor, guardado como veio.
     Other(u8),
 }
@@ -197,7 +196,6 @@ impl Effect {
             4 => Effect::Vupt,
             5 => Effect::Glow,
             6 => Effect::Shake,
-            7 => Effect::Crazy,
             v => Effect::Other(v),
         }
     }
@@ -210,7 +208,6 @@ impl Effect {
             Effect::Vupt => 4,
             Effect::Glow => 5,
             Effect::Shake => 6,
-            Effect::Crazy => 7,
             Effect::Other(v) => v,
         }
     }

@@ -178,6 +178,10 @@ impl Measure for DocMeasure<'_> {
         Measure::metrics(self.fonts, font)
     }
 
+    fn cap_height(&self, font: &FontKey) -> i32 {
+        Measure::cap_height(self.fonts, font)
+    }
+
     fn rebus_size(&self, id: u8, font: &FontKey) -> (i32, i32) {
         match self.rebus.get(&id) {
             Some(&(w, h)) => (w + 2 * REBUS_PAD, h),

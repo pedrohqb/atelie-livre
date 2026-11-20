@@ -98,7 +98,7 @@ documento criado no original; ~ = deduzido dos exemplos):
 | `0x04` | 1 | negrito | `ff` ✔ |
 | `0x05` | 1 | inclinado | `ff` ✔ |
 | `0x06` | 1 | sublinhado | `ff` ✔ |
-| `0x0b` | 1 | efeito especial | 1 Pisca-pisca, 2 Formiguinhas, 3 Vapt ✔, 4 Vupt, 5 Brilho ✔, 6 Treme-treme, 7 Maluco (ordem da `STR#` 0x807 itens 4–11) |
+| `0x0b` | 1 | efeito especial | 1 Pisca-pisca, 2 Formiguinhas, 3 Vapt ✔, 4 Vupt, 5 Brilho ✔, 6 Treme-treme (ordem da `STR#` 0x807 itens 4–10; não há efeito 7: o Mix "Maluco" grava `0x0b = 5`) |
 | `0x0c` | 1 | cor do texto definida (usa `0x10`; sem `0x10` = preto) | `ff` ✔ |
 | `0x0d` | 1 | marca-texto ligado (usa `0x11`) | `ff` ✔ |
 | `0x0e` | 2 | fonte: `ftc` da tabela `FONT` | ✔ |
@@ -115,7 +115,14 @@ vermelho #fa0039, lavanda #8888e6, roxo #6141db, magenta #de38c7, violeta
 
 Os "Mix de estilos" (Maluco, Anotação, Título, Era uma vez, Poesia,
 Relatório, Super-simples) não têm sprm próprio: aplicam combinações dos
-sprms acima (Título = negrito + 24 pt + parágrafo centralizado, ✔).
+sprms acima, medidos gravando cada um no original (ver
+`docs/telas/creative-writer-palavra.md`): Maluco = `0x0b 5` (Brilho) +
+36 pt + violeta #932ca3 (fixo, não sorteado) ✔; Anotação = sublinhado +
+vermelho #fa0039 + marca-texto #ffee4c ✔; Título = negrito + 24 pt +
+parágrafo centralizado ✔; Era uma vez = capitular de 3 linhas + espaço
+depois ✔; Poesia = esquerda e direita + recuo de todas as linhas ✔;
+Relatório = recuo da 1ª linha + espaço depois ✔; Super-simples apaga todos
+os sprms dos parágrafos tocados ✔.
 
 ### Parágrafo (`FDPP`)
 

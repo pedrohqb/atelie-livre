@@ -133,7 +133,9 @@ impl Size {
     }
 }
 
-/// Efeito especial animado (sprm `0x0b`, nomes da `STR#` 0x807).
+/// Efeito especial animado (sprm `0x0b`, nomes da `STR#` 0x807). Não há
+/// efeito "Maluco": o Mix "Maluco" grava o Brilho (`office-complemento.md`
+/// §2.3); outros valores ficam em [`Effect::Other`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Effect {
     /// 1 "Pisca-pisca".
@@ -148,8 +150,6 @@ pub enum Effect {
     Sparkle,
     /// 6 "Treme-treme".
     Shake,
-    /// 7 "Maluco".
-    Crazy,
     /// Outro valor, guardado como veio.
     Other(u8),
 }
@@ -174,7 +174,6 @@ impl Effect {
             Effect::Vupt => 4,
             Effect::Sparkle => 5,
             Effect::Shake => 6,
-            Effect::Crazy => 7,
             Effect::Other(v) => v,
         }
     }
@@ -187,7 +186,6 @@ impl Effect {
             4 => Effect::Vupt,
             5 => Effect::Sparkle,
             6 => Effect::Shake,
-            7 => Effect::Crazy,
             v => Effect::Other(v),
         }
     }
@@ -200,7 +198,6 @@ impl Effect {
             Effect::Vupt => "Vupt",
             Effect::Sparkle => "Brilho",
             Effect::Shake => "Treme-treme",
-            Effect::Crazy => "Maluco",
             Effect::Other(_) => "?",
         }
     }
