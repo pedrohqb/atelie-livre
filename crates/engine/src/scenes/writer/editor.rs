@@ -29,6 +29,7 @@ use crate::writer::doc::{CharChange, CharProps, Document, DopProps, Item, ParaCh
 use crate::writer::fonts::{RunFont, WriterFonts};
 use crate::writer::ideas::story::{self, IdeaStory};
 use crate::writer::layout::{FontKey, Layout, Measure};
+use crate::writer::new_style::NewStyle;
 use crate::writer::object::{FloatObject, ObjRef, ObjectKind};
 use crate::writer::selection::{Clip, Clipboard, Motion, Selection};
 use crate::writer::store;
@@ -241,6 +242,8 @@ pub struct Editor {
     pub blink: f32,
     /// Ponto de inserção visível (as listas abertas o escondem).
     pub caret_visible: bool,
+    /// Relógio dos efeitos especiais animados, em ms.
+    pub effects_ms: u64,
     changed: bool,
     /// Arrastando o mouse para selecionar.
     dragging: bool,
@@ -268,7 +271,8 @@ impl Editor {
             .iter()
             .filter_map(|&n| Some((n, Rc::new(assets.library_bytes(n)?.to_vec()))))
             .collect();
-        let (doc, extra) = convert::blank();
+        let (mut doc, extra) = convert::blank();
+        NewStyle::load(dir.as_deref()).apply_to(&mut doc);
         Editor {
             dir,
             file: None,
@@ -287,6 +291,7 @@ impl Editor {
             libs,
             blink: 0.0,
             caret_visible: true,
+            effects_ms: 0,
             changed: false,
             dragging: false,
         }
@@ -848,6 +853,9 @@ impl Editor {
     pub fn tick(&mut self, dt: f32) {
         if dt.is_finite() {
             self.blink = (self.blink + dt.max(0.0)) % CARET_PERIOD;
+            self.effects_ms = self
+                .effects_ms
+                .wrapping_add((dt.max(0.0) * 1000.0).round() as u64);
             self.undo.tick(dt);
         }
     }
@@ -873,6 +881,16 @@ impl Editor {
                 continue;
             }
             self.draw_sheet(&mut v, a, page, ox, oy, true);
+            super::effects_draw::draw(
+                &self.doc,
+                &l,
+                &mut v,
+                page,
+                ox,
+                oy,
+                (vx, vy),
+                self.effects_ms,
+            );
         }
         if self.caret_visible
             && self.sel.is_empty()
@@ -1131,7 +1149,8 @@ impl Editor {
 
     /// Começa um documento em branco (NOVO).
     pub fn new_document(&mut self) {
-        let (doc, extra) = convert::blank();
+        let (mut doc, extra) = convert::blank();
+        NewStyle::load(self.dir.as_deref()).apply_to(&mut doc);
         self.load(doc, extra, None);
     }
 

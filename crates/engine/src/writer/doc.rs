@@ -1139,7 +1139,15 @@ impl Document {
     /// Estende o intervalo até cobrir as palavras que ele toca (o arrasto do
     /// pincel). Um intervalo vazio vira a palavra em que está.
     pub fn expand_to_words(&self, r: Range) -> Range {
-        let s = self.word_at(r.start).start;
+        // um arrasto que começa num espaço não toca a palavra da esquerda
+        let mut s = r.start;
+        if r.is_empty() || !self.item(s).is_some_and(Item::is_space) {
+            s = self.word_at(s).start;
+        } else {
+            while s < r.end && self.item(s).is_some_and(Item::is_space) {
+                s = self.next(s).unwrap_or(r.end);
+            }
+        }
         let end = if r.is_empty() {
             r.end
         } else {
@@ -1147,12 +1155,19 @@ impl Document {
             self.prev(r.end).filter(|&q| q >= r.start).unwrap_or(r.end)
         };
         let w = self.word_at(end);
-        let e = if r.is_empty() || w.end > end {
+        let mut e = if r.is_empty() || w.end > end {
             w.end
         } else {
             r.end
         };
-        Range::new(s.min(r.start), e.max(r.end))
+        // nem os espaços do fim
+        while e > s
+            && let Some(q) = self.prev(e)
+            && self.item(q).is_some_and(Item::is_space)
+        {
+            e = q;
+        }
+        Range::new(s, e.max(s))
     }
 
     /// Propriedades para o que for digitado em `p`: as do caractere antes,
@@ -1650,6 +1665,15 @@ mod tests {
         // atravessando parágrafos
         let r = d.expand_to_words(Range::new(Pos::new(0, 9), Pos::new(1, 1)));
         assert_eq!(d.text_range(r), "vez\num");
+        // começando no espaço depois de "Era": só "uma"
+        let r = d.expand_to_words(Range::new(Pos::new(0, 3), Pos::new(0, 5)));
+        assert_eq!(d.text_range(r), "uma");
+        // terminando no espaço depois de "uma": sem o espaço
+        let r = d.expand_to_words(Range::new(Pos::new(0, 5), Pos::new(0, 8)));
+        assert_eq!(d.text_range(r), "uma");
+        // só espaços: nada
+        let r = d.expand_to_words(Range::new(Pos::new(0, 3), Pos::new(0, 4)));
+        assert!(r.is_empty());
     }
 
     #[test]

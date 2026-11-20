@@ -14,6 +14,7 @@
 mod chrome;
 pub mod cursors;
 pub mod editor;
+mod effects_draw;
 mod egg;
 mod exit;
 pub mod mczee;
@@ -26,6 +27,7 @@ mod stickers;
 pub mod tools;
 mod transformers;
 mod viewer;
+mod word_lists;
 mod word_strip;
 
 use crate::Frame;
@@ -773,7 +775,7 @@ impl Scene for Writer {
             self.tools.get_mut(t).tick(&mut self.ed, dt.max(0.0));
         }
         self.ed.caret_visible =
-            !self.tools.get(t).modal() && self.dialog.is_none() && self.rename.is_none();
+            !self.tools.get(t).hides_caret() && self.dialog.is_none() && self.rename.is_none();
         let want = self.wanted_cursor(assets);
         if let Some(e) = self.pointer.set(want) {
             fx.push(e);
@@ -999,16 +1001,20 @@ mod tests {
     }
 
     #[test]
-    fn size_list_changes_the_typing_style() {
+    fn size_list_loads_the_brush() {
         let (_d, a) = empty_assets();
         let mut w = Writer::new_blank(None, &a);
         w.update(&[click(100, 70)], 0.0, &a);
         assert_eq!(w.tools().word.list(), Some(List::Sizes));
-        // primeiro item: Gigante
+        // primeiro item: Gigante; o pincel fica carregado (digitar não usa)
         let r = WordStrip::list_item_rect(List::Sizes, 0);
         w.update(&[click(r.0 + 5, r.1 + 5), text("a")], 0.0, &a);
         assert_eq!(w.tools().word.list(), None);
-        assert_eq!(w.doc().paras[0].items[0].props().unwrap().size, Size::Giant);
+        assert!(w.tools().word.brush().is_some());
+        assert_eq!(
+            w.doc().paras[0].items[0].props().unwrap().size,
+            Size::Minimal
+        );
         // clique fora fecha a lista sem escolher
         w.update(&[click(100, 70), click(300, 300)], 0.0, &a);
         assert_eq!(w.tools().word.list(), None);
@@ -1029,31 +1035,45 @@ mod tests {
     }
 
     #[test]
-    fn lists_apply_to_the_selection() {
+    fn brushes_paint_dragged_words() {
         let (_d, a) = empty_assets();
         let mut w = Writer::new_blank(None, &a);
-        w.update(&[text("abc"), ctrl(Key::A)], 0.0, &a);
+        w.update(&[text("abc def")], 0.0, &a);
+        let at = |w: &Writer, k: usize| {
+            let c = w.ed.layout().caret(Pos::new(0, k));
+            w.ed.to_screen(c.page, c.x + 1, c.top + c.height / 2)
+        };
+        let paint = |w: &mut Writer, from: usize, to: usize| {
+            let ((x0, y0), (x1, y1)) = (at(w, from), at(w, to));
+            w.update(
+                &[click(x0, y0), Input::MouseMove { x: x1, y: y1 }, up(x1, y1)],
+                0.0,
+                &a,
+            );
+        };
         w.update(&[click(170, 70)], 0.0, &a);
         let r = WordStrip::list_item_rect(List::Colors, 5);
         w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
-        let p = *w.doc().paras[0].items[2].props().unwrap();
-        assert_eq!(p.color, Some(CSCH[5]));
-        w.update(&[click(230, 70)], 0.0, &a);
-        let r = WordStrip::list_item_rect(List::Styles, 1);
-        w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
-        assert!(w.doc().paras[0].items[0].props().unwrap().bold);
+        paint(&mut w, 0, 1);
+        assert_eq!(
+            w.doc().paras[0].items[2].props().unwrap().color,
+            Some(CSCH[5])
+        );
+        assert_eq!(w.doc().paras[0].items[4].props().unwrap().color, None);
         w.update(&[click(300, 70)], 0.0, &a);
         let r = WordStrip::list_item_rect(List::Align, 2);
         w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        paint(&mut w, 5, 5);
         assert_eq!(w.doc().paras[0].props.align, Align::Center);
         // letras: a Impact entra na tabela de fontes do documento
         w.update(&[click(40, 70)], 0.0, &a);
         let r = WordStrip::list_item_rect(List::Fonts, 4);
         w.update(&[click(r.0 + 2, r.1 + 2)], 0.0, &a);
+        paint(&mut w, 5, 6);
         let ftc = w.doc().fonts.ftc_of("Impact").unwrap();
-        assert_eq!(w.doc().paras[0].items[1].props().unwrap().font, ftc);
-        // quatro ações no Ovo
-        assert_eq!(w.editor().undo.undo_len(), 5);
+        assert_eq!(w.doc().paras[0].items[4].props().unwrap().font, ftc);
+        // três ações no Ovo (mais a digitação)
+        assert_eq!(w.editor().undo.undo_len(), 4);
     }
 
     #[test]

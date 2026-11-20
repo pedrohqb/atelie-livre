@@ -23,6 +23,7 @@
 //! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
 //!   "Salvar como texto".
 //! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
+//! - [`brush`]: o pincel da Palavra (palavras inteiras, parágrafos, Aplicador);
 //! - [`effects`]: relógio e passos dos efeitos especiais animados;
 //! - [`mix`]: os 7 "Mix de estilos" da Palavra;
 //! - [`new_style`]: o estilo dos documentos novos (Ctrl+Aplicador).
@@ -32,6 +33,7 @@ pub mod assistant_banner;
 pub mod assistant_card;
 pub mod assistant_news;
 pub mod borders;
+pub mod brush;
 pub mod convert;
 pub mod dict;
 pub mod doc;

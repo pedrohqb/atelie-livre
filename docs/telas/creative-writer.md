@@ -20,7 +20,9 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `mczee.rs` | balões automáticos, menu de 8 botões, ligar/desligar a ajuda, Varinha |
 | `cursors.rs` | nomes dos `CURSOR` 0001–0023 e o `Pointer` (emite `SetCursor` só quando muda) |
 | `exit.rs` | porta Saída (fechada `023d`, aberta `0241`); o fluxo "Epa!" → versões → nome → sala fica no `mod.rs` |
-| `word_strip.rs` | Palavra |
+| `word_strip.rs` | Palavra (duas páginas, pincel, Aplicador, Ponto de inserção; ver [`creative-writer-palavra.md`](creative-writer-palavra.md)) |
+| `word_lists.rs` | listas suspensas da Palavra (geometria, ✓, figuras) |
+| `effects_draw.rs` | efeitos especiais animados na vista da página |
 | `stickers.rs` | Seleciona-adesivos |
 | `sounds.rs` | Seleciona-sons |
 | `page_strip.rs` | Preparação da página |
@@ -120,8 +122,8 @@ McZee no nicho `0235`/`0237` (536,47); porta `023d`/`023f` (581,16).
 
 ## Faixas (figuras e balões)
 
-Estado atual: a Palavra (listas de letra, tamanho, cor, estilo e
-alinhamento, aplicadas à seleção ou ao estilo de digitação), os Adesivos
+Estado atual: a Palavra (as duas páginas, com pincel arrastado,
+Aplicador e Ponto de inserção; ver `creative-writer-palavra.md`), os Adesivos
 (rolos e tira de filme; o adesivo vira objeto solto no ponto de inserção),
 o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos) e a explosão dos
 Re-movedores funcionam; as outras faixas são só desenhadas, com o interruptor trocando de
@@ -131,6 +133,7 @@ balão da opção e "ainda não disponível" no registro.
 | ferramenta | botões (figura/máscara em (x,y) → balão) |
 |---|---|
 | Palavra pág. 1 | Seleciona-letras `0275`/`0277` (24,61) → `0fa0[3]`; Dimensiona-palavras `0811` (89,61) → `[4]`; Seleciona-cores `027b` (154,61) → `[5]`; Seleciona-estilos `0279` (219,61) → `[7]`; Posicionador `0bc3` (284,61) → `[8]`; Aplicador `080b`/`080d` (349,58) → `[9]`; Ponto de inserção `0831`/`0833` (398,61) → `[10]`; FORMA `0269`/`026b` (443,57) → `[11]`; interruptor `0229`/`022b` (508,59) → `[25]` |
+| Palavra pág. 2 | Iluminador `0863` (24,61) → `[12]`; Efeitos especiais `080f` (89,61) → `[13]`; Mix de estilos `087d` (154,61) → `[14]`; Estilos de parágrafo `0815` (219,61) → `[15]`; Espaçamento `08d5` (284,61) → `[16]`; Recuos `0817` (349,61) → `[17]`; Aplicador (414,58); Ponto de inserção (463,61); interruptor (508,59) |
 | Adesivos | tampas `0245`, `0239`; rolos `0249`/`024b`; Cachorrinho `025d`/`0263` (414,62) → `0fa1[11]`; Cavalete `0881`/`0883` (459,57) → `[6]`; setas `03b3` (511,56), `03b7` (511,86) sobre `08d9`/`08dd` (510,56); rolo → `[2]` |
 | Sons | teatros `024d`/`024f` (20,59), (133,59), (246,59) → `0fa2[2]`; Cachorrinho `025d` (405,62) → `[9]`; Gravador `0265`/`0267` (454,57) → `[5]`; setas |
 | Página pág. 1 | Fundo `0821`/`0823` (38,57) → `0fa5[2]`; Cria-colunas `086b` (188,61) → `[4]`; Alto ou largo `08c3` (267,61) → `[6]`; Margens `0869` (346,61) → `[8]`; Nº de página `0875` (425,61) → `[9]`; interruptor → `[1]` |
@@ -274,7 +277,7 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 
 | chamada | o quê |
 |---|---|
-| `ed.apply_char(CharChange)` | Palavra: na seleção; sem seleção, no estilo de digitação |
+| `ed.apply_char(CharChange)` | na seleção; sem seleção, no estilo de digitação (a Palavra usa o pincel, `writer::brush`) |
 | `ed.apply_para(ParaChange)` | parágrafos tocados pela seleção (ou o do cursor) |
 | `ed.apply_dop(\|dop\| …)` | Preparação da página (margens, colunas, alto/largo, número, borda) |
 | `ed.add_object(obj, Some(chunk))` | põe um objeto solto, guardando a cópia do conteúdo com um número livre (`obj.object` é reescrito) |

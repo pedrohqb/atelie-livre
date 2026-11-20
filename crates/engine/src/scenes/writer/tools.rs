@@ -425,6 +425,11 @@ pub trait ToolStrip {
         false
     }
 
+    /// Esconde o ponto de inserção (lista aberta, pincel carregado).
+    fn hides_caret(&self) -> bool {
+        self.modal()
+    }
+
     /// Botão apertado em `(x, y)`; `true` = tratado.
     fn press(&mut self, _ed: &mut Editor, _cx: &mut Cx, _x: i32, _y: i32) -> bool {
         false

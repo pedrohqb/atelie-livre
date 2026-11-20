@@ -166,3 +166,24 @@ pelas mesmas funções (`prefs::library`, `wall_doc`, `set_slot`, `save`) e
 abrir um documento grava o `FILR 0` (`prefs::remember_last`). A prévia de
 impressão grava a folha mandada ao `lp` como
 `impressao-AAAAMMDD-HHMMSS.png` na pasta do usuário.
+
+## Estilo dos documentos novos do Creative Writer (`estilo-writer.txt`)
+
+Gravado na pasta do usuário do Writer (a dos `.MAX`) por Ctrl+clique no
+Aplicador da Palavra (`crates/engine/src/writer/new_style.rs`): o pincel
+carregado é aplicado ao estilo guardado e vale para todo documento em
+branco (o `\r` e o 1º parágrafo; o que se digita sai nesse estilo). O
+original guarda isso em algum lugar não localizado; sem o arquivo, vale o
+padrão (Lucida Sans, Mínima, preto, parágrafo simples). Texto UTF-8, uma
+`chave=valor` por linha (chaves desconhecidas são ignoradas):
+
+| Chave | Valor |
+|---|---|
+| `fonte` | nome da família (`Lucida Sans`, `Impact`…) |
+| `tamanho` | pontos (48, 36, 24, 18, 14, 12, 9) |
+| `cor`, `iluminador` | `rrggbb` em hexadecimal, ou vazio |
+| `negrito`, `inclinado`, `sublinhado` | 0 ou 1 |
+| `efeito` | código do sprm `0x0b` (0 = nenhum, 1 Pisca-pisca … 6 Treme-treme) |
+| `alinhamento`, `recuo` | códigos dos sprms `0x19` e `0x1a` |
+| `entre-linhas`, `depois`, `destacada`, `nova-pagina`, `marcadores` | 0 ou 1 |
+| `capitular` | linhas da capitular (0 = sem) |
