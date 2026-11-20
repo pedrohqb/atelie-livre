@@ -45,4 +45,4 @@ mksquashfs "$APPDIR" "$WORK/app.squashfs" -root-owned -noappend -comp gzip -quie
 cat "$RUNTIME" "$WORK/app.squashfs" > "$OUT"
 chmod +x "$OUT"
 echo "pronto: $OUT ($(du -h "$OUT" | cut -f1))"
-echo "dados do jogo em execução: ~/.local/share/atelie-livre/ e ~/.config/atelie-livre/"
+echo "dados do jogo em execução: ~/.local/share/atelie-livre/ (~/.config/atelie-livre/config.toml só é lido, se existir)"
