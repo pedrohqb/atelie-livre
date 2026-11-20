@@ -123,7 +123,7 @@ Tela de pintura e ferramentas:
 |---|---|---|
 | Diálogo verde "achar arquivos" (Cachorrinho) | `scenes::finder_dialog`: geometria, `FileList` (rolagem, escolha, `hit` → `Hit`), `Entry`/`Kind` (`File`, `Outside`, `Back`), `draw_left`/`draw_right`. Cada ferramenta decide o que os botões fazem, os sons e a metade direita. | Cachorrinho dos sons (`sounds::finder`), Cachorrinho dos adesivos (`paint::find_pictures`). |
 | Fichário verde (pasta) | `scenes::portfolio::Binder` | Galeria e maleta das salas (`GalleryRoom::portfolio`). |
-| Impressão | `scenes::printing`: `PrintJob` (folhas numa thread, `lp`, tempo mínimo, cancelar), `step_balloon` (Pronto / Imprimindo / Terminei), `mczee_balloon`, `alert_balloon`/`alert_balloon_in` + `CANT_PRINT`/`CANCELED`. A prévia da Galeria (`gallery_print::PrintPreview`) muda por `PreviewSpec` (`ARTIST_PREVIEW`, `writer_library::WRITER_PREVIEW`) e imprime um `Sheet` (desenho ou folha já montada). | Prévia da Galeria e da Biblioteca (`gallery_print`), máquina do McZee (`paint::print_machine`). |
+| Impressão | `scenes::printing`: `PrintJob` (folhas numa thread, `lp`, tempo mínimo, cancelar), `step_balloon` (Pronto / Imprimindo / Terminei), `mczee_balloon`, `alert_balloon`/`alert_balloon_in` + `CANT_PRINT`/`CANCELED`. A prévia da Galeria (`gallery_print::PrintPreview`) muda por `PreviewSpec` (`ARTIST_PREVIEW`, `writer_library::WRITER_PREVIEW`) e imprime um `Sheet` (desenho ou documento do Writer); com o `MachineSpec` do spec (`PrintPreview::machine`) passa pelos passos de escolha da máquina do Writer. | Prévia da Galeria e da Biblioteca (`gallery_print`), máquina do McZee (`paint::print_machine`), Imprimir do Escritório (`scenes::writer::print`). |
 | "EPA! O que você quer fazer?" (Sair / Continuar) | `Entry::quit_balloon`, posicionado por `room_talk::quit_balloon(assets, pos)` | Entrada, salas, elevador, Galeria (esta com `alert = false`). |
 | "Você quer me ver menos?" / "Que bom que você me chamou de novo" | `room_talk::Helper::balloon` | Salas, elevador, Galeria. |
 | Sons em sequência | `ui::SoundQueue` | Entrada, Galeria. |
@@ -154,7 +154,8 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   achar documentos basta outra lista de `Entry` e outro ícone de linha.
 - **Impressão**: `printing::PrintJob` e os balões do McZee independem do que
   se imprime; a folha é montada por quem chama (`paint::print::Composer`
-  para desenhos).
+  para desenhos, `writer::print::PrintDoc` para documentos do Writer:
+  página por folha, cartão em quartos, faixa em várias folhas).
 - **Sons**: `ui::SoundQueue` para vinhetas encadeadas; `scenes::sounds` é a
   ferramenta Seleciona-sons inteira (categorias, Cachorrinho, Gravador).
 - **Texto de interface**: `ui::Pen` e `ui::clip_text`; para o texto do

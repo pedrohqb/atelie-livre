@@ -63,7 +63,11 @@ Escritório. Segue (`2eb`): `4c00[9]` "Eu ainda estou imprimindo…" com o
 dinossauro atrás do rato no canto (`4c0b`, `4c0f`, `4c17`); fim:
 `4c00[11]` "Terminei…" (Pára, `2ec`); falha: `0805[21]` "Sua impressora
 está com algum problema" (`2fe`, o que o Wine mostrou); Esc: `4c02[2]`.
-Fechar o aviso volta à Biblioteca.
+Fechar o aviso volta à Biblioteca. A prévia e as folhas são as do
+documento diagramado pelo Escritório e composto por `writer::print` (o
+cartão em quartos, a faixa em várias folhas; ver
+[`creative-writer-impressao.md`](creative-writer-impressao.md)); todas as
+folhas são impressas.
 
 `WRITER_PREVIEW`: janela (16,32) 575×431 branca com moldura laranja (as
 bordas dos lados com o escuro por fora), moldura cinza (66,62) 210×270, a

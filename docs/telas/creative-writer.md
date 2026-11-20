@@ -29,7 +29,7 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `removers.rs` | Re-movedores |
 | `transformers.rs` | Transformadores |
 | `viewer.rs` | Visor de páginas |
-| `print.rs` | Imprimir |
+| `print.rs` | Imprimir: faixa, máquina de impressão do McZee e `print_document` (ver [`creative-writer-impressao.md`](creative-writer-impressao.md)) |
 
 O `Editor` usa o modelo rico (`crates/engine/src/writer/{doc,object,layout,
 selection,undo,fonts,convert,store}.rs`,
@@ -52,7 +52,9 @@ Cada arquivo de ferramenta define uma `struct` com `Default` e implementa
 | `motion(ed, cx, x, y)` | mouse movido (para arrastos: guarde o estado no `press`) |
 | `release(ed, cx, x, y)` | botão solto |
 | `key(ed, cx, key, ctrl) -> bool` | tecla; `false` deixa a tecla ir para o editor de texto |
+| `text(ed, cx, s) -> bool` | texto digitado; `true` = tratado (caixas de texto da ferramenta, como a das cópias), senão vai para o editor |
 | `tick(ed, dt)` | animação |
+| `update(ed, cx, dt)` | passagem do tempo com efeitos (sons, avisos): trabalhos que terminam sozinhos, como a impressão |
 | `draw_strip(ed, f, a)` | faixa de opções (y 56..104), sobre o fundo cinza-claro |
 | `draw_front(ed, f, a)` | por cima da página (tiras de filme, listas, painéis) |
 | `cursor(ed, x, y)` | cursor do mouse; `None` = padrão (texto na página, mão no resto) |
@@ -141,7 +143,7 @@ balão da opção e "ainda não disponível" no registro.
 | Transformadores | Mover-modificar `0923`/`0929` (33,58) → `0fa8[1]`; Dimensionar tudo `0857`/`0859` (94,54) → `[2]`; lateral `085b`/`085d` (150,54) → `[3]`; vertical `085f`/`0861` (187,54) → `[4]`; Agente Secreto `0807`/`0809` (278,59) → `[5]`; Coloca-figuras `0865` (340,61) → `[6]`; Flutua-texto `08c7`/`08cb` (432,56) → `[7]` |
 | Visor pág. 1 | Página inteira `08a9` (35,58) → `0fa6[5]`; Aumentar visão `08ad` (122,58) → `[6]`; MENOS ZOOM `0891`/`0893` (209,64) → `[7]`; régua `0885` (278,73) com o bichinho `092c`/`092d`; MAIS ZOOM `0895`/`0897` (434,63) → `[8]` |
 | Visor pág. 2 | Visão normal `0899`/`089b` (55,58) → `[1]`; Duas páginas `089d` (168,58) → `[2]`; Todas as páginas `08a1` (281,58) → `[3]`; Lado a lado `08a5` (394,58) → `[4]` |
-| Imprimir | depressa `02ef`/`02f1` (133,60); fazer escolhas `02f3`/`02f5` (337,59) → `0fa7[0]` |
+| Imprimir | depressa `02ef`/`02f1` (133,60); fazer escolhas `02f3`/`02f5` (337,59) → `0fa7[0]`; os dois abrem a máquina de impressão ([`creative-writer-impressao.md`](creative-writer-impressao.md)) |
 
 ## Barra de baixo
 

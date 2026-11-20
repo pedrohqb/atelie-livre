@@ -58,8 +58,9 @@ pub type Rec = (u16, usize, &'static str);
 pub enum Walker {
     /// Faixa de progresso com um bicho por cima (Fine Artist).
     Strip(u16),
-    /// Quadros que se alternam a cada `period` segundos, no ponto dado,
-    /// andando `step` px por quadro (Writer: o dinossauro atrás do rato).
+    /// Quadros que se alternam a cada `period` segundos, no ponto dado (o
+    /// canto do primeiro; os outros com os pés na mesma linha), andando
+    /// `step` px por quadro (Writer: o dinossauro atrás do rato, no lugar).
     Frames {
         frames: &'static [u16],
         at: (i32, i32),
@@ -814,7 +815,13 @@ impl PrintPreview {
                 let n = (self.clock / period.max(0.01)) as usize;
                 let id = frames[n % frames.len()];
                 let x = at.0 + (n as i32 * step) % 120;
-                blit_pic_in(f, a, self.spec.program, id, x, at.1, true);
+                // os quadros têm alturas diferentes: os pés ficam na linha do primeiro
+                let h = |id: u16| {
+                    a.image(&crate::assets::ImageRef::Pic(self.spec.program, id))
+                        .height as i32
+                };
+                let y = at.1 + h(frames[0]) - h(id);
+                blit_pic_in(f, a, self.spec.program, id, x, y, true);
             }
         }
     }

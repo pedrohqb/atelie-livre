@@ -302,10 +302,12 @@ pub const WRITER_PREVIEW: PreviewSpec = PreviewSpec {
     canceled: (0x4c02, 2, "Eu cancelei o trabalho de impressão para você!"),
     machine: Some(WRITER_MACHINE),
     // o dinossauro atrás do rato, no canto de baixo (`22_imprimindo.png`)
+    // encolhido, corcunda e esticado, no lugar (as duas capturas do
+    // original mostram o encolhido com o canto em (21, 434))
     walker: Walker::Frames {
         frames: &[0x4c0b, 0x4c0f, 0x4c17],
-        at: (20, 430),
-        step: 4,
+        at: (21, 434),
+        step: 0,
         period: 0.2,
     },
     snd_stop: 0x2ec,
