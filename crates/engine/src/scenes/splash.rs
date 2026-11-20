@@ -1,10 +1,10 @@
 //! Abertura: tela de título do Fine Artist ou do Creative Writer (clique ou
-//! 5 s levam à Entrada do programa). Enquanto espera, no Fine Artist
-//! tocam as animações do título: o pássaro atravessa a tela e depois os
-//! demais roteiros (McZee saindo do buraco com chapéus, porco, gafanhoto...)
-//! em ordem sorteada.
+//! 5 s levam à Entrada do programa). Nos dois programas o título é parado e
+//! mudo: no original do Fine Artist (gravação no Wine a ~10 quadros/s) ele
+//! fica 3 s sem nenhum quadro diferente e vai à Entrada; o pássaro vermelho
+//! (roteiro 0x67) e os outros roteiros 0x65–0x74, que o port tocava aqui por
+//! suposição, não aparecem (`docs/telas/animacoes.md`).
 
-use super::gags::{GagPlayer, TITLE_BIRD, TITLE_SCRIPTS};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::scene::{CwScene, Effect, Input, KidCommon, MouseButton, Scene, SceneId};
 use crate::{Frame, SCREEN_H, SCREEN_W};
@@ -24,14 +24,11 @@ pub struct Splash {
     program: Program,
     title: u16,
     next: SceneId,
-    gags: GagPlayer,
 }
 
 impl Splash {
     /// Abertura do Fine Artist.
     pub fn new(click: Option<SoundRef>) -> Splash {
-        let mut gags = GagPlayer::new(TITLE_SCRIPTS, (0.3, 0.3), (0.5, 1.5));
-        gags.queue(TITLE_BIRD);
         Splash {
             common: KidCommon::new(click),
             elapsed: 0.0,
@@ -39,36 +36,25 @@ impl Splash {
             program: Program::Artist,
             title: TITLE,
             next: SceneId::Entry,
-            gags,
         }
     }
 
-    /// Abertura do Creative Writer: vai à Entrada do Writer, sem animações
-    /// (no original o título é estático: não há roteiros de título no
-    /// `WRITER.EXE`).
+    /// Abertura do Creative Writer: vai à Entrada do Writer (o título também
+    /// é estático: não há roteiros de título no `WRITER.EXE`).
     pub fn writer(click: Option<SoundRef>) -> Splash {
         Splash {
             program: Program::Writer,
             title: WRITER_TITLE,
             next: SceneId::Cw(CwScene::Entry),
-            gags: GagPlayer::new(&[], (0.3, 0.3), (0.5, 1.5)),
             ..Splash::new(click)
         }
     }
 }
 
 impl Scene for Splash {
-    fn update(&mut self, input: &[Input], dt: f32, assets: &Assets) -> Vec<Effect> {
+    fn update(&mut self, input: &[Input], dt: f32, _assets: &Assets) -> Vec<Effect> {
         let mut fx = self.common.update(input);
         self.elapsed += dt;
-        if !self.done {
-            fx.extend(
-                self.gags
-                    .update(dt, assets)
-                    .into_iter()
-                    .map(Effect::PlaySound),
-            );
-        }
         let clicked = input.iter().any(|i| {
             matches!(
                 i,
@@ -93,7 +79,6 @@ impl Scene for Splash {
             (SCREEN_W as i32 - img.width as i32) / 2,
             (SCREEN_H as i32 - img.height as i32) / 2,
         );
-        self.gags.draw(frame, assets);
     }
 }
 
@@ -177,34 +162,28 @@ mod tests {
         );
     }
 
+    /// No original o título do Fine Artist fica parado e mudo até a Entrada
+    /// (gravação no Wine: 3 s de título sem nenhum quadro diferente); o
+    /// pássaro 0x67 e os outros roteiros 0x65–0x74 não tocam nele.
     #[test]
-    fn splash_without_data_runs_gags_quietly() {
-        let (_d, a) = empty_assets();
-        let mut s = Splash::new(None);
-        for _ in 0..30 {
-            let fx = s.update(&[], 0.1, &a);
-            assert!(!fx.iter().any(|e| matches!(e, Effect::PlaySound(_))));
-        }
-        let mut f = Frame::new(SCREEN_W, SCREEN_H);
-        s.draw(&mut f, &a);
-    }
-
-    #[test]
-    fn splash_plays_bird_first_with_real_data() {
+    fn artist_title_is_static_and_silent_with_real_data() {
         let Some(a) = assets() else { return };
         let mut s = Splash::new(None);
-        let mut sounds = Vec::new();
-        for _ in 0..12 {
-            sounds.extend(s.update(&[], 0.1, &a).into_iter().filter_map(|e| match e {
-                Effect::PlaySound(snd) => Some(snd),
-                _ => None,
-            }));
+        let mut first = Frame::new(SCREEN_W, SCREEN_H);
+        s.update(&[], 0.0, &a);
+        s.draw(&mut first, &a);
+        let mut t = 0.0;
+        while t < TIMEOUT - 0.2 {
+            let fx = s.update(&[], 0.1, &a);
+            assert!(
+                !fx.iter().any(|e| matches!(e, Effect::PlaySound(_))),
+                "som aos {t:.1} s"
+            );
+            let mut f = Frame::new(SCREEN_W, SCREEN_H);
+            s.draw(&mut f, &a);
+            assert!(f.pixels() == first.pixels(), "quadro mudou aos {t:.1} s");
+            t += 0.1;
         }
-        // o pássaro (0x67) começa aos 0,3 s e sua primeira célula toca o som 0x217
-        assert!(s.gags.is_playing());
-        assert!(sounds.contains(&SoundRef::Snd(Program::Artist, 0x217)));
-        let mut f = Frame::new(SCREEN_W, SCREEN_H);
-        s.draw(&mut f, &a);
     }
 
     #[test]

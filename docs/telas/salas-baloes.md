@@ -26,9 +26,9 @@ Comportamento medido na varredura de cliques contra o original (relatórios
 - **Luminária e "Tchau"** (todos os andares): "EPA!" modal do
   `WHAT 1001[2]` (o mesmo da Entrada, com a casinha do Rex), sons `2f7` +
   `2fe`; só as bolinhas respondem ("Sair do Fine Artist" sai, "Continuar
-  trabalhando" fecha, som `254`); fora delas, a vinheta de recusa `217`. O
-  original também solta uma baforada de fumaça da luminária; a figura não
-  foi achada no `ARTIST.PIC`, então o port não a mostra.
+  trabalhando" fecha, som `254`); fora delas, a vinheta de recusa `217`.
+  Enquanto o "EPA!" está aberto a luminária troca pela da fumaça (`6853`,
+  1 px acima), como no original (`animacoes.md`, "Luminária Tchau").
 - **McZee / Maggie**: clique toca `252` (McZee) ou `226` (Maggie) e abre
   `[29]` "Você quer me ver menos?" (Sim / Diga de novo / Deixa para lá).
   "Sim" desliga a ajuda: os andares chegam sem balão e o próximo clique no

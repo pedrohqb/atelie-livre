@@ -15,8 +15,8 @@ use super::gags;
 use super::room::Floor;
 use super::room_objects::{self as objects, ARTIST_BAG_PICS, Surprises};
 use super::room_spec::{
-    Action, Arrival, CharacterSpec, Fallback, Glossary, Hotspot, Painting, RoomKit, RoomSounds,
-    RoomSpec, Studio, Tip, hot,
+    Action, Arrival, CharacterSpec, Fallback, Glossary, Hotspot, Lamp, Painting, RoomKit,
+    RoomSounds, RoomSpec, Studio, Tip, hot,
 };
 use super::room_talk::{self as talk, Helper, Pick, rec};
 use super::studio_wall;
@@ -66,12 +66,6 @@ pub const LOBBY: &[Element] = &[
         y: 0,
     },
     Element {
-        id: 0x681b,
-        mask: 0x6821,
-        x: 144,
-        y: 182,
-    },
-    Element {
         id: 0x6c63,
         mask: 0x6c69,
         x: 95,
@@ -118,12 +112,6 @@ pub const STUDIO: &[Element] = &[
         mask: 0x6c71,
         x: 264,
         y: 63,
-    },
-    Element {
-        id: 0x681b,
-        mask: 0x6821,
-        x: 473,
-        y: 146,
     },
     Element {
         id: 0x6843,
@@ -184,12 +172,6 @@ pub const PROJECTS: &[Element] = &[
         y: 2,
     },
     Element {
-        id: 0x681b,
-        mask: 0x6821,
-        x: 477,
-        y: 75,
-    },
-    Element {
         id: 0x682b,
         mask: 0x6831,
         x: 529,
@@ -237,12 +219,6 @@ pub const TRICKS: &[Element] = &[
         y: 0,
     },
     Element {
-        id: 0x681b,
-        mask: 0x6821,
-        x: 564,
-        y: 3,
-    },
-    Element {
         id: 0x6843,
         mask: 0x6849,
         x: 457,
@@ -274,6 +250,17 @@ pub const TRICKS: &[Element] = &[
 
 /// O que é comum às salas do Fine Artist: `WHAT 100d`, sons do
 /// `ARTIST.SND`, figuras da bolsa, cursor da varinha, "EPA!" do `1001[2]`.
+/// Luminária "Tchau" do Fine Artist (`681b`, 56×132) e a da fumaça
+/// (`6853`, 77×133, 1 px acima), que aparece enquanto o "EPA!" está aberto
+/// (casamento exato com a captura do original no saguão, em (144,181)).
+pub const ARTIST_LAMP: u16 = 0x681b;
+pub const ARTIST_LAMP_SMOKE: u16 = 0x6853;
+
+/// Luminária do Fine Artist com o canto em `(x, y)`.
+pub const fn artist_lamp_at(x: i32, y: i32) -> Lamp {
+    Lamp::at(ARTIST_LAMP, ARTIST_LAMP_SMOKE, x, y)
+}
+
 pub const ARTIST_KIT: RoomKit = RoomKit {
     program: Program::Artist,
     what: talk::ROOMS_WHAT,
@@ -405,7 +392,7 @@ pub const LOBBY_ROOM: RoomSpec = RoomSpec {
     elevator_sound: elevator::SND_DOORS,
     arrival_sound: None,
     elevator_arrival_sound: None,
-    lamp: None,
+    lamp: Some(artist_lamp_at(144, 182)),
     object_balloon: None,
     wand_props: &[],
 };
@@ -483,7 +470,7 @@ pub const STUDIO_ROOM: RoomSpec = RoomSpec {
     elevator_sound: objects::SND_SKATE,
     arrival_sound: None,
     elevator_arrival_sound: Some(talk::snd::STUDIO_ARRIVAL),
-    lamp: None,
+    lamp: Some(artist_lamp_at(473, 146)),
     object_balloon: None,
     wand_props: &[],
 };
@@ -545,7 +532,7 @@ pub const PROJECTS_ROOM: RoomSpec = RoomSpec {
     elevator_sound: objects::SND_SKATE,
     arrival_sound: None,
     elevator_arrival_sound: None,
-    lamp: None,
+    lamp: Some(artist_lamp_at(477, 75)),
     object_balloon: None,
     wand_props: &[],
 };
@@ -626,7 +613,7 @@ pub const TRICKS_ROOM: RoomSpec = RoomSpec {
     elevator_sound: objects::SND_SKATE,
     arrival_sound: None,
     elevator_arrival_sound: None,
-    lamp: None,
+    lamp: Some(artist_lamp_at(564, 3)),
     object_balloon: None,
     wand_props: &[],
 };

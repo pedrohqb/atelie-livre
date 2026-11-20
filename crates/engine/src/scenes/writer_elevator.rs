@@ -62,7 +62,7 @@ pub const WRITER_ELEVATOR: ElevatorSpec = ElevatorSpec {
         (345, 10, 25, 25),
     ],
     door: (143, 42, 364, 438),
-    tchau: ((0x6917, 0x6919), (46, 6)),
+    tchau: super::writer_gags::lamp_at(46, 6),
     tchau_rect: (46, 6, 56, 132),
     mczee_pos: MCZEE_ELEVATOR,
     costumes: MCZEE_COSTUMES,

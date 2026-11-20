@@ -54,14 +54,13 @@ const PLATE: Rect = (3, 108, 96, 13);
 
 /// Elementos fixos (cor, máscara = duas figuras adiante, x, y): a parede
 /// das molduras primeiro, depois o armário, a impressora, a lixeira, a
-/// seta, a luminária e o buraco do rato.
-const ELEMENTS: [(u16, u16, i32, i32); 7] = [
+/// seta e o buraco do rato (a luminária vem depois, em `lamp`).
+const ELEMENTS: [(u16, u16, i32, i32); 6] = [
     (0x692b, 0x692d, 142, 0),   // parede com as quatro molduras
     (0x68e7, 0x68e9, 420, 170), // armário (porta)
     (0x6913, 0x6915, 569, 102), // impressora no quadro da parede
     (0x690f, 0x6911, 501, 351), // lixeira de reciclagem
     (0x68eb, 0x68ed, 547, 217), // seta "Saguão"
-    (0x6917, 0x6919, 496, 5),   // luminária "Tchau"
     (0x691f, 0x6921, 552, 273), // buraco do rato
 ];
 const LAMP: Rect = (496, 5, 56, 132);
@@ -118,6 +117,7 @@ pub const WRITER_LIBRARY: GallerySpec = GallerySpec {
     kit: &WRITER_KIT,
     background: Some(0x6807),
     elements: &ELEMENTS,
+    lamp: super::writer_gags::lamp_at(496, 5),
     frames: &FRAMES,
     frame_img: None,
     frame_size: (102, 124),

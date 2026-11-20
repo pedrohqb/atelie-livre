@@ -10,7 +10,7 @@
 
 use super::gags::{self, Character};
 use super::room::Floor;
-use super::room_spec::RoomSpec;
+use super::room_spec::{Lamp, RoomSpec};
 use crate::anim::{self, Animator};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::balloon::Balloon;
@@ -60,8 +60,7 @@ const INDICATOR_BUTTONS: [Rect; 4] = [
 ];
 /// Porta com a escotilha: abre as portas no andar em que se está.
 const DOOR: Rect = (100, 40, 400, 440);
-/// Luminária "Tchau" (corpo e placa).
-const TCHAU_IMG: (u16, u16) = (0x681b, 0x6821);
+/// Luminária "Tchau" (corpo e placa) e a área do clique.
 const TCHAU_POS: (i32, i32) = (46, 6);
 const TCHAU: Rect = (46, 6, 56, 130);
 /// McZee à esquerda (medido no original).
@@ -109,8 +108,9 @@ pub struct ElevatorSpec {
     pub indicator_buttons: [Rect; 4],
     /// Porta: abre no andar em que se está.
     pub door: Rect,
-    /// Luminária "Tchau" (cor, máscara, canto) e a área do clique.
-    pub tchau: ((u16, u16), (i32, i32)),
+    /// Luminária "Tchau" (com a fumaça enquanto o "EPA!" está aberto) e a
+    /// área do clique.
+    pub tchau: Lamp,
     pub tchau_rect: Rect,
     pub mczee_pos: (i32, i32),
     /// Fantasias do McZee quando a sala não manda a dela.
@@ -165,7 +165,7 @@ pub const ARTIST_ELEVATOR: ElevatorSpec = ElevatorSpec {
     buttons: BUTTONS,
     indicator_buttons: INDICATOR_BUTTONS,
     door: DOOR,
-    tchau: (TCHAU_IMG, TCHAU_POS),
+    tchau: super::rooms_data::artist_lamp_at(TCHAU_POS.0, TCHAU_POS.1),
     tchau_rect: TCHAU,
     mczee_pos: MCZEE_POS,
     costumes: gags::MCZEE_COSTUMES,
@@ -485,6 +485,12 @@ impl Elevator {
 
     /// Com as portas abertas, o vão mostra o fundo do andar de destino.
     pub fn draw(&self, frame: &mut Frame, assets: &Assets) {
+        self.draw_with_quit(frame, assets, false);
+    }
+
+    /// Desenha o elevador; com o "EPA!" da sala aberto (`quit_open`), a
+    /// luminária solta fumaça.
+    pub fn draw_with_quit(&self, frame: &mut Frame, assets: &Assets, quit_open: bool) {
         let spec = self.spec;
         let p = spec.program;
         frame.fill([20, 70, 30]);
@@ -499,7 +505,7 @@ impl Elevator {
         self.pic(frame, assets, spec.panel.0, spec.panel.1);
         let (img, pos) = spec.panel_lit[level(if self.moving() { self.target } else { self.at })];
         self.lit(frame, assets, img, pos);
-        self.pic(frame, assets, spec.tchau.0, spec.tchau.1);
+        spec.tchau.draw(frame, assets, p, quit_open);
         self.pic(frame, assets, spec.doors, spec.doors_pos);
         if matches!(self.phase, Phase::Opening { .. }) {
             self.draw_doorway(frame, assets);
