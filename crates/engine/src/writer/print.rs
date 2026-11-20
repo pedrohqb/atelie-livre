@@ -2,19 +2,25 @@
 //! projects-impressao.md` §"Folhas impressas"): a composição das folhas a
 //! partir das páginas já diagramadas, com a borda e o fundo da página.
 //!
-//! - **Documento e jornal** ([`SheetKind::Pages`]): uma folha por página, do
-//!   tamanho da página ("Alto" 595×792 em pé, "Largo" 792×595 deitada), com
-//!   as colunas e divisórias que a diagramação já pôs na página.
+//! O papel é o do `PRNT` gravado no documento ([`paper_of`]: 612×792 nos
+//! exemplos do Max, impressora de 300 dpi; 595×792 nos documentos gravados
+//! sem impressora; 792×595 na faixa do Wine), virado se a página só couber
+//! assim ([`sheet_for`]). No original a página do documento é a área imprimível dessa
+//! folha (por isso as faixas dos exemplos têm 542×767 e a do Wine 577×595);
+//! aqui ela vai centrada na folha.
+//!
+//! - **Documento e jornal** ([`SheetKind::Pages`]): uma folha por página
+//!   ("Alto" em pé, "Largo" deitada), com as colunas e divisórias que a
+//!   diagramação já pôs na página.
 //! - **Cartão** ([`SheetKind::Card`]): as 4 páginas numa folha só, cada uma
 //!   num quarto dela, reduzida à metade; em cima a página 1 (Capa) e a 4
 //!   (Contracapa) de cabeça para baixo, embaixo a 2 e a 3 em pé (figura
 //!   `0c65` do assistente). Dobra-se ao meio na horizontal e de novo na
 //!   vertical. Da 5ª página em diante não sai (`3c00[106]`). No cartão
 //!   "Largo" a folha é deitada e os quartos também.
-//! - **Faixa** ([`SheetKind::Banner`]): uma folha deitada de 792×595 (o
-//!   `PRNT` da faixa) por página, com a página no meio, para emendar lado a
-//!   lado; a palavra com forma atravessa as folhas (a diagramação já a
-//!   desenha em pedaços, um em cada página).
+//! - **Faixa** ([`SheetKind::Banner`]): uma folha por página, para emendar
+//!   lado a lado; a palavra com forma atravessa as folhas (a diagramação já
+//!   a desenha em pedaços, um em cada página).
 //!
 //! As páginas chegam prontas ([`PrintDoc::pages`]: o que o editor desenha,
 //! 1 pixel por ponto, com o branco transparente); a borda e o fundo
@@ -35,8 +41,8 @@ use formats::max;
 
 /// Páginas do cartão que vão para a folha.
 pub const CARD_PAGES: usize = 4;
-/// Folha da faixa (`PRNT` de `FAIXA_PA.MAX`: 792×595, deitada).
-pub const BANNER_SHEET: (u32, u32) = (792, 595);
+/// Papel sem `PRNT` (o padrão do original sem impressora), em pé.
+pub const DEFAULT_PAPER: (u32, u32) = (595, 792);
 
 const WHITE: [u8; 3] = [255, 255, 255];
 /// Cor das guias de dobra e de corte.
@@ -97,12 +103,51 @@ pub fn page_art(doc: &Document, extra: &MaxExtra) -> PageArt {
     PageArt::from_refs(doc.dop.border.map(to_max), background, &find)
 }
 
+/// Papel do `PRNT` (`"prr1"`, `u16` dpi x e y, `u16` largura e altura em
+/// pixels da impressora), em pontos; `None` se não der para ler.
+pub fn paper_of(prnt: Option<&[u8]>) -> Option<(u32, u32)> {
+    let b = prnt?;
+    if b.len() < 12 || &b[..4] != b"prr1" {
+        return None;
+    }
+    let u = |k: usize| u32::from(u16::from_le_bytes([b[k], b[k + 1]]));
+    let (dx, dy, w, h) = (u(4), u(6), u(8), u(10));
+    if dx == 0 || dy == 0 {
+        return None;
+    }
+    let (w, h) = (w * 72 / dx, h * 72 / dy);
+    ((100..=5000).contains(&w) && (100..=5000).contains(&h)).then_some((w, h))
+}
+
+/// Folha para a página `geom` no papel `paper`: o papel como está se a
+/// página couber nele; senão virado; e, se nem assim couber, do tamanho da
+/// página.
+pub fn sheet_for(geom: &PageGeom, paper: (u32, u32)) -> (u32, u32) {
+    let (pw, ph) = (geom.width.round() as u32, geom.height.round() as u32);
+    let fits = |(w, h): (u32, u32)| pw <= w && ph <= h;
+    let turned = (paper.1, paper.0);
+    if fits(paper) {
+        paper
+    } else if fits(turned) {
+        turned
+    } else {
+        let (w, h) = if (pw > ph) == (turned.0 > turned.1) {
+            turned
+        } else {
+            paper
+        };
+        (w.max(pw), h.max(ph))
+    }
+}
+
 /// O que imprimir: as páginas desenhadas e a arte da página.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrintDoc {
     pub kind: SheetKind,
     /// Tamanho e margens da página (pontos).
     pub geom: PageGeom,
+    /// Papel da impressora (pontos; ver [`paper_of`]).
+    pub paper: (u32, u32),
     /// Cada página como o editor a desenha (1 pixel por ponto, sem borda nem
     /// fundo); o branco deixa a arte aparecer.
     pub pages: Vec<Rgb8>,
@@ -121,7 +166,7 @@ impl PrintDoc {
 
     /// Folhas que sairão com `opts`.
     pub fn plan(&self, opts: &SheetOptions) -> Vec<SheetPlan> {
-        plan(self.kind, &self.geom, self.pages.len(), opts)
+        plan(self.kind, &self.geom, self.paper, self.pages.len(), opts)
     }
 
     /// A página `k` em `scale` pixels por ponto: o fundo (se `background`),
@@ -252,25 +297,46 @@ fn chosen(n: usize, range: Option<(usize, usize)>) -> std::ops::Range<usize> {
     }
 }
 
-/// Folhas de um documento de `n` páginas.
-pub fn plan(kind: SheetKind, geom: &PageGeom, n: usize, opts: &SheetOptions) -> Vec<SheetPlan> {
+/// Folhas de um documento de `n` páginas no papel `paper`.
+pub fn plan(
+    kind: SheetKind,
+    geom: &PageGeom,
+    paper: (u32, u32),
+    n: usize,
+    opts: &SheetOptions,
+) -> Vec<SheetPlan> {
     let (pw, ph) = (geom.width as f32, geom.height as f32);
-    let size = (geom.width.round() as u32, geom.height.round() as u32);
+    let size = sheet_for(geom, paper);
+    let (sw, sh) = (size.0 as f32, size.1 as f32);
+    // a página centrada na folha (ou num quarto dela)
+    let centered = |x: f32, y: f32, w: f32, h: f32| {
+        let k = (w / pw).min(h / ph).min(1.0);
+        let (dw, dh) = (pw * k, ph * k);
+        (x + (w - dw) / 2.0, y + (h - dh) / 2.0, dw, dh)
+    };
+    let one = |k: usize, guides: bool| {
+        let rect = centered(0.0, 0.0, sw, sh);
+        SheetPlan {
+            size,
+            places: vec![Placement {
+                page: k,
+                rect,
+                upside_down: false,
+            }],
+            // linhas de corte nas beiradas da página, para emendar
+            guides: if guides && rect.0 > 0.5 {
+                vec![Guide::Vertical(rect.0), Guide::Vertical(rect.0 + rect.2)]
+            } else {
+                Vec::new()
+            },
+        }
+    };
     match kind {
-        SheetKind::Pages => chosen(n, opts.pages)
-            .map(|k| SheetPlan {
-                size,
-                places: vec![Placement {
-                    page: k,
-                    rect: (0.0, 0.0, pw, ph),
-                    upside_down: false,
-                }],
-                guides: Vec::new(),
-            })
-            .collect(),
+        SheetKind::Pages => chosen(n, opts.pages).map(|k| one(k, false)).collect(),
+        SheetKind::Banner => chosen(n, opts.pages).map(|k| one(k, true)).collect(),
         SheetKind::Card => {
-            // a folha tem a orientação da página; cada quarto, a metade
-            let (qw, qh) = (pw / 2.0, ph / 2.0);
+            // cada quarto, a metade da folha
+            let (qw, qh) = (sw / 2.0, sh / 2.0);
             let quarters = [
                 (0, 0.0, 0.0, true),
                 (3, qw, 0.0, true),
@@ -282,7 +348,7 @@ pub fn plan(kind: SheetKind, geom: &PageGeom, n: usize, opts: &SheetOptions) -> 
                 .filter(|q| q.0 < n.min(CARD_PAGES))
                 .map(|&(page, x, y, upside_down)| Placement {
                     page,
-                    rect: (x, y, qw, qh),
+                    rect: centered(x, y, qw, qh),
                     upside_down,
                 })
                 .collect();
@@ -291,27 +357,6 @@ pub fn plan(kind: SheetKind, geom: &PageGeom, n: usize, opts: &SheetOptions) -> 
                 places,
                 guides: vec![Guide::Horizontal(qh), Guide::Vertical(qw)],
             }]
-        }
-        SheetKind::Banner => {
-            let sw = BANNER_SHEET.0.max(size.0);
-            let sh = BANNER_SHEET.1.max(size.1);
-            let x = (sw as f32 - pw) / 2.0;
-            let y = (sh as f32 - ph) / 2.0;
-            chosen(n, opts.pages)
-                .map(|k| SheetPlan {
-                    size: (sw, sh),
-                    places: vec![Placement {
-                        page: k,
-                        rect: (x, y, pw, ph),
-                        upside_down: false,
-                    }],
-                    guides: if x > 0.5 {
-                        vec![Guide::Vertical(x), Guide::Vertical(x + pw)]
-                    } else {
-                        Vec::new()
-                    },
-                })
-                .collect()
         }
     }
 }
@@ -383,6 +428,7 @@ mod tests {
         PrintDoc {
             kind,
             geom: PageGeom::new(w as f64, h as f64, 72.0),
+            paper: DEFAULT_PAPER,
             pages,
             art: PageArt::default(),
         }
@@ -467,10 +513,12 @@ mod tests {
 
     #[test]
     fn banner_one_landscape_sheet_per_page() {
-        let d = doc(SheetKind::Banner, 577, 595, 3);
+        // a faixa gravada no Wine: página 577×595, PRNT deitado de 792×595
+        let mut d = doc(SheetKind::Banner, 577, 595, 3);
+        d.paper = (792, 595);
         let plan = d.plan(&SheetOptions::default());
         assert_eq!(plan.len(), 3);
-        assert!(plan.iter().all(|p| p.size == BANNER_SHEET));
+        assert!(plan.iter().all(|p| p.size == (792, 595)));
         let x = (792.0 - 577.0) / 2.0;
         assert_eq!(plan[2].places[0].rect, (x, 0.0, 577.0, 595.0));
         assert_eq!(
@@ -482,6 +530,39 @@ mod tests {
         assert_eq!(at(&s[1], x + 75.0, 75.0), RED);
         // o terceiro pedaço tem 3 pontos azuis
         assert_eq!(at(&s[2], x + 74.5, 82.5), BLUE);
+    }
+
+    #[test]
+    fn paper_from_prnt_turns_with_the_page() {
+        // exemplos do Max: 300 dpi, 2550×3300 (carta em pé)
+        let samp = [
+            0x70, 0x72, 0x72, 0x31, 0x2c, 1, 0x2c, 1, 0xf6, 9, 0xe4, 0x0c, 0x4b, 0, 0x46, 0,
+        ];
+        assert_eq!(paper_of(Some(&samp)), Some((612, 792)));
+        assert_eq!(paper_of(Some(&max::DEFAULT_PRINTER)), Some((595, 792)));
+        assert_eq!(paper_of(Some(b"xxxx")), None);
+        assert_eq!(paper_of(None), None);
+        let alto = PageGeom::new(542.0, 767.0, 72.0);
+        assert_eq!(sheet_for(&alto, (612, 792)), (612, 792));
+        let largo = PageGeom::new(792.0, 595.0, 72.0);
+        assert_eq!(sheet_for(&largo, (612, 792)), (792, 612));
+        // página maior que o papel: a folha cresce
+        assert_eq!(
+            sheet_for(&PageGeom::new(700.0, 900.0, 72.0), (612, 792)),
+            (700, 900)
+        );
+        // faixa dos exemplos: folha em pé, página no meio, linhas de corte
+        let mut d = doc(SheetKind::Banner, 542, 767, 2);
+        d.paper = (612, 792);
+        let p = &d.plan(&SheetOptions::default())[0];
+        assert_eq!(p.size, (612, 792));
+        assert_eq!(p.places[0].rect, (35.0, 12.5, 542.0, 767.0));
+        assert_eq!(p.guides.len(), 2);
+        // cartão em papel carta: o quarto é mais largo que meia página
+        let mut c = doc(SheetKind::Card, 595, 792, 4);
+        c.paper = (612, 792);
+        let p = &c.plan(&SheetOptions::default())[0];
+        assert_eq!(p.places[0].rect, (4.25, 0.0, 297.5, 396.0));
     }
 
     #[test]

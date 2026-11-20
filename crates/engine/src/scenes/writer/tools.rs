@@ -441,8 +441,18 @@ pub trait ToolStrip {
         false
     }
 
+    /// Texto digitado; `true` = tratado (senão vai para o editor de texto).
+    /// Para caixas de texto em painéis da ferramenta (a máquina de impressão).
+    fn text(&mut self, _ed: &mut Editor, _cx: &mut Cx, _s: &str) -> bool {
+        false
+    }
+
     /// Passagem do tempo (animações).
     fn tick(&mut self, _ed: &mut Editor, _dt: f32) {}
+
+    /// Passagem do tempo com efeitos (sons, avisos): trabalhos que terminam
+    /// sozinhos, como a impressão. Chamado depois de [`ToolStrip::tick`].
+    fn update(&mut self, _ed: &mut Editor, _cx: &mut Cx, _dt: f32) {}
 
     /// Faixa de opções (y 56..104), por cima do fundo cinza.
     fn draw_strip(&self, _ed: &Editor, _f: &mut Frame, _a: &Assets) {}
