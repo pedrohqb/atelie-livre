@@ -175,10 +175,7 @@ pub fn trace(mask: &[bool], w: usize, h: usize) -> Vec<Vec<(i32, i32)>> {
         while next.get(&s).is_some_and(|v| !v.is_empty()) {
             let mut loop_pts = vec![s];
             let mut at = s;
-            loop {
-                let Some(b) = next.get_mut(&at).and_then(Vec::pop) else {
-                    break;
-                };
+            while let Some(b) = next.get_mut(&at).and_then(Vec::pop) {
                 if b == s {
                     break;
                 }

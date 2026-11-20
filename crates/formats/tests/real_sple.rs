@@ -4,7 +4,18 @@ use formats::chnk;
 use formats::sple::{self, Fill};
 
 /// `(arquivo, texto, fonte, nº de glifos, forma, sombra, padrão, cores)`.
-const SAMPLES: [(&str, &str, &str, usize, u8, u8, u8, u8); 6] = [
+type Sample = (
+    &'static str,
+    &'static str,
+    &'static str,
+    usize,
+    u8,
+    u8,
+    u8,
+    u8,
+);
+
+const SAMPLES: [Sample; 6] = [
     ("SAMP7", "Feliz Aniversário!", "Impact", 34, 3, 6, 7, 0x12),
     (
         "SAMP13",
