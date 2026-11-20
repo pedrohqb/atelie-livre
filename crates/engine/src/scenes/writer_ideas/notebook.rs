@@ -15,7 +15,8 @@
 //! transferência da sessão (`session::set_clip`), que o editor cola.
 //!
 //! É um componente (não uma cena): a Máquina e o Quadro o abrem por cima de
-//! si; a Bolsa Mágica do editor pode abri-lo do mesmo jeito.
+//! si; a Bolsa Mágica do editor o abre com [`NotebookView::in_editor`], e
+//! aí quem fala é o McZee do Escritório (`WHAT 0faa`), não o Max.
 
 use super::buttons::Art;
 use super::{Owner, max_balloon, outline, play, rex_alert, snd};
@@ -112,7 +113,18 @@ pub struct NotebookView {
     warn: bool,
     /// "OK! Foi copiado." com o tempo que falta.
     copied: Option<(Balloon, f32)>,
+    /// Aberto no editor: os balões são do McZee (`0faa`), pedidos ao editor.
+    editor: bool,
+    /// Balão do `0faa` que o editor deve abrir.
+    editor_help: Option<usize>,
 }
+
+/// Balões do McZee no editor (`WHAT 0faa`, `ideas.md` §5): Copiar e
+/// Recortar nos Lembretes (arrastar) e nas outras abas (clicar na entrada).
+pub const EDITOR_COPY_NOTES: usize = 3;
+pub const EDITOR_CUT_NOTES: usize = 4;
+pub const EDITOR_COPY_ENTRY: usize = 19;
+pub const EDITOR_CUT_ENTRY: usize = 20;
 
 impl NotebookView {
     /// Abre o caderno gravado do usuário (vazio se não houver) na última
@@ -143,7 +155,23 @@ impl NotebookView {
             alert: None,
             warn: false,
             copied: None,
+            editor: false,
+            editor_help: None,
         }
+    }
+
+    /// O caderno da Bolsa Mágica do editor: sem o balão do Max (o editor
+    /// mostra o do McZee, `0faa[2]`), e as ferramentas pedem os balões do
+    /// `0faa` por [`NotebookView::take_editor_help`].
+    pub fn in_editor(mut self) -> NotebookView {
+        self.editor = true;
+        self.help = None;
+        self
+    }
+
+    /// Balão do `WHAT 0faa` que o editor deve abrir (uma vez).
+    pub fn take_editor_help(&mut self) -> Option<usize> {
+        self.editor_help.take()
     }
 
     pub fn tab(&self) -> Tab {
@@ -367,6 +395,14 @@ impl NotebookView {
             ToolMode::Copy => snd::BOARD,
         }));
         let user = self.owner.user.clone();
+        if self.editor {
+            self.editor_help = Some(match (self.tab, m) {
+                (Tab::Notes, ToolMode::Cut) => EDITOR_CUT_NOTES,
+                (Tab::Notes, ToolMode::Copy) => EDITOR_COPY_NOTES,
+                (_, ToolMode::Cut) => EDITOR_CUT_ENTRY,
+                (_, ToolMode::Copy) => EDITOR_COPY_ENTRY,
+            });
+        }
         let (k, w, text) = match (self.tab, m) {
             (Tab::Notes, ToolMode::Cut) => (
                 72,
@@ -389,7 +425,9 @@ impl NotebookView {
                 "Copiar\nVocê pode copiar idéias do seu Caderno de Idéias para as páginas de um documento.\n• Clique na entrada que você quer copiar.",
             ),
         };
-        self.help = Some(max_balloon(a, k, HELP_POS, &user, w, text, &[]));
+        if !self.editor {
+            self.help = Some(max_balloon(a, k, HELP_POS, &user, w, text, &[]));
+        }
         if self.tab == Tab::Notes {
             // nos Lembretes a ferramenta age na hora sobre a seleção
             let taken = match m {

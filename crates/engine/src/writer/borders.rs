@@ -276,17 +276,28 @@ impl PageArt {
     /// Lê a borda (`DOP 0x58 → BDR n`) e o fundo (`DOP 0x56 → IBGF n`, que
     /// aponta `PICT` e `FRAM`) das cópias guardadas no documento.
     pub fn from_document(doc: &max::Document) -> PageArt {
-        let border = doc.dop.border.and_then(|r| {
-            let c = doc.object(r)?;
+        PageArt::from_refs(doc.dop.border, background_ref(&doc.dop), &|r| doc.object(r))
+    }
+
+    /// Lê a borda `border` (`BDR n`) e o fundo `background` (`IBGF n`) dos
+    /// chunks que `find` acha (as cópias guardadas no documento: as do
+    /// `.MAX` lido ou as do `MaxExtra` do editor).
+    pub fn from_refs<'a>(
+        border: Option<ObjRef>,
+        background: Option<ObjRef>,
+        find: &dyn Fn(ObjRef) -> Option<&'a OwnedChunk>,
+    ) -> PageArt {
+        let border = border.and_then(|r| {
+            let c = find(r)?;
             let name = c.name.clone().unwrap_or_default();
             Border::from_parts(c.id, &name, part(c, b"WBDR")?, part(c, b"PKBM")).ok()
         });
-        let background = background_ref(&doc.dop).and_then(|r| {
-            let c = doc.object(r)?;
+        let background = background.and_then(|r| {
+            let c = find(r)?;
             let ibgf = bor::Ibgf::parse(part(c, b"IBGF")?).ok()?;
             let frames = ibgf
                 .fram
-                .and_then(|id| doc.object(ObjRef::new(b"FRAM", id)))
+                .and_then(|id| find(ObjRef::new(b"FRAM", id)))
                 .and_then(|f| part(f, b"FRAM"))
                 .and_then(|d| bor::read_frames(d).ok())
                 .unwrap_or_default();
@@ -300,7 +311,7 @@ impl PageArt {
             let pictures = ids
                 .into_iter()
                 .filter_map(|id| {
-                    let p = doc.object(ObjRef::new(b"PICT", id))?;
+                    let p = find(ObjRef::new(b"PICT", id))?;
                     Some((id, Wmf::from_meta(part(p, b"META")?).ok()?))
                 })
                 .collect();

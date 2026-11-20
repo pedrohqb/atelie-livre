@@ -19,23 +19,22 @@
 //!   `prefs::DEFAULT_WALL`.
 //! - **Abrir**: o documento vira o último (`prefs::remember_last`, `FILR 0`)
 //!   e `Effect::OpenDocument` leva ao Escritório com ele (`Writer::open`).
-//! - **Imprimir**: a prévia da Galeria com o [`WRITER_PREVIEW`] e a 1ª
-//!   página desenhada em texto simples ([`render_first_page`]; a
-//!   diagramação completa é de outra tarefa).
+//! - **Imprimir**: a prévia da Galeria com o [`WRITER_PREVIEW`] e o
+//!   documento diagramado pelo editor do Escritório e composto em folhas
+//!   (`writer::print`: página por folha, cartão em quartos, faixa em folhas
+//!   deitadas), direto ao "pronto" como no original.
 //! - **Gaveta**: duas unidades, a pasta do usuário e os exemplos; soltar um
 //!   documento numa unidade o copia para lá.
 
-use super::gallery_print::{PreviewSpec, PrintPreview, Sheet, Walker};
+use super::gallery_print::{MachineSpec, PreviewSpec, PrintPreview, Sheet, Walker};
 use super::gallery_room::{
     DrawerSpec, Drive, GalleryAlerts, GalleryPositions, GalleryRecords, GallerySounds, GallerySpec,
     GalleryTexts, Item, Picture, Works, fill_wall, stamped_name,
 };
 use super::writer_gags as g;
 use super::writer_rooms::{WRITER_KIT, snd};
-use crate::Frame;
 use crate::assets::{Assets, Program};
 use crate::paint::Canvas;
-use crate::paint::print::Rgb8;
 use crate::paths::find_ci;
 use crate::scene::Effect;
 use crate::ui::Rect;
@@ -258,9 +257,10 @@ pub const WRITER_LIBRARY: GallerySpec = GallerySpec {
     works: &DOCUMENTS,
 };
 
-/// Prévia de impressão da Biblioteca: a janela branca de moldura laranja,
-/// a folha em pé numa moldura cinza, o McZee `4c03` e os balões do
-/// `WRITER.EXE` (medida em `cwlib/pr1.png`, `pr2.png` da varredura).
+/// Prévia de impressão da Biblioteca e máquina de impressão do Escritório:
+/// a janela branca de moldura laranja, a folha em pé numa moldura cinza, o
+/// McZee `4c03` e os balões do `WRITER.EXE` (medida em `cwlib/pr1.png`,
+/// `pr2.png` da varredura e `projects_19`…`22` da Oficina de Projetos).
 pub const WRITER_PREVIEW: PreviewSpec = PreviewSpec {
     program: Program::Writer,
     window: (16, 32, 575, 431),
@@ -270,6 +270,9 @@ pub const WRITER_PREVIEW: PreviewSpec = PreviewSpec {
     mczee: (0x4c03, 545, 0),
     balloon_right: 581,
     balloon_top: 63,
+    // rabicho até a boca do McZee (`projects_19`: base em x≈548..561, ponta
+    // em (565, 51))
+    tail: Some((-26, (-16, -12))),
     alert_pos: (209, 149),
     ready: (
         0x4c00,
@@ -291,17 +294,61 @@ pub const WRITER_PREVIEW: PreviewSpec = PreviewSpec {
         21,
         "Sua impressora está com algum problema.\nNão consigo imprimir o seu documento.",
     ),
+    no_printer: Some((
+        0x0805,
+        20,
+        "Não consigo achar a sua impressora.\nNão posso imprimir o documento enquanto a impressora não estiver pronta.",
+    )),
     canceled: (0x4c02, 2, "Eu cancelei o trabalho de impressão para você!"),
+    machine: Some(WRITER_MACHINE),
     // o dinossauro atrás do rato, no canto de baixo (`22_imprimindo.png`)
+    // encolhido, corcunda e esticado, no lugar (as duas capturas do
+    // original mostram o encolhido com o canto em (21, 434))
     walker: Walker::Frames {
         frames: &[0x4c0b, 0x4c0f, 0x4c17],
-        at: (20, 430),
-        step: 4,
+        at: (21, 434),
+        step: 0,
         period: 0.2,
     },
     snd_stop: 0x2ec,
     snd_next: 0x2eb,
     snd_alert: 0x2fe,
+};
+
+/// Passos de escolha da máquina de impressão do Escritório (`WHAT 4c00` e
+/// `4c02` do `WRITER.EXE`, diferentes dos do `ARTIST.EXE`). As reservas
+/// marcam os rádios com `(N)` (`[22e:N]`) e as caixas com `[]`.
+pub const WRITER_MACHINE: MachineSpec = MachineSpec {
+    welcome: (
+        0x4c00,
+        0,
+        "Oi! Seja bem-vindo à minha máquina de impressão.\nÀ esquerda, você pode ver como vai ficar o seu documento depois de impresso.\nPara continuar, clique em Segue.\nSe você não quiser imprimir, clique em Pára.",
+    ),
+    background: (
+        0x4c00,
+        1,
+        "Estou vendo que você colocou um fundo. Você quer imprimir o fundo com o documento?\n(1) É, imprimir o fundo.\n(0) Não, vamos ignorar.",
+    ),
+    pages: (
+        0x4c00,
+        6,
+        "O que você quer que eu faça?\n(1) Imprimir todas as páginas?\n(0) Imprimir só algumas páginas?\nDa página número: []\nAté a página número: []",
+    ),
+    copies: (
+        0x4c00,
+        7,
+        "Quantas cópias do documento você quer imprimir?\n[]\nVocê pode imprimir até 10 cópias.",
+    ),
+    bad_pages: (
+        0x4c02,
+        0,
+        "Eu não consigo achar as páginas!\nVocê precisa dizer as páginas do documento que quer imprimir.",
+    ),
+    bad_copies: (
+        0x4c02,
+        1,
+        "Ops! Não consigo imprimir tantas cópias.\nDigite um número entre 1 e 10 na caixa.",
+    ),
 };
 
 /// Um documento lido para a Biblioteca.
@@ -625,67 +672,8 @@ pub const SHEET: (u32, u32) = (595, 792);
 /// Margens da folha impressa (uma polegada) e entrelinha.
 const MARGIN: i32 = 72;
 
-/// A 1ª página do documento em texto simples, com a fonte de 16 pontos do
-/// programa (sem ela, a 8×8): os parágrafos, com o alinhamento de cada um,
-/// dentro das margens, até encher a folha. A diagramação fiel (fontes,
-/// tamanhos, figuras, bordas) é de outra tarefa.
-pub fn render_first_page(doc: &DocInfo, assets: &Assets) -> Rgb8 {
-    let (w, h) = doc.page;
-    let (top, left, bottom, right) = doc.margins;
-    let mut f = Frame::new(w, h);
-    f.fill([255, 255, 255]);
-    let font = assets.font(16);
-    let width = |s: &str| match &font {
-        Some(ft) => ft.width(s) as i32,
-        None => s.chars().count() as i32 * 8,
-    };
-    let lh = font.as_ref().map_or(10, |ft| ft.height as i32 + 4);
-    let max_w = (w as i32 - left - right).max(40);
-    let last_y = h as i32 - bottom - lh;
-    let mut y = top;
-    let put = |f: &mut Frame, y: i32, s: &str, align: Align| {
-        let x = match align {
-            Align::Center => left + (max_w - width(s)) / 2,
-            Align::Right => left + max_w - width(s),
-            Align::Left | Align::Justify => left,
-        };
-        match &font {
-            Some(ft) => {
-                f.text_font(ft, x, y, s, [0, 0, 0]);
-            }
-            None => f.text(x, y, s, [0, 0, 0]),
-        }
-    };
-    'page: for (k, para) in doc.text.split('\n').enumerate() {
-        let align = doc.aligns.get(k).copied().unwrap_or_default();
-        let mut line = String::new();
-        for word in para.split(' ') {
-            let cand = if line.is_empty() {
-                word.to_string()
-            } else {
-                format!("{line} {word}")
-            };
-            if !line.is_empty() && width(&cand) > max_w {
-                if y > last_y {
-                    break 'page;
-                }
-                put(&mut f, y, &line, align);
-                y += lh;
-                line = word.to_string();
-            } else {
-                line = cand;
-            }
-        }
-        if y > last_y {
-            break;
-        }
-        put(&mut f, y, &line, align);
-        y += lh;
-    }
-    Rgb8::from_rgba(w, h, f.pixels())
-}
-
-/// Documento solto na impressora: a prévia com a 1ª página.
+/// Documento solto na impressora: a prévia do documento diagramado, que
+/// imprime todas as folhas.
 fn print_document(
     it: &Item,
     _: &[Rgb],
@@ -693,12 +681,11 @@ fn print_document(
     command: &str,
     assets: &Assets,
 ) -> Result<PrintPreview, String> {
-    let doc = read_doc(&it.path)
-        .ok_or_else(|| format!("imprimir: não consegui abrir {}", it.path.display()))?;
-    let page = render_first_page(&doc, assets);
+    let doc = super::writer::print::document_from_file(&it.path, assets)
+        .map_err(|e| format!("imprimir: não consegui abrir {}: {e}", it.path.display()))?;
     Ok(PrintPreview::with_spec(
         &WRITER_PREVIEW,
-        Sheet::Page(page),
+        Sheet::Document(Box::new(doc)),
         dir,
         command,
         assets,
@@ -726,7 +713,7 @@ fn drives(dir: Option<&Path>, _: &Assets) -> Vec<Drive> {
 mod tests {
     use super::*;
     use crate::assets::ImageRef;
-    use crate::scenes::testutil::{assets, empty_assets};
+    use crate::scenes::testutil::assets;
 
     #[test]
     fn text_thumb_is_a_page_with_marks() {
@@ -759,24 +746,6 @@ mod tests {
         // já pequena: fica do tamanho que tem
         let c = fit_thumb(10, 20, &vec![[0, 0, 0]; 200], (100, 100), &pal);
         assert_eq!((c.w, c.h), (10, 20));
-    }
-
-    #[test]
-    fn first_page_has_ink_inside_the_margins() {
-        let (_d, a) = empty_assets();
-        let mut doc = DocInfo::plain("Era uma vez um gato que gostava de escrever.\nFim.");
-        doc.aligns = vec![Align::Left, Align::Center];
-        let s = render_first_page(&doc, &a);
-        assert_eq!((s.w, s.h), SHEET);
-        let ink: Vec<(u32, u32)> = (0..s.h)
-            .flat_map(|y| (0..s.w).map(move |x| (x, y)))
-            .filter(|&(x, y)| s.px[(y * s.w + x) as usize] != [255, 255, 255])
-            .collect();
-        assert!(!ink.is_empty());
-        assert!(
-            ink.iter()
-                .all(|&(x, y)| x >= MARGIN as u32 && y >= MARGIN as u32)
-        );
     }
 
     /// Com os dados reais: as figuras, os balões e os exemplos existem.

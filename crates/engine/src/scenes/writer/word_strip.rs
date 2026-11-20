@@ -80,7 +80,7 @@ pub const STRIP2: [StripButton; 9] = [
     button(0x0229, Some(0x022b), (508, 59, 20, 30), 25, SWITCH),
 ];
 
-/// Lista aberta por cada botão (os outros são ações).
+/// Lista aberta por cada botão da página 1 (os outros são ações).
 const LISTS: [Option<List>; 9] = [
     Some(List::Fonts),
     Some(List::Sizes),
@@ -240,6 +240,8 @@ impl WordStrip {
                 cx.help((WHAT_WORD, 10));
                 self.brush = None;
             }
+            // abre o cavalete de palavras com forma (`super::shaped`)
+            SHAPED => cx.open_shaped(None),
             _ => unavailable(b, cx),
         }
     }

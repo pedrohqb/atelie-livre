@@ -27,6 +27,11 @@
 //! - [`effects`]: relógio e passos dos efeitos especiais animados;
 //! - [`mix`]: os 7 "Mix de estilos" da Palavra;
 //! - [`new_style`]: o estilo dos documentos novos (Ctrl+Aplicador).
+//! - [`rebus_apply`]: Coloca-figuras (Maçã): figuras depois das palavras.
+//! - [`cipher`]: Agente Secreto 009 (texto embaralhado na tela, senha).
+//! - [`splot`]: palavras com forma (`SPLE`): desenho, montagem e escolhas.
+//! - [`print`]: as folhas impressas (página por folha, cartão em quatro,
+//!   faixa em folhas deitadas), com borda e fundo.
 
 pub mod assistant;
 pub mod assistant_banner;
@@ -34,6 +39,7 @@ pub mod assistant_card;
 pub mod assistant_news;
 pub mod borders;
 pub mod brush;
+pub mod cipher;
 pub mod convert;
 pub mod dict;
 pub mod doc;
@@ -46,6 +52,9 @@ pub mod mix;
 pub mod new_style;
 pub mod object;
 pub mod prefs;
+pub mod print;
+pub mod rebus_apply;
 pub mod selection;
+pub mod splot;
 pub mod store;
 pub mod undo;

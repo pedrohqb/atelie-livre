@@ -9,12 +9,14 @@ leitores sem consultar o código original.
 |---|---|
 | [`recursos.md`](recursos.md) | Recursos dos executáveis NE: paletas, textos (`STR#`, `STR`, `STRING`), padrões (`PAT#`), ícones, cursores, bitmaps |
 | [`glob.md`](glob.md) | Índice `GLOB` dos arquivos `.PIC` |
+| [`maca.md`](maca.md) | Tabela palavra → figura da Maçã (Coloca-figuras) escondida no `WRITER.PIC` entre o índice e a 1ª imagem |
 | [`pkbm.md`](pkbm.md) | Imagens `PKBM` (1, 4 e 8 bits, PackBits, paleta embutida) |
 | [`sons.md`](sons.md) | Sons WAV com ADPCM da Microsoft e as DLLs `.SND` |
 | [`chnk.md`](chnk.md) | Arquivos `CHNK`: documentos salvos e bibliotecas |
 | [`atag.md`](atag.md) | Roteiros de animação `ATAG` (recursos dos executáveis e adesivos animados) |
 | [`mag.md`](mag.md) | Desenhos salvos do Fine Artist (`.MAG`, `.PTM`): chunks, paleta, miniaturas |
 | [`max.md`](max.md) | Documentos do Creative Writer (`.MAX`): texto, sprms de caractere/parágrafo/moldura/documento, páginas FKP, PLC, fontes, molduras, objetos, senha do Agente secreto, miniatura |
+| [`sple.md`](sple.md) | Palavras com forma (Splots) no `.MAX`: escolhas do cavalete, forma, cores e o desenho em polígonos; os "preferidos" do `TDRL` |
 | [`writer-exe-recursos.md`](writer-exe-recursos.md) | Catálogo dos recursos do `WRITER.EXE`: `STR#`, `STRING`, `MENU`, `ACCELERATOR`, `DIALOG`, `TMEN`, `CSCH`, `SSHD`, `PATS`, `SMNM`, `TDRL`, bitmaps, cursores, mapa dos blocos `WHAT` |
 | [`writer-atag.md`](writer-atag.md) | Os 155 `ATAG` do `WRITER.EXE`: travessias, gags, chapéus e poses do McZee, interface |
 | [`writer-pic-snd.md`](writer-pic-snd.md) | `WRITER.PIC` por faixa de ids e tela, `WRITER.SND` (122 sons, 99 iguais aos do `ARTIST.SND`) e bibliotecas de `SHARED/STUFF` usadas pelo Writer |
@@ -36,7 +38,7 @@ leitores sem consultar o código original.
 | Arquivo | Formato | Ver |
 |---|---|---|
 | `ARTIST.EXE`, `WRITER.EXE` | executável NE (Win16) | `recursos.md`; `writer-exe-recursos.md`, `writer-atag.md` |
-| `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` | `glob.md`, `pkbm.md`, `writer-pic-snd.md` |
+| `ARTIST/ARTIST.PIC`, `WRITER/WRITER.PIC` | `GLOB` de imagens `PKBM` (+ tabela da Maçã no `WRITER.PIC`) | `glob.md`, `pkbm.md`, `writer-pic-snd.md`, `maca.md` |
 | `ARTIST/ARTIST.SND`, `WRITER/WRITER.SND` | DLL NE com sons WAV | `sons.md`, `writer-pic-snd.md` |
 | `SHARED/MSKIDS.INF` | `CHNK` (usuários) | `chnk.md` |
 | `SHARED/USERS/*/*.MAG`, `*.PTM` (exemplos) e `USERS/*/` (usuários) | `CHNK` (desenhos do Fine Artist) | `mag.md`, `chnk.md` |

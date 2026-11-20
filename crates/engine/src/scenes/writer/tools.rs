@@ -356,6 +356,10 @@ pub struct Cx<'a> {
     pub shift: bool,
     help: Option<HelpRef>,
     help_forced: bool,
+    /// Pedido de abrir o cavalete de palavras com forma ([`Cx::open_shaped`]).
+    shaped: Option<Option<usize>>,
+    /// Pedido dos Re-movedores para a área de transferência ([`Cx::clip`]).
+    clip: Option<super::removers::ClipRequest>,
 }
 
 impl<'a> Cx<'a> {
@@ -367,6 +371,8 @@ impl<'a> Cx<'a> {
             shift: false,
             help: None,
             help_forced: false,
+            shaped: None,
+            clip: None,
         }
     }
 
@@ -388,6 +394,26 @@ impl<'a> Cx<'a> {
     pub fn help_even_off(&mut self, h: HelpRef) {
         self.help = Some(h);
         self.help_forced = true;
+    }
+
+    /// Pede o Cavalete de palavras com forma: novo (`None`) ou para
+    /// modificar o objeto `Some(k)` da página.
+    pub fn open_shaped(&mut self, editing: Option<usize>) {
+        self.shaped = Some(editing);
+    }
+
+    pub(super) fn take_shaped(&mut self) -> Option<Option<usize>> {
+        self.shaped.take()
+    }
+
+    /// Pede à cena a área de transferência da sessão (compartilhar o que o
+    /// editor copiou, ou colar num ponto).
+    pub fn clip(&mut self, r: super::removers::ClipRequest) {
+        self.clip = Some(r);
+    }
+
+    pub(super) fn take_clip(&mut self) -> Option<super::removers::ClipRequest> {
+        self.clip.take()
     }
 
     /// Fecha o balão do McZee que estiver aberto.
@@ -446,8 +472,17 @@ pub trait ToolStrip {
         false
     }
 
+    /// Texto digitado; `true` = tratado (senão vai para o documento).
+    fn text(&mut self, _ed: &mut Editor, _cx: &mut Cx, _text: &str) -> bool {
+        false
+    }
+
     /// Passagem do tempo (animações).
     fn tick(&mut self, _ed: &mut Editor, _dt: f32) {}
+
+    /// Passagem do tempo com efeitos (sons, avisos): trabalhos que terminam
+    /// sozinhos, como a impressão. Chamado depois de [`ToolStrip::tick`].
+    fn update(&mut self, _ed: &mut Editor, _cx: &mut Cx, _dt: f32) {}
 
     /// Faixa de opções (y 56..104), por cima do fundo cinza.
     fn draw_strip(&self, _ed: &Editor, _f: &mut Frame, _a: &Assets) {}

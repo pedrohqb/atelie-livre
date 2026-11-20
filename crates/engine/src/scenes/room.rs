@@ -690,6 +690,11 @@ impl Room {
             return false;
         };
         fx.push(self.snd(self.kit().snd.object));
+        // quadro do Escritório do Writer: abre o documento da parede
+        if let (Action::Wall, Some(_), Some(w)) = (action, self.doc_wall(), &self.last_work) {
+            fx.push(Effect::OpenDocument(w.path.clone()));
+            return true;
+        }
         fx.push(Effect::ChangeScene(self.go(match action {
             Action::Easel => SceneId::PaintNew,
             _ => SceneId::Paint,

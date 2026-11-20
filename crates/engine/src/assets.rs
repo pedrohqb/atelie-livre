@@ -448,6 +448,12 @@ impl Assets {
         out
     }
 
+    /// Conteúdo bruto do `.PIC` do programa (a tabela da Maçã fica no
+    /// `WRITER.PIC`).
+    pub fn pic_bytes(&self, p: Program) -> Option<&[u8]> {
+        self.pic[p.idx()].as_deref()
+    }
+
     /// Conteúdo bruto de uma biblioteca de `SHARED/STUFF` (nome sem distinguir maiúsculas).
     pub fn library_bytes(&self, name: &str) -> Option<&[u8]> {
         let wanted = name.to_lowercase();

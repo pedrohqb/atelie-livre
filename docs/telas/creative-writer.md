@@ -29,9 +29,9 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `speller.rs` | Corretor e troca-palavras (abelha) |
 | `egg.rs` | Ovo desfazer |
 | `removers.rs` | Re-movedores |
-| `transformers.rs` | Transformadores |
+| `transformers.rs` | Transformadores ([creative-writer-transformadores.md](creative-writer-transformadores.md)) |
 | `viewer.rs` | Visor de páginas |
-| `print.rs` | Imprimir |
+| `print.rs` | Imprimir: faixa, máquina de impressão do McZee e `print_document` (ver [`creative-writer-impressao.md`](creative-writer-impressao.md)) |
 
 O `Editor` usa o modelo rico (`crates/engine/src/writer/{doc,object,layout,
 selection,undo,fonts,convert,store}.rs`,
@@ -54,7 +54,9 @@ Cada arquivo de ferramenta define uma `struct` com `Default` e implementa
 | `motion(ed, cx, x, y)` | mouse movido (para arrastos: guarde o estado no `press`) |
 | `release(ed, cx, x, y)` | botão solto |
 | `key(ed, cx, key, ctrl) -> bool` | tecla; `false` deixa a tecla ir para o editor de texto |
+| `text(ed, cx, texto) -> bool` | texto digitado; `false` deixa o texto ir para o documento (campos dos painéis) |
 | `tick(ed, dt)` | animação |
+| `update(ed, cx, dt)` | passagem do tempo com efeitos (sons, avisos): trabalhos que terminam sozinhos, como a impressão |
 | `draw_strip(ed, f, a)` | faixa de opções (y 56..104), sobre o fundo cinza-claro |
 | `draw_front(ed, f, a)` | por cima da página (tiras de filme, listas, painéis) |
 | `cursor(ed, x, y)` | cursor do mouse; `None` = padrão (texto na página, mão no resto) |
@@ -125,8 +127,8 @@ McZee no nicho `0235`/`0237` (536,47); porta `023d`/`023f` (581,16).
 Estado atual: a Palavra (as duas páginas, com pincel arrastado,
 Aplicador e Ponto de inserção; ver `creative-writer-palavra.md`), os Adesivos
 (rolos e tira de filme; o adesivo vira objeto solto no ponto de inserção),
-o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos) e a explosão dos
-Re-movedores funcionam; as outras faixas são só desenhadas, com o interruptor trocando de
+o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos), o botão FORMA e os
+Re-movedores funcionam (abaixo); as outras faixas são só desenhadas, com o interruptor trocando de
 página na Preparação da página e no Visor. Botão sem função: som `0233`,
 balão da opção e "ainda não disponível" no registro.
 
@@ -144,7 +146,50 @@ balão da opção e "ainda não disponível" no registro.
 | Transformadores | Mover-modificar `0923`/`0929` (33,58) → `0fa8[1]`; Dimensionar tudo `0857`/`0859` (94,54) → `[2]`; lateral `085b`/`085d` (150,54) → `[3]`; vertical `085f`/`0861` (187,54) → `[4]`; Agente Secreto `0807`/`0809` (278,59) → `[5]`; Coloca-figuras `0865` (340,61) → `[6]`; Flutua-texto `08c7`/`08cb` (432,56) → `[7]` |
 | Visor pág. 1 | Página inteira `08a9` (35,58) → `0fa6[5]`; Aumentar visão `08ad` (122,58) → `[6]`; MENOS ZOOM `0891`/`0893` (209,64) → `[7]`; régua `0885` (278,73) com o bichinho `092c`/`092d`; MAIS ZOOM `0895`/`0897` (434,63) → `[8]` |
 | Visor pág. 2 | Visão normal `0899`/`089b` (55,58) → `[1]`; Duas páginas `089d` (168,58) → `[2]`; Todas as páginas `08a1` (281,58) → `[3]`; Lado a lado `08a5` (394,58) → `[4]` |
-| Imprimir | depressa `02ef`/`02f1` (133,60); fazer escolhas `02f3`/`02f5` (337,59) → `0fa7[0]` |
+| Imprimir | depressa `02ef`/`02f1` (133,60); fazer escolhas `02f3`/`02f5` (337,59) → `0fa7[0]`; os dois abrem a máquina de impressão ([`creative-writer-impressao.md`](creative-writer-impressao.md)) |
+
+### FORMA (W7, `scenes/writer/shaped.rs`)
+
+O botão FORMA da Palavra abre o Cavalete de palavras com forma do Fine
+Artist (`scenes::paint::words::shaped_easel`), som `0224`, balão
+`0fa0[11]`, com o nome do usuário no campo (selecionado) e a fonte inicial
+do cavalete. Diferenças do FA: paleta = as 16 cores do `CSCH`
+(`writer::splot::palette`), e ＋/− percorrem os 13 "preferidos" do `TDRL`
+(giro, forma, sombra, padrão, cores e estilos; texto e fonte ficam) em vez
+de mudar o tamanho; o primeiro giro abre `0fa0[19]`. OK (`02ee`) monta o
+`SPLE` (desenho vetorizado da imagem, `writer::splot::build`) e o `TWPB`, e
+põe um objeto `Shaped` no ponto de inserção com 300 pontos de largura (ou
+250 de altura, se passar); NÃO (`02ed`) fecha sem nada. Clicar numa palavra
+com forma da página (com qualquer ferramenta que não trate o clique) reabre
+o cavalete com as escolhas gravadas (`+0x40..0x47` do `SPLE`), e o OK troca
+o mesmo objeto (mesma posição, Flutua-texto, som e borda). Outras
+ferramentas pedem o cavalete com `Cx::open_shaped(Some(k))` (o
+Mover-modificar dos Transformadores). As figuras dos botões vêm do
+`ARTIST.PIC`.
+
+### Re-movedores (W12, `scenes/writer/removers.rs`)
+
+Cada botão escolhe um modo (som `0233` e o balão do botão; o original não
+destaca o botão escolhido, só o cursor muda sobre a página: `0006`,
+`0007`, `0008`, `0009`, `0019`, `0005`); o Ponto de inserção volta ao
+clique normal. O clique na página:
+
+| modo | ação | som | balão |
+|---|---|---|---|
+| Recortar | arrastar sobre as palavras (ao soltar) ou clicar num adesivo/palavra com forma | `022f` | `0fa3[4]` |
+| Copiar | idem, sem tirar | `0288` | `0fa3[5]` |
+| Colar | cada clique cola ali: texto no ponto de inserção, objeto centrado no clique | `028d` | `0fa3[14]`; nada copiado: `0805[19]` |
+| Remove-sons | tira o som do objeto (desfazível) ou os sons de palavra (`SNDT`) sobre o caractere | — | — |
+| Remove-figuras | tira o adesivo ou a palavra com forma (desfazível) | — | — |
+| Jogar tudo fora | apaga texto e objetos (desfazível) | `025f` | — |
+
+O texto recortado ou copiado vai também para a área de transferência da
+sessão (`writer::ideas::session::clip`, a do Caderno de Idéias) por
+`Cx::clip(ClipRequest::Shared)`; o Colar usa a mesma regra do Ctrl+V do
+Writer (o que veio do Caderno tem preferência) por
+`ClipRequest::PasteAt`. Nas três primeiras vezes que a ferramenta é
+escolhida o McZee abre `0fa3[0]` mesmo desligado. Documento codificado pelo
+Agente secreto (que não deixa recortar, `0805[13]`) fica para o W13.
 
 ## Barra de baixo
 
@@ -172,9 +217,10 @@ O texto é desenhado com `WriterFonts` (substitutas livres das TrueType do
 produto, ver `writer-fontes.md`), sem suavizar; os objetos com o desenho do
 metarquivo (`PICT`; encolhidos como o `BLACKONWHITE` do GDI, o branco
 transparente); as figuras do Maçã de pé na base com 4 pontos de cada lado;
-o marca-texto na altura da linha; a seleção em vídeo inverso. Ainda não
-desenhados: Splots (`SPLE`, retângulo cinza no lugar), bordas e fundos de
-página (W14/C7/C8) e os efeitos animados (C4).
+o marca-texto na altura da linha; a seleção em vídeo inverso; os Splots
+(`SPLE`) pelos glifos do arquivo, esticados na moldura
+(`writer::splot::draw`, `docs/formats/sple.md`). Ainda não desenhados:
+bordas e fundos de página (W14/C7/C8) e os efeitos animados (C4).
 
 ## Saída, salvar, NOVO, sair (W21)
 
@@ -184,14 +230,77 @@ página (W14/C7/C8) e os efeitos animados (C4).
   "Salvar este trabalho": sem arquivo, o título vira campo de nome e Return
   (ou clicar fora) grava; com arquivo, `0202[3]` ("Vou salvar “@” agora":
   as duas versões / só a nova / ainda não). "Jogar fora": nada é gravado.
+  Salvar grava sempre num arquivo novo (`store::path_for`: "Gato Teste"
+  regravado vira `GATO_T11.MAX`, `GATO_T12.MAX`…), como o original; "só a
+  nova" apaga depois o arquivo antigo, se ele estiver na pasta do usuário
+  (um exemplo do Max aberto como cópia nunca é apagado), e as molduras da
+  Biblioteca que apontavam para ele passam para o novo
+  (`prefs::remember_saved`).
   Depois vai à sala Escritório (`SceneId::Studio.in_program(Writer)`). "Ops!"
   fecha o diálogo e a porta.
 - **SALVAR** (menu do McZee), **Ctrl+S** e clique no título: campo de nome;
   se o documento já tem arquivo, Return pergunta `0202[3]`.
 - **NOVO** (menu) e **Ctrl+Q**: com mudanças, o "Epa!" (sem abrir a porta);
   depois, documento em branco ou sair do programa.
+- **Maleta** (menu) e **Ctrl+O**: com mudanças, o "Epa!" (sem abrir a
+  porta); depois a pasta (`CwScene::Portfolio`) por cima, som `02f1`. O JÁ
+  da pasta emite `Effect::OpenDocument`, que troca o editor pelo documento
+  escolhido; Voltar volta ao mesmo documento.
 - Fechar a janela sem escolher grava num `KIDSnnnn.MAX` (ou no arquivo do
   documento). Arquivos e nomes: `docs/formats/arquivos-do-port.md`.
+
+## Último documento e `Effect::OpenDocument`
+
+O Escritório abre (`Writer::new`) o último documento do usuário, o `FILR 0`
+do `~MAXUSER.INF` (`writer::prefs::last_document`): o mesmo que o quadro da
+sala Escritório mostra. Um usuário novo abre o exemplo do Max ("O Ponto de
+Fuga", `SAMP9.MAX`) como cópia, sem arquivo próprio; um usuário sem
+`~MAXUSER.INF` mas com documentos na pasta (gravados antes de o port
+guardar as preferências) abre o mais recente deles (`store::latest`).
+Salvar (SALVAR, Ctrl+S, "Epa!", a gravação automática ao fechar) torna o
+arquivo gravado o último (`prefs::remember_saved`).
+
+Três lugares abrem um documento no editor por `Effect::OpenDocument(caminho)`
+(o app desempilha tudo e põe `Writer::open`): o clique duplo no quadro da
+sala Escritório, o JÁ (ou clique duplo) da pasta `WriterPortfolio` e o
+clique duplo numa moldura da Biblioteca. A pasta e a Biblioteca gravam o
+documento como último antes de emitir o efeito; o quadro já é o último.
+
+## Caderno de Idéias no editor (W20)
+
+O 5º botão do menu do McZee abre o `NotebookView` da Oficina de Idéias
+(`scenes/writer_ideas/notebook.rs`, com `NotebookView::in_editor`) por cima
+da página, numa sobreposição (`scenes/writer/notebook.rs`): sons `022d` e
+`0209`, balão do McZee `0faa[2]`, moldura do Escritório pontilhada de cinza
+100 (`ideas_89_caderno_editor`). Tesoura e câmera pedem os balões do McZee
+`0faa[4]`/`[3]` (Lembretes) e `[20]`/`[19]` (Máquina e Figuras) em vez dos
+do Max. O que é copiado vai para a área de transferência da sessão, que o
+Ctrl+V do editor cola. OK grava as três abas e fecha; o caderno não
+descarta. Enquanto ele está aberto, o editor não recebe teclas nem cliques.
+
+## Central de Controle (W23, Ctrl+Shift+A)
+
+No original a tela fica preta e aparece a barra de menus escondida do
+`WRITER.EXE` (`MENU 0x3e8`, `office.md` §6, `office_121`..`124`). O port
+(`scenes/writer/control_center.rs`) a desenha sobre o quadro: fundo preto,
+janela branca com **Arquivo**, **Editar** e **Ferramentas**, listas e
+caixas no estilo do Windows 3.1 com a geometria dos `DIALOG` (1 unidade =
+6/4 px na horizontal, 13/8 px na vertical). Os textos vêm do executável por
+`formats::winres_ui` (sem ele, os embutidos). Habilitados como no original:
+
+| Comando | O que o port faz |
+|---|---|
+| Salvar Como… | fecha a Central e abre o campo de nome |
+| Salvar Como Texto… | `ed.save_text()` (`<NOME>.TXT` na pasta) |
+| Opções de Impressão… (`DIALOG 0x1b58`) | só registra: o port imprime pelo `lp` |
+| Voltar ao Creative Writer, Esc | fecha |
+| Sobre o Creative Writer… (`0x7d0`) | a caixa, OK fecha |
+| Controle de Som… (`0xbb8`) | `Effect::SetVolume(100 ou 0)` |
+| Decodificar Documento… (`0x1388`) | a caixa, sem efeito |
+| Redefinir Máquina de Idéias… (`0x1770`) | apaga as entradas do usuário |
+
+Novo, Abrir, Sair e todo o Editar aparecem cinza. Com a Central aberta, toda
+a entrada vai para ela.
 
 ## Teclado
 
@@ -200,7 +309,8 @@ Letras, Enter, Backspace, Delete; ←→↑↓, Home/End (da linha), Ctrl+←→
 Shift, estendem a seleção. Ctrl+X/C/V (área de transferência interna; sons
 `022f`/`0288`/`028d`, balões `0fa3[8]`/`[12]`/`[14]`), Ctrl+Z (alterna
 desfazer/refazer, sons `020e`/`0217`), Ctrl+A (tudo), Ctrl+S (salvar),
-Ctrl+Q (sair, com o "Epa!" se houver mudanças).
+Ctrl+Q (sair, com o "Epa!" se houver mudanças), Ctrl+O (pasta),
+Ctrl+Shift+A (Central de Controle).
 
 ## McZee
 
@@ -218,8 +328,12 @@ Ctrl+Q (sair, com o "Epa!" se houver mudanças).
   McZee `041b` (desligar: `0faa[1]`), NOVO `084d`, maleta `044f`, SALVAR
   `08af`, Caderno de Idéias `0c01`, Varinha `0457`, cara de sol `03f3` (piada do
   `WHAT 0201` do Writer), livro verde `0453` (história). Escolher toca `022d`.
-  NOVO e SALVAR funcionam (ver "Saída, salvar…"); maleta e Caderno ainda
-  só registram "ainda não disponível".
+  NOVO, maleta e SALVAR: ver "Saída, salvar…"; Caderno: ver "Caderno de
+  Idéias no editor"; livro verde: a história do Writer
+  (`CwScene::BookStory`) por cima.
+- **Máscara (piada)**: uma piada sorteada do `WHAT 0201` num balão sem
+  rabicho centrado em (320,240) (medido nas capturas `ideas_96`/`97`), com
+  um dos sons `0226`/`0283`/`0312` (o mesmo PCM); um clique fecha.
 - **Ligar/desligar**: "É, por favor dê o fora" desliga os balões automáticos;
   com a ajuda desligada o nicho pergunta `0faa[0]` ("Sim, por favor!" religa).
 - **Varinha**: cursor de varinha (`000f`) até escolher uma ferramenta; clique
@@ -258,6 +372,7 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.rolls` | rolos de adesivos das bibliotecas do Writer |
 | `ed.title()`, `ed.file()`, `ed.dir()`, `ed.changed()` | título, arquivo `.MAX`, pasta do usuário, mudado desde a gravação |
 | `ed.picture(&obj)` | desenho do objeto no tamanho atual (`Rc<Image>`, branco = transparente) |
+| `ed.encrypted()` | documento embaralhado pelo Agente Secreto (`ADD[5]`): a tela troca as letras e cobre os objetos; recuse recortar/copiar/jogar fora (`0805[13]`, `[42]`) |
 
 ### Coordenadas e vista
 
@@ -285,6 +400,8 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.insert_sticker(rolo, item)` | o mesmo, no ponto de inserção |
 | `ed.add_picture(&img, título, folha, x, y)` | imagem própria (Cavalete, Cachorrinho, Caderno) como objeto: `PICT` com `META` (DIB de 24 bits) e `TWPB` |
 | `ed.remove_object(k)` | tira o objeto `k` |
+| `ed.replace_picture(k, &img)` | troca a figura do objeto `k` por uma imagem (o OK do cavalete): `PICT` novo, mesmo lugar e flutuação |
+| `ed.secret_ok(senha, ctrl_shift)` | OK do painel SENHA (embaralha/desembaralha a exibição; não entra no Ovo) |
 | `ed.clear_all()` | Jogar tudo fora (texto e objetos) |
 | `ed.cut()`, `ed.copy()`, `ed.paste()` | texto da seleção ↔ área de transferência |
 | `ed.edit(\|doc, sel\| …)` | qualquer outra ação: guarda o estado, roda, rediagrama e rola até o cursor |
@@ -306,7 +423,7 @@ precisam da cópia em `ed.extra` (use `add_object` com o chunk) para irem ao
 manter_antigo)`, `ed.save_auto()`, `ed.save_text()`, `ed.discard()`. A
 cena: `Writer::new(pasta, a)` (último documento), `Writer::new_blank(pasta,
 a)` (`CwScene::NewDocument`), `Writer::open(pasta, caminho, a)` (e o
-`--open ARQ.MAX` do app, para testes), `Writer::idea_story(pasta, apelido,
+`--open ARQ.MAX` do app e o `Effect::OpenDocument`), `Writer::idea_story(pasta, apelido,
 a)` (`CwScene::IdeaStory`: a história da Oficina de Idéias, ver
 `creative-writer-ideias.md`), `.with_author(nome)`, `.with_user(apelido)`
 (a área de transferência da sessão, que o Caderno de Idéias também usa:

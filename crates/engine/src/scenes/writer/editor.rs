@@ -24,6 +24,7 @@ use crate::assets::Assets;
 use crate::clipart::{ClipRoll, load_rolls, parse_list};
 use crate::scene::Key;
 use crate::ui::Rect;
+use crate::writer::cipher;
 use crate::writer::convert::{self, MaxExtra};
 use crate::writer::doc::{CharChange, CharProps, Document, DopProps, Item, ParaChange};
 use crate::writer::fonts::{RunFont, WriterFonts};
@@ -168,11 +169,13 @@ pub const REBUS_PAD: i32 = 4;
 struct DocMeasure<'a> {
     fonts: &'a WriterFonts,
     rebus: &'a HashMap<u8, (i32, i32)>,
+    /// Agente Secreto: mede as letras trocadas que a tela mostra.
+    scrambled: bool,
 }
 
 impl Measure for DocMeasure<'_> {
     fn advance(&self, font: &FontKey, c: char) -> i32 {
-        Measure::advance(self.fonts, font, c)
+        Measure::advance(self.fonts, font, shown(c, self.scrambled))
     }
 
     fn metrics(&self, font: &FontKey) -> (i32, i32) {
@@ -203,6 +206,15 @@ fn rebus_sizes(a: &Assets) -> HashMap<u8, (i32, i32)> {
             })
         })
         .collect()
+}
+
+/// O caractere como a tela o mostra (embaralhado pelo Agente Secreto).
+fn shown(c: char, scrambled: bool) -> char {
+    if scrambled {
+        cipher::scramble_char(c)
+    } else {
+        c
+    }
 }
 
 fn is_white(p: &[u8]) -> bool {
@@ -324,6 +336,7 @@ impl Editor {
         let m = DocMeasure {
             fonts: &self.fonts,
             rebus: &self.rebus,
+            scrambled: self.encrypted(),
         };
         let l = Rc::new(Layout::build(&self.doc, &m));
         *self.layout.borrow_mut() = Some(l.clone());
@@ -332,6 +345,23 @@ impl Editor {
 
     fn invalidate(&mut self) {
         *self.layout.get_mut() = None;
+    }
+
+    /// Documento embaralhado pelo Agente Secreto (`ADD[5]`): a tela troca
+    /// as letras e cobre os objetos.
+    pub fn encrypted(&self) -> bool {
+        self.extra.add.encrypted
+    }
+
+    /// OK no painel SENHA do Agente Secreto (ver [`cipher::ok`]): embaralha
+    /// ou desembaralha a exibição; o texto não muda. Não entra no Ovo.
+    pub fn secret_ok(&mut self, typed: &str, master_keys: bool) -> cipher::Outcome {
+        let r = cipher::ok(&mut self.extra.add, typed, master_keys);
+        if matches!(r, cipher::Outcome::Scrambled | cipher::Outcome::Unscrambled) {
+            self.invalidate();
+            self.changed = true;
+        }
+        r
     }
 
     /// O documento mudou desde que foi aberto ou gravado.
@@ -604,6 +634,21 @@ impl Editor {
         self.edit(|d, _| d.add_object(o))
     }
 
+    /// Troca o objeto `k` (desfazível); `chunk` é o conteúdo novo, guardado
+    /// com um número livre (o cavalete de palavras com forma reaberto).
+    pub fn replace_object(&mut self, k: usize, mut o: FloatObject, chunk: Option<OwnedChunk>) {
+        if k >= self.doc.objects.len() {
+            return;
+        }
+        if let Some(c) = chunk {
+            o.object = self.extra.add_object(c);
+        }
+        if let Some(e) = self.extra.frame_extra.get_mut(k) {
+            e.0 = o.object;
+        }
+        self.edit(|d, _| d.objects[k] = o);
+    }
+
     /// Tira o objeto `k` (desfazível).
     pub fn remove_object(&mut self, k: usize) -> Option<FloatObject> {
         if k >= self.doc.objects.len() {
@@ -696,6 +741,32 @@ impl Editor {
         self.add_object(o, Some(chunk))
     }
 
+    /// Troca a figura do objeto `k` pelo desenho do cavalete (Mover-modificar):
+    /// um `PICT` novo no tamanho do desenho, no mesmo lugar, com o mesmo
+    /// modo de flutuação, som e borda; o objeto passa a ser um desenho.
+    pub fn replace_picture(&mut self, k: usize, img: &Image) -> bool {
+        if k >= self.doc.objects.len() {
+            return false;
+        }
+        let (chunk, outline) = picture_chunk(img, "", 0);
+        let r = self.extra.add_object(chunk);
+        let (w, h) = (
+            img.width.clamp(1, 0x7fff) as u16,
+            img.height.clamp(1, 0x7fff) as u16,
+        );
+        if let Some((o, _)) = self.extra.frame_extra.get_mut(k) {
+            *o = r;
+        }
+        self.edit(|d, _| {
+            let o = &mut d.objects[k];
+            o.kind = ObjectKind::Drawing;
+            o.object = r;
+            (o.width, o.height, o.orig_width, o.orig_height) = (w, h, w, h);
+            o.outline = Some(outline);
+        });
+        true
+    }
+
     /// Cola o adesivo no ponto de inserção (a faixa dos Adesivos até a W10).
     pub fn insert_sticker(&mut self, roll: u16, index: usize) -> usize {
         let c = self.layout().caret(self.sel.caret);
@@ -708,11 +779,17 @@ impl Editor {
         if let Some(p) = self.pictures.borrow().get(&key) {
             return p.clone();
         }
-        let img = self
-            .extra
-            .object(o.object)
-            .and_then(decode_pict)
-            .map(|i| Rc::new(scaled(&i, u32::from(o.width), u32::from(o.height))));
+        let (w, h) = (u32::from(o.width), u32::from(o.height));
+        let img = self.extra.object(o.object).and_then(|c| match &c.tag.0 {
+            // palavra com forma: os glifos desenhados já no tamanho da moldura
+            b"SPLE" => c
+                .parts
+                .iter()
+                .find(|p| p.tag.0 == *b"SPLE")
+                .and_then(|p| formats::sple::read(&p.data).ok())
+                .map(|s| Rc::new(crate::writer::splot::draw(&s, w, h))),
+            _ => decode_pict(c).map(|i| Rc::new(scaled(&i, w, h))),
+        });
         self.pictures.borrow_mut().insert(key, img.clone());
         img
     }
@@ -979,6 +1056,11 @@ impl Editor {
 
     fn draw_object(&self, v: &mut Frame, o: &FloatObject, ox: i32, oy: i32) {
         let (x, y) = (ox + i32::from(o.x), oy + i32::from(o.y));
+        if self.encrypted() {
+            // Agente Secreto: o objeto vira um retângulo preto
+            v.rect(x, y, i32::from(o.width), i32::from(o.height), BLACK);
+            return;
+        }
         match self.picture(o) {
             Some(img) => {
                 for (k, p) in img.rgba.chunks_exact(4).enumerate() {
@@ -990,7 +1072,7 @@ impl Editor {
                 }
             }
             None => {
-                // sem desenho (Splot, figura sem metarquivo): o lugar dele
+                // sem desenho (figura sem metarquivo): o lugar dele
                 let (w, h) = (i32::from(o.width), i32::from(o.height));
                 v.frame_rect(x, y, w, h, 1, BACKDROP);
             }
@@ -1007,6 +1089,7 @@ impl Editor {
         oy: i32,
     ) {
         let vh = v.height() as i32;
+        let scrambled = self.encrypted();
         for line in l.lines_on(page) {
             if oy + line.top > vh || oy + line.top + line.height < 0 {
                 continue;
@@ -1040,8 +1123,13 @@ impl Editor {
                         let (w, h) = (b.w - 2 * REBUS_PAD, b.ascent);
                         let x = ox + b.x + REBUS_PAD;
                         let y = oy + b.baseline - h;
-                        let drawn =
-                            a.and_then(|a| crate::writer::ideas::rebus::draw(v, a, c, x, y));
+                        let drawn = if scrambled {
+                            v.rect(x, y, w.max(1), h.max(1), BLACK);
+                            Some(())
+                        } else {
+                            a.and_then(|a| crate::writer::ideas::rebus::draw(v, a, c, x, y))
+                                .map(|_| ())
+                        };
                         if drawn.is_none() {
                             v.frame_rect(x, y, w.max(1), h.max(1), 1, BACKDROP);
                         }
@@ -1065,8 +1153,9 @@ impl Editor {
                                         && bj.baseline == b.baseline
                                         && bj.x == pen =>
                                 {
-                                    text.push(*c);
-                                    pen += self.fonts.advance(&font, *c);
+                                    let c = shown(*c, scrambled);
+                                    text.push(c);
+                                    pen += self.fonts.advance(&font, c);
                                     j += 1;
                                 }
                                 _ => break,
@@ -1075,7 +1164,7 @@ impl Editor {
                         if j == k {
                             // item fora do lugar sozinho: desenha só ele
                             if let Some(Item::Char(c, _)) = para.items.get(b.index) {
-                                text.push(*c);
+                                text.push(shown(*c, scrambled));
                             }
                             j = k + 1;
                         }
@@ -1238,9 +1327,11 @@ impl Editor {
         Ok(())
     }
 
-    /// Salva com o título `title` na pasta do usuário. `keep_old` = "Salvar
-    /// a versão antiga e a nova" (o arquivo anterior fica); senão o arquivo
-    /// anterior é substituído. Devolve o arquivo gravado.
+    /// Salva com o título `title` na pasta do usuário, sempre num arquivo
+    /// novo (como o original: "Gato Teste" regravado vira `GATO_T11.MAX`).
+    /// `keep_old` = "Salvar a versão antiga e a nova" (o arquivo anterior
+    /// fica); senão ("Salvar só a nova") o anterior é apagado depois de
+    /// gravar. Devolve o arquivo gravado.
     pub fn save_as(
         &mut self,
         title: &str,
@@ -1251,8 +1342,7 @@ impl Editor {
             return Err("sem pasta do usuário: documento não guardado".into());
         };
         let old = self.file.clone();
-        let keep = if keep_old { None } else { old.as_deref() };
-        let path = store::path_for(&dir, title, keep);
+        let path = store::path_for(&dir, title, None);
         self.extra.add.title = title.to_string();
         if !author.is_empty() {
             self.extra.add.author = author.to_string();
