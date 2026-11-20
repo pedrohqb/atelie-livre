@@ -1215,9 +1215,11 @@ impl Editor {
         Ok(())
     }
 
-    /// Salva com o título `title` na pasta do usuário. `keep_old` = "Salvar
-    /// a versão antiga e a nova" (o arquivo anterior fica); senão o arquivo
-    /// anterior é substituído. Devolve o arquivo gravado.
+    /// Salva com o título `title` na pasta do usuário, sempre num arquivo
+    /// novo (como o original: "Gato Teste" regravado vira `GATO_T11.MAX`).
+    /// `keep_old` = "Salvar a versão antiga e a nova" (o arquivo anterior
+    /// fica); senão ("Salvar só a nova") o anterior é apagado depois de
+    /// gravar. Devolve o arquivo gravado.
     pub fn save_as(
         &mut self,
         title: &str,
@@ -1228,8 +1230,7 @@ impl Editor {
             return Err("sem pasta do usuário: documento não guardado".into());
         };
         let old = self.file.clone();
-        let keep = if keep_old { None } else { old.as_deref() };
-        let path = store::path_for(&dir, title, keep);
+        let path = store::path_for(&dir, title, None);
         self.extra.add.title = title.to_string();
         if !author.is_empty() {
             self.extra.add.author = author.to_string();
