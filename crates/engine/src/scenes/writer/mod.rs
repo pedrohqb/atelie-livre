@@ -929,8 +929,8 @@ impl Writer {
             return;
         }
         if self.mczee.wand() && inside(PAGE, x, y) {
-            // W11: tocar o som da palavra ou do adesivo
-            fx.push(Effect::Log("Varinha Mágica: nenhum som aqui".into()));
+            // tocar o som da palavra ou do objeto
+            fx.extend(sounds::wand_sound(&self.ed, x, y, a));
             return;
         }
         let tool = self.tool;

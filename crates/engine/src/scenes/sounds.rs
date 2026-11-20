@@ -866,16 +866,20 @@ impl Sounds {
         }
         if self.list_scrolls() {
             let r = self.row_rect(l.list_rows - 1);
-            let (up, down) = (a.image(&l.pic(0x03b3)), a.image(&l.pic(0x03b7)));
-            let (um, dm) = (a.image(&l.pic(0x03b5)), a.image(&l.pic(0x03b9)));
             if l.plain_arrows {
-                // Writer: caixa branca de 16 px colada na última linha
+                // Writer: caixa branca de 16 px colada na última linha, com
+                // as setinhas amarela e azul da tira de filme
                 let r = (r.0, r.1, r.2, 16);
                 f.rect(r.0, r.1, r.2, r.3, BLACK);
                 f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, WHITE);
-                f.blit_masked(&up, &um, r.0 + 24, r.1 + 2);
-                f.blit_masked(&down, &dm, r.0 + 58, r.1 + 2);
+                let masked = |f: &mut Frame, img: u16, mask: u16, x: i32| {
+                    f.blit_masked(&a.image(&l.pic(img)), &a.image(&l.pic(mask)), x, r.1 + 1);
+                };
+                masked(f, 0x02db, 0x02dd, r.0 + 23);
+                masked(f, 0x02df, 0x02e1, r.0 + 58);
             } else {
+                let (up, down) = (a.image(&l.pic(0x03b3)), a.image(&l.pic(0x03b7)));
+                let (um, dm) = (a.image(&l.pic(0x03b5)), a.image(&l.pic(0x03b9)));
                 let r = box_at(f, l.list_rows - 1);
                 f.blit_masked(&up, &um, r.0 + r.2 / 4 - 8, r.1 + 5);
                 f.blit_masked(&down, &dm, r.0 + 3 * r.2 / 4 - 8, r.1 + 5);

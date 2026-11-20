@@ -766,7 +766,8 @@ pub fn to_json(recs: &[Record], fingerprint: u64) -> String {
                     json_str(&path.to_string_lossy())
                 ));
             }
-            None => {}
+            // sons de documento do Writer não vão para os objetos da pintura
+            Some(SoundRef::Wave(_)) | None => {}
         }
         match &r.source {
             Source::Roll { roll, item } => {

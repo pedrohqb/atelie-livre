@@ -998,6 +998,9 @@ impl Editor {
             self.draw_object(v, &self.doc.objects[k], ox, oy);
         }
         self.draw_lines(v, a, &l, page, ox, oy);
+        if selection {
+            super::sounds::draw_word_boxes(&self.doc, &l, v, page, ox, oy);
+        }
         if let Some(n) = &sheet.number {
             let font = RunFont::default();
             let w = self.fonts.text_width(&font, &n.text);
