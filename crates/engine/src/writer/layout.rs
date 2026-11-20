@@ -210,15 +210,23 @@ struct DropCap {
     lines: i32,
     /// Onde ficou (folha, coluna, topo), depois da primeira linha.
     placed: Option<(usize, usize, i32)>,
+    /// Lado esquerdo da letra: o começo do primeiro trecho livre na altura
+    /// dela (ao lado de um objeto encostado na margem, a borda dele).
+    x: i32,
 }
 
 impl DropCap {
-    fn extra(&self, line_no: usize, page: usize, col: usize, y: i32) -> i32 {
-        let on = match self.placed {
+    /// A linha fica ao lado da letra?
+    fn beside(&self, line_no: usize, page: usize, col: usize, y: i32) -> bool {
+        match self.placed {
             None => line_no == 0,
             Some((p, c, top)) => p == page && c == col && y < top + self.lines * self.line_h,
-        };
-        if on { self.m.w + DROP_GAP } else { 0 }
+        }
+    }
+
+    /// Onde o texto ao lado da letra começa.
+    fn text_x(&self) -> i32 {
+        self.x + self.m.w + DROP_GAP
     }
 }
 
@@ -544,6 +552,7 @@ impl Builder<'_> {
                 line_asc: normal.asc,
                 lines,
                 placed: None,
+                x: 0,
             });
             k = 1;
         } else if props.raised_cap && first_word {
@@ -591,16 +600,32 @@ impl Builder<'_> {
         let mut stuck = 0;
         loop {
             let (cl, cr) = self.cols[self.col];
-            let dc = drop.map_or(0, |d| d.extra(line_no, self.page, self.col, self.y));
+            let ignore = stuck > 2 * self.cols.len();
+            // a capitular vai para o começo do primeiro trecho livre na
+            // altura dela; as linhas ao lado começam depois da letra
+            if line_no == 0
+                && let Some(d) = drop.as_mut()
+            {
+                let band = (self.y, self.y + d.lines * d.line_h);
+                d.x = self
+                    .segments(cl + extra, cr, band.0, band.1, ignore)
+                    .into_iter()
+                    .find(|&(a, b)| b - a > d.m.w + DROP_GAP)
+                    .map_or(cl + extra, |(a, _)| a);
+            }
+            let beside = drop.filter(|d| d.beside(line_no, self.page, self.col, self.y));
             // recuo SAMP16: `(começo, recuo)`, o recuo contado a partir do
             // começo do segmento livre (ao lado de um objeto, da borda dele)
-            let mut left = (cl + dc, extra);
+            let mut left = match beside {
+                Some(d) => (d.text_x() - extra, extra),
+                None => (cl, extra),
+            };
             if drop.is_none()
                 && let Some(z) = self.zone
             {
                 // ao lado da capitular de um parágrafo anterior o texto
                 // começa depois da letra, ou no recuo próprio se for maior
-                let pos = z.left(self.page, self.col, self.y, cl + dc + extra);
+                let pos = z.left(self.page, self.col, self.y, cl + extra);
                 left.0 = pos - extra;
             }
             // "Recuar todas as linhas" recua também do lado direito
@@ -610,7 +635,6 @@ impl Builder<'_> {
                 cr
             };
             let left = (left.0.min(right - 1), left.1);
-            let ignore = stuck > 2 * self.cols.len();
             let h_est = match drop {
                 Some(d) if line_no == 0 => d.line_h,
                 _ => ms.get(k).map_or(mark.asc + mark.desc, |m| m.asc + m.desc),
@@ -713,7 +737,7 @@ impl Builder<'_> {
         if line_no == 0
             && let Some(d) = drop
         {
-            let x = cl + extra;
+            let x = d.x;
             c.boxes.insert(
                 0,
                 ItemBox {
@@ -755,7 +779,7 @@ impl Builder<'_> {
             self.zone = d.placed.map(|(page, col, t)| DropZone {
                 page,
                 col,
-                x: cl + extra + d.m.w + DROP_GAP,
+                x: d.text_x(),
                 bottom: t + d.lines * d.line_h,
             });
         }
@@ -1376,6 +1400,31 @@ mod tests {
         // abaixo do objeto volta a valer a margem
         let below = l.lines.iter().find(|ln| ln.top >= 366).unwrap();
         assert_eq!(below.boxes[0].x, 72 + BULLET_INDENT);
+    }
+
+    /// Capitular ao lado de um adesivo encostado na margem (teste de jogo
+    /// do Writer: o "E" de "Era uma vez" ficava por baixo da bicicleta
+    /// enquanto as linhas fugiam dela). A letra vai para o começo do
+    /// primeiro trecho livre na altura dela, e o texto ao lado dela.
+    #[test]
+    fn drop_cap_moves_beside_an_object_at_the_margin() {
+        let mut d = doc(&format!("abc\n{}", words(60)));
+        let mut o = sticker(60, 60, 70, 100);
+        o.wrap = Wrap::Box;
+        d.add_object(o);
+        d.apply_para(
+            Range::at(Pos::new(0, 0)),
+            ParaChange::Style(ParaStyle::DropCap),
+        );
+        let l = lay(&d);
+        let edge = 130 + WRAP_GAP;
+        let cap = l.lines[0].boxes[0];
+        assert_eq!((cap.index, cap.x), (0, edge));
+        let beside = edge + cap.w + DROP_GAP;
+        assert_eq!(l.lines[0].boxes[1].x, beside);
+        // o parágrafo seguinte continua ao lado da letra, não da margem
+        assert_eq!(l.lines[1].boxes[0].x, beside);
+        assert_eq!(l.lines[2].boxes[0].x, beside);
     }
 
     #[test]
