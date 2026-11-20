@@ -371,17 +371,37 @@ impl Builder<'_> {
     fn segments(&self, left: i32, right: i32, y0: i32, y1: i32, ignore: bool) -> Vec<(i32, i32)> {
         let mut segs = vec![(left, right)];
         if !ignore {
-            for o in self.doc.objects.iter().filter(|o| o.on_page(self.page)) {
-                if let Some((a, b)) = o.exclusion(y0, y1, WRAP_GAP, self.page_w) {
-                    segs = segs
-                        .into_iter()
-                        .flat_map(|(s, e)| {
-                            [(s, e.min(a)), (s.max(b), e)]
-                                .into_iter()
-                                .filter(|(x0, x1)| x1 > x0)
-                        })
-                        .collect();
+            let far = 4 * self.page_w.max(1);
+            let obstacles = self.doc.dop.obstacles.iter().filter_map(|o| {
+                let (ox0, oy0) = (i32::from(o.x), i32::from(o.y));
+                let (ox1, oy1) = (ox0 + i32::from(o.width), oy0 + i32::from(o.height));
+                if y1 <= oy0 - WRAP_GAP || y0 >= oy1 + WRAP_GAP {
+                    return None;
                 }
+                // 0x29: 1 = texto só à esquerda, 2 = só à direita, 3 = nenhum
+                Some(match o.wrap {
+                    Some(1) => (ox0 - WRAP_GAP, far),
+                    Some(2) => (-far, ox1 + WRAP_GAP),
+                    _ => (-far, far),
+                })
+            });
+            let exclusions: Vec<(i32, i32)> = self
+                .doc
+                .objects
+                .iter()
+                .filter(|o| o.on_page(self.page))
+                .filter_map(|o| o.exclusion(y0, y1, WRAP_GAP, self.page_w))
+                .chain(obstacles)
+                .collect();
+            for (a, b) in exclusions {
+                segs = segs
+                    .into_iter()
+                    .flat_map(|(s, e)| {
+                        [(s, e.min(a)), (s.max(b), e)]
+                            .into_iter()
+                            .filter(|(x0, x1)| x1 > x0)
+                    })
+                    .collect();
             }
         }
         segs.retain(|(a, b)| b - a >= MIN_SEGMENT.min(right - left));
@@ -397,6 +417,13 @@ impl Builder<'_> {
             .iter()
             .filter(|o| o.on_page(self.page))
             .map(|o| o.rect().3 + WRAP_GAP)
+            .chain(
+                self.doc
+                    .dop
+                    .obstacles
+                    .iter()
+                    .map(|o| i32::from(o.y) + i32::from(o.height) + WRAP_GAP),
+            )
             .filter(|&b| b > y)
             .min();
         below.map_or(y + h, |b| b.min(y + h))
@@ -1514,5 +1541,44 @@ mod tests {
         let l = lay(&d);
         let r = l.selection_rects(Range::new(Pos::new(0, 0), Pos::new(0, l.lines[0].end)));
         assert_eq!(r.len(), 2);
+    }
+
+    #[test]
+    fn background_obstacles_push_the_text_on_every_page() {
+        // Scroll (FUNDO_SC.MAX): rolo de cima sem texto ao lado, tira
+        // esquerda com texto só à direita, tira direita com texto só à
+        // esquerda (office-complemento.md §5.3)
+        let mut d = Document::from_text(&"abc de ".repeat(1500), CharProps::default());
+        let ob = |x, y, w, h, wrap| {
+            let mut f = formats::max::Frame::new(
+                formats::max::FrameKind::Other(6),
+                formats::max::ObjRef::new(b"PICT", 0),
+                x,
+                y,
+                w,
+                h,
+            );
+            f.page = u16::MAX;
+            f.wrap = Some(wrap);
+            f
+        };
+        d.dop.obstacles = vec![
+            ob(73, 10, 443, 121, 3),
+            ob(73, 677, 443, 107, 3),
+            ob(71, 127, 12, 555, 2),
+            ob(501, 125, 12, 555, 1),
+        ];
+        let l = Layout::build(&d, &M);
+        assert!(l.lines[0].top >= 131, "{}", l.lines[0].top);
+        assert!(l.page_count() >= 2);
+        for line in &l.lines {
+            for b in &line.boxes {
+                assert!(b.x >= 83 && b.x + b.w <= 501, "{} {}", b.x, b.w);
+                assert!(line.top + line.height <= 677, "{}", line.top);
+            }
+        }
+        // a folha 2 também começa abaixo do rolo de cima
+        let second = l.lines.iter().find(|line| line.page == 1).unwrap();
+        assert!(second.top >= 131);
     }
 }

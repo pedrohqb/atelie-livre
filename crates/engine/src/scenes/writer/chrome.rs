@@ -30,6 +30,8 @@ const BOX_PAGES: (i32, i32) = (471, 610);
 /// Cabeça vermelha (mapa do prédio) e ícone "todas as páginas".
 const FLOOR_ICON: Pic = Pic::masked(0x03c3, 0x03c9, 33, 464);
 const PAGES_ICON: Pic = Pic::masked(0x0c37, 0x0c39, 475, 463);
+/// Clique no ícone "todas as páginas" (10×12).
+pub const PAGES_ICON_RECT: Rect = (475, 463, 10, 12);
 /// Setas ▲▼◀▶ da barra de baixo.
 pub const ARROW_UP: Pic = Pic::masked(0x02db, 0x02dd, 543, 463);
 pub const ARROW_DOWN: Pic = Pic::masked(0x02df, 0x02e1, 560, 463);
@@ -38,6 +40,20 @@ pub const ARROW_RIGHT: Pic = Pic::masked(0x0871, 0x0873, 594, 463);
 /// Clique nas setas (12×12).
 pub fn arrow_rect(p: Pic) -> Rect {
     (p.x, p.y, 12, 12)
+}
+
+/// Visão geral "todas as páginas": tudo fora da vista fica pontilhado de
+/// cinza, como a barra apagada do original (`allp`).
+pub fn dim_outside(f: &mut Frame, view: Rect) {
+    let (vx, vy, vw, vh) = view;
+    for y in 0..f.height() as i32 {
+        for x in 0..f.width() as i32 {
+            let out = !(vx..vx + vw).contains(&x) || !(vy..vy + vh).contains(&y);
+            if out && (x + y) % 2 == 0 {
+                f.put(x, y, GRAY);
+            }
+        }
+    }
 }
 
 /// Nome mostrado na barra de baixo enquanto o documento não tem nome

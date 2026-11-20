@@ -1591,9 +1591,9 @@ fn picture_chunk(
 }
 
 /// Inverte as cores do retângulo (vídeo inverso da seleção).
-/// Folha `src` em `w × h`: ampliar repete pixels; reduzir junta cada bloco
-/// pelo mínimo de cada canal (o `BLACKONWHITE`, modo padrão do
-/// `StretchBlt`, que não deixa o texto sumir).
+/// Folha `src` em `w × h`: ampliar repete pixels; reduzir tira a média de
+/// cada bloco (o texto miúdo fica cinza, como nas vistas reduzidas do
+/// original, `cw/w_page/zm3`).
 fn resample(src: &Frame, w: i32, h: i32) -> Frame {
     let (w, h) = (w.max(1) as u32, h.max(1) as u32);
     let (sw, sh) = (src.width().max(1), src.height().max(1));
@@ -1603,16 +1603,17 @@ fn resample(src: &Frame, w: i32, h: i32) -> Frame {
         let (y0, y1) = (y * sh / h, ((y + 1) * sh / h).max(y * sh / h + 1).min(sh));
         for x in 0..w {
             let (x0, x1) = (x * sw / w, ((x + 1) * sw / w).max(x * sw / w + 1).min(sw));
-            let mut c = [255u8; 3];
+            let mut sum = [0u32; 3];
             for sy in y0..y1 {
                 for sx in x0..x1 {
                     let i = ((sy * sw + sx) * 4) as usize;
-                    for k in 0..3 {
-                        c[k] = c[k].min(px[i + k]);
+                    for (k, v) in sum.iter_mut().enumerate() {
+                        *v += u32::from(px[i + k]);
                     }
                 }
             }
-            out.put(x as i32, y as i32, c);
+            let n = ((y1 - y0) * (x1 - x0)).max(1);
+            out.put(x as i32, y as i32, sum.map(|v| (v / n) as u8));
         }
     }
     out

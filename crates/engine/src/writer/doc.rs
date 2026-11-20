@@ -659,10 +659,14 @@ pub struct DopProps {
     /// `0x47` / `0x48`: larguras da borda (interna/externa, deduzido).
     pub border_inner: Option<u16>,
     pub border_outer: Option<u16>,
-    /// Fundo (rolo FUNDO, figuras dos `.BOR`) em todas as páginas. O sprm
-    /// que o grava não aparece nos exemplos (W26); a conversão o ignora até
-    /// ser identificado.
+    /// `0x56 "IBGF" n`: fundo (rolo FUNDO, figuras dos `.BOR`) em todas as
+    /// páginas; o documento guarda a cópia do `IBGF` e do `PICT`/`FRAM`
+    /// que ele aponta (`office-complemento.md` §5.3).
     pub background: Option<ObjRef>,
+    /// Molduras do fundo que desviam o texto em todas as folhas (tipo 6,
+    /// página `0xffff`; `0x29` diz de que lado o texto pode correr), como
+    /// vieram do arquivo ou do `.BOR`.
+    pub obstacles: Vec<formats::max::Frame>,
 }
 
 impl Default for DopProps {
@@ -686,6 +690,7 @@ impl Default for DopProps {
             border_inner: None,
             border_outer: None,
             background: None,
+            obstacles: Vec::new(),
         }
     }
 }
