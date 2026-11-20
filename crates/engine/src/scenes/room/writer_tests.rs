@@ -418,6 +418,12 @@ fn office_wall_document_with_real_data() {
     assert_eq!(r.balloon.as_ref().unwrap().w, 188, "dica [0] do Max");
     r.close();
     r.clicks.reset();
+    // clique duplo no quadro: a área de escrita com o documento da parede
+    r.update(std::slice::from_ref(&page), 0.0, &a);
+    let fx = r.update(std::slice::from_ref(&page), 0.1, &a);
+    assert!(fx.contains(&Effect::OpenDocument(w.path.clone())), "{fx:?}");
+    r.close();
+    r.clicks.reset();
     let fx = r.update(&[spot(&r, Action::WallLabel)], 1.0, &a);
     assert!(r.alert.is_some());
     assert_eq!(sounds(&fx), [snd::OBJECT, WRITER_KIT.snd.quit[1]]);

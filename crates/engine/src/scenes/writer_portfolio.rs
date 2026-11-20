@@ -10,16 +10,16 @@
 //! (`MSKIDS/SHARED/USERS/MAX`).
 //!
 //! JÁ (ou clique duplo) abre o documento: ele vira o último documento do
-//! usuário (`FILR 0` do `~MAXUSER.INF`) e a cena vai à área de escrita
-//! (`SceneId::Writer`), que o abre por `writer::prefs::last_document`. Os
-//! cartões, faixas e jornais também vão à área de escrita enquanto os
-//! projetos do Writer não existem.
+//! usuário (`FILR 0` do `~MAXUSER.INF`) e a cena vai à área de escrita com
+//! ele (`Effect::OpenDocument`), saindo da sala ou do Escritório por baixo
+//! (a pasta da Bolsa Mágica do editor, Ctrl+O). Os cartões, faixas e jornais
+//! também vão à área de escrita enquanto os projetos do Writer não existem.
 
 use super::portfolio::{self, Action as BinderAction, Binder, BinderItem, BinderSpec, Group};
 use super::writer_office_room::bitmap_image;
 use crate::assets::{Assets, Program, SoundRef};
 use crate::paths::find_ci;
-use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene, SceneId};
+use crate::scene::{Effect, Input, KidCommon, MouseButton, Scene};
 use crate::ui::{Rect, inside};
 use crate::writer::prefs;
 use crate::{Frame, Image};
@@ -223,7 +223,7 @@ impl WriterPortfolio {
             fx.push(Effect::Log(format!("pasta: {e}")));
         }
         fx.push(Effect::PlaySound(SoundRef::Snd(Program::Writer, 0x304)));
-        fx.push(Effect::ChangeScene(SceneId::Writer));
+        fx.push(Effect::OpenDocument(it.path.clone()));
     }
 }
 
@@ -337,9 +337,9 @@ mod tests {
             0.0,
             &a,
         );
-        assert!(fx.contains(&Effect::ChangeScene(SceneId::Writer)), "{fx:?}");
-        let (d, _) = prefs::last_document(Some(&users), "ana", a.data_dir()).unwrap();
+        let (d, f) = prefs::last_document(Some(&users), "ana", a.data_dir()).unwrap();
         assert_eq!(d.file, "SAMP18.MAX");
+        assert!(fx.contains(&Effect::OpenDocument(f)), "{fx:?}");
         let mut f = Frame::new(640, 480);
         p.draw(&mut f, &a);
         crate::scenes::testutil::dump(&f, "cw_portfolio");
