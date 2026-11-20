@@ -2169,6 +2169,12 @@ mod tests {
         let c = w.tools().stickers.film().cell(0);
         w.update(&[click(c.0 + 5, c.1 + 5)], 0.0, &a);
         assert!(!w.tools().stickers.film_open());
+        // na mão: o clique na folha cola (centrado no clique)
+        assert!(w.tools().stickers.held().is_some());
+        let ed = w.editor();
+        let caret = ed.layout().caret(ed.sel.caret);
+        let (x, y) = ed.to_screen(caret.page, caret.x, caret.top);
+        w.update(&[click(x, y)], 0.0, &a);
         let o = w.doc().objects[0].clone();
         assert!(o.width != 32 || o.height != 32);
         assert!(o.outline.is_some());
