@@ -237,6 +237,8 @@ pub struct TextBalloon {
     pub select_all: bool,
     /// Palavras do glossário: (registro de destino, título dele).
     pub glossary: Vec<(usize, String)>,
+    /// De que programa são as figuras embutidas (`help_icons::icon_for`).
+    pub program: Program,
 }
 
 struct Layout {
@@ -341,7 +343,15 @@ impl TextBalloon {
             alert: false,
             select_all: false,
             glossary: Vec::new(),
+            program: Program::Artist,
         }
+    }
+
+    /// Figuras embutidas do `.PIC` do programa `p` (os registros `WHAT`
+    /// do Writer numeram os ícones à parte, `help_icons::writer_icon`).
+    pub fn with_program(mut self, p: Program) -> TextBalloon {
+        self.program = p;
+        self
     }
 
     /// Resolve as palavras do glossário (`0xffff`) com os registros do
@@ -526,7 +536,7 @@ impl TextBalloon {
         };
         let ctx = Ctx {
             assets: a,
-            program: Program::Artist,
+            program: self.program,
             font,
             name: "",
             glossary: &glossary,

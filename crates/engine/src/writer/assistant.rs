@@ -1295,7 +1295,9 @@ impl Assistant {
                 .and_then(|al| al.max)
                 .map(|m| m.to_string())
                 .unwrap_or_default();
-            let mut b = TextBalloon::from_record(r, 0, 0, &name, buttons).with_glossary(&records);
+            let mut b = TextBalloon::from_record(r, 0, 0, &name, buttons)
+                .with_glossary(&records)
+                .with_program(Program::Writer);
             let options = option_kinds(r);
             if s.role == Role::Step {
                 if let Some(id) = self.radio {
@@ -2090,6 +2092,44 @@ pub(crate) mod tests {
                         b.x,
                         b.y
                     );
+                }
+            }
+        }
+    }
+
+    /// As figuras dos balões do Max vêm do `WRITER.PIC` (teste de jogo do
+    /// Writer: o lápis de cera `[80a]` do `3c00[55]` sumia, porque o
+    /// `TextBalloon` procurava tudo no `ARTIST.PIC`).
+    #[test]
+    fn every_picture_of_every_balloon_has_a_writer_icon() {
+        let Some(assets) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        for kind in Kind::ALL {
+            let s = kind.script();
+            for i in 0..s.len() {
+                let mut a = Assistant::with_script(s, Context::default());
+                a.guide.replace(i);
+                a.enter(&mut Vec::new());
+                for p in a.placed(&assets) {
+                    assert_eq!(p.balloon.program, Program::Writer);
+                }
+                for sh in a.shown() {
+                    let recs = assets.dialogs(Program::Writer, sh.block);
+                    let Some(r) = recs.get(sh.record) else {
+                        continue;
+                    };
+                    for it in &r.items {
+                        if let Item::Picture { id, .. } = it
+                            && !matches!(*id, 0 | formats::what::PIC_GLOSSARY)
+                        {
+                            assert!(
+                                crate::help_icons::icon_for(Program::Writer, *id).is_some(),
+                                "{kind:?} {}: figura {id:#x}",
+                                a.at()
+                            );
+                        }
+                    }
                 }
             }
         }
