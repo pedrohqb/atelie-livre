@@ -124,11 +124,11 @@ pub const HITS: &[Hit] = &[
         (55, 58, 66, 39),
         Button::ViewNormal,
     ),
-    // as sete casas dos rolos de adesivos, de (23,58)
+    // as sete casas dos rolos de adesivos, de (30,57), 52 px cada
     hit(
         ToolId::Stickers,
         None,
-        (23, 58, 364, 42),
+        (30, 57, 364, 42),
         Button::StickerRoll,
     ),
     hit(ToolId::Stickers, None, (459, 57, 43, 41), Button::Crayon),

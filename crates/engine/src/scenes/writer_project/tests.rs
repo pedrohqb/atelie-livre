@@ -156,6 +156,12 @@ fn page_click_and_levers_are_events() {
         [Event::ButtonClicked(Button::BorderRoll)]
     );
     assert_eq!(p.classify(300, 300, &a), [Event::PageClicked]);
+    at(&mut p, &a, (80, 28));
+    assert_eq!(p.writer().tool(), ToolId::Stickers);
+    assert_eq!(
+        p.classify(40, 70, &a),
+        [Event::ButtonClicked(Button::StickerRoll)]
+    );
     assert_eq!(
         p.classify(PRINT_TOOL.0, PRINT_TOOL.1, &a),
         [Event::ToolClicked(Tool::Print)]
