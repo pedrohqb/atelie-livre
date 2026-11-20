@@ -8,13 +8,13 @@ use crate::anim::{self, Animator, blit_masked};
 use crate::assets::{Assets, ImageRef, Program, SoundRef};
 use crate::rng::XorShift;
 
-/// Roteiros do título (recursos 0x65–0x74): porco, pássaro, gafanhoto,
-/// patinador e McZee saindo do buraco com onze chapéus.
+/// Roteiros 0x65–0x74 (porco, pássaro, gafanhoto, patinador e McZee saindo
+/// do buraco com onze chapéus), com origens ajustadas ao fundo do título.
+/// O original **não** os toca no título (que fica parado até a Entrada);
+/// ficam só como dado conferido (`real_scripts_parse_and_images_exist`).
 pub const TITLE_SCRIPTS: &[u16] = &[
     0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74,
 ];
-/// Pássaro atravessando o título (origem (628, 134)).
-pub const TITLE_BIRD: u16 = 0x67;
 
 /// Saguão (0x324–0x328): canguru, pássaro, tiranossauro, patinador e a
 /// menina de skate. Conferido no original (canguru).
