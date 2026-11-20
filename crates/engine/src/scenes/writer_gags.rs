@@ -42,17 +42,14 @@ pub const MAX_RECT: (i32, i32, i32, i32) = (0, 215, 160, 265);
 
 /// Luminária "Tchau" (`6917`, 56×132) e a mesma com a fumaça (`691b`,
 /// 77×133, 1 px acima), que aparece enquanto o "EPA!" está aberto
-/// (`building_25_lamp`, `ideas_71_tchau`). O Fine Artist não tem a figura
-/// da fumaça.
+/// (`building_25_lamp`, `ideas_71_tchau`). No Fine Artist são `681b` e
+/// `6853` (`rooms_data::ARTIST_LAMP`).
 pub const LAMP: u16 = 0x6917;
 pub const LAMP_SMOKE: u16 = 0x691b;
 
 /// Luminária na posição `(x, y)` (a da fumaça 1 px acima).
 pub const fn lamp_at(x: i32, y: i32) -> super::room_spec::Lamp {
-    super::room_spec::Lamp {
-        normal: (LAMP, (x, y)),
-        smoke: (LAMP_SMOKE, (x, y - 1)),
-    }
+    super::room_spec::Lamp::at(LAMP, LAMP_SMOKE, x, y)
 }
 
 /// Carrinho de Imaginópolis (só na chegada).

@@ -239,13 +239,53 @@ impl PartialEq for DocWall {
 }
 impl Eq for DocWall {}
 
-/// Luminária "Tchau" desenhada pela sala: a figura de sempre e, com o
-/// "EPA!" aberto, a da fumaça (Writer; o Fine Artist não tem a figura).
-/// Imagem colorida e posição; a máscara é a do `.PIC`, duas imagens adiante.
+/// Luminária "Tchau": a figura de sempre e, com o "EPA!" aberto, a da
+/// fumaça (alavanca baixada e uma nuvem saindo da boca), 1 px acima. Nos
+/// dois programas e em todas as telas que a têm (salas, Galeria/Biblioteca
+/// e elevador) a troca é instantânea e dura enquanto o "EPA!" está aberto
+/// (`docs/telas/animacoes.md`, "Luminária Tchau"). Imagem colorida e
+/// posição; a máscara é a do `.PIC`, duas imagens adiante.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lamp {
     pub normal: (u16, (i32, i32)),
     pub smoke: (u16, (i32, i32)),
+}
+
+impl Lamp {
+    /// Luminária `normal` com o canto em `(x, y)` e a da fumaça `smoke`.
+    pub const fn at(normal: u16, smoke: u16, x: i32, y: i32) -> Lamp {
+        Lamp {
+            normal: (normal, (x, y)),
+            smoke: (smoke, (x, y - 1)),
+        }
+    }
+
+    /// Desenha a luminária (com fumaça se o "EPA!" estiver aberto).
+    pub fn draw(&self, frame: &mut crate::Frame, assets: &Assets, p: Program, smoking: bool) {
+        let (id, (x, y)) = if smoking { self.smoke } else { self.normal };
+        crate::text_balloon::blit_pic_in(frame, assets, p, id, x, y, true);
+    }
+
+    /// Testes: entre o quadro sem "EPA!" (`idle`) e o com ele (`quit`), algum
+    /// pixel mudou à direita da luminária normal (onde só a nuvem chega),
+    /// fora do balão (`covered`).
+    #[cfg(test)]
+    pub fn smoke_shows(
+        &self,
+        idle: &crate::Frame,
+        quit: &crate::Frame,
+        covered: impl Fn(i32, i32) -> bool,
+    ) -> bool {
+        let (x0, y0) = self.normal.1;
+        (y0 - 1..y0 + 133).any(|y| {
+            (x0 + 56..x0 + 77).any(|x| {
+                (0..640).contains(&x)
+                    && (0..480).contains(&y)
+                    && !covered(x, y)
+                    && idle.pixel(x as u32, y as u32) != quit.pixel(x as u32, y as u32)
+            })
+        })
+    }
 }
 
 /// Objeto enfeitado pela Varinha Mágica (bichos da parede dos Projetos do

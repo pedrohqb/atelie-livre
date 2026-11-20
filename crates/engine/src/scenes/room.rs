@@ -1246,7 +1246,7 @@ impl Scene for Room {
 
     fn draw(&self, frame: &mut Frame, assets: &Assets) {
         if let Some(e) = &self.elevator {
-            e.draw(frame, assets);
+            e.draw_with_quit(frame, assets, self.quit.is_some());
             if let Some(b) = &self.balloon {
                 b.draw(frame, assets);
             }
@@ -1280,12 +1280,7 @@ impl Scene for Room {
             }
         }
         if let Some(l) = spec.lamp {
-            let (id, (x, y)) = if self.quit.is_some() {
-                l.smoke
-            } else {
-                l.normal
-            };
-            crate::text_balloon::blit_pic_in(frame, assets, p, id, x, y, true);
+            l.draw(frame, assets, p, self.quit.is_some());
         }
         if let Some(st) = &spec.studio {
             self.draw_wall_picture(st, frame);
@@ -1722,6 +1717,54 @@ mod tests {
         r.update(&[click(600, 470), click(496, 260)], 0.0, &a);
         let fx = r.update(&[quit_option(&r, &a, 0)], 0.0, &a);
         assert!(fx.contains(&Effect::Quit));
+    }
+
+    /// Com os dados reais: a luminária do Fine Artist solta fumaça (`6853`,
+    /// 1 px acima) enquanto o "EPA!" está aberto, nas salas e no elevador.
+    #[test]
+    fn artist_lamp_smokes_while_quit_is_open_with_real_data() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        for fl in [Floor::Lobby, Floor::Studio, Floor::Projects, Floor::Tricks] {
+            let mut r = Room::new(fl, None, None, &a);
+            r.close();
+            let l = r.spec.lamp.expect("luminária");
+            assert_eq!(l.smoke.0, rooms_data::ARTIST_LAMP_SMOKE);
+            assert_eq!(l.smoke.1, (l.normal.1.0, l.normal.1.1 - 1));
+            let (w, h) = (l.normal.1.0 + 28, l.normal.1.1 + 40);
+            let mut idle = Frame::new(640, 480);
+            r.draw(&mut idle, &a);
+            let fx = r.update(&[click(w, h)], 0.0, &a);
+            assert!(r.quit_open(), "{fl:?}");
+            assert_eq!(sounds(&fx), talk::snd::QUIT);
+            let mut quit = Frame::new(640, 480);
+            r.draw(&mut quit, &a);
+            let q = r.quit.as_ref().unwrap();
+            assert!(
+                l.smoke_shows(&idle, &quit, |x, y| q.contains(&a, x, y)),
+                "{fl:?}"
+            );
+            // "Continuar trabalhando": volta a luminária de sempre
+            r.update(&[quit_option(&r, &a, 1)], 0.0, &a);
+            let mut back = Frame::new(640, 480);
+            r.draw(&mut back, &a);
+            assert!(back.pixels() == idle.pixels(), "{fl:?}");
+        }
+        // elevador
+        let mut r = Room::new(Floor::Tricks, None, None, &a);
+        r.update(&[click(300, 450), click(490, 440)], 0.0, &a);
+        assert!(r.in_elevator());
+        let mut idle = Frame::new(640, 480);
+        r.draw(&mut idle, &a);
+        r.update(&[click(70, 60)], 0.0, &a);
+        assert!(r.quit_open());
+        let mut quit = Frame::new(640, 480);
+        r.draw(&mut quit, &a);
+        let q = r.quit.as_ref().unwrap();
+        let l = elevator::ARTIST_ELEVATOR.tchau;
+        assert_eq!(l.smoke.0, rooms_data::ARTIST_LAMP_SMOKE);
+        assert!(l.smoke_shows(&idle, &quit, |x, y| q.contains(&a, x, y)));
     }
 
     /// McZee e Maggie: "Você quer me ver menos?"; "Sim" desliga a ajuda (sem

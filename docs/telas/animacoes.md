@@ -35,20 +35,27 @@ Confiança: **alta** = visto na gravação do original; **média** = origem e
 imagens batem com o fundo, sem gravação; **baixa** = só pelo agrupamento de
 ids (por eliminação).
 
-### Título (fundo 0x6ca7) — recursos 0x65–0x74 (101–116)
+### Título (fundo 0x6ca7) — nenhum roteiro
 
-| Roteiro | O quê | Origem | Confiança |
-|---|---|---|---|
-| 0x67 | pássaro vermelho atravessa da direita para a esquerda (48 células de 100 ms, sons 0x217, 0x20a, 0x22f) | (628, 134) | média |
-| 0x66 | porco cor-de-rosa atravessa (som 0x239) | (601, 289) | média |
-| 0x68 | gafanhoto verde atravessa (som 0x264) | (644, 248) | média |
-| 0x69 | menino de patins atravessa (som 0x2fc) | (624, 284) | média |
-| 0x6a–0x74 | McZee sai do buraco com um chapéu (onze chapéus: cartola, coroa, fez, capacete...), fica 3 s e volta; sons 0x2f1 e 0x2f4 | (333, 225) | **alta** (sobreposição exata ao buraco do fundo; mesmo roteiro visto na Oficina) |
-| 0x65 | porco parado, 200 ms (sobra de autoria; repete em 0x12c, 0x321–0x323, 0x3e8, 0x457–0x45b) | (401, 189) | — |
+No original o título é **parado e mudo**: gravado no Wine a ~10 quadros/s,
+fica de 0,96 s a 3,96 s sem nenhum quadro diferente e vai à Entrada
+(`shots/fix-siren-bird_passaro.png`). O port tocava aqui, por suposição, o
+pássaro vermelho 0x67 aos 0,3 s (48 células de 100 ms, por cima do
+logotipo) e depois os outros roteiros abaixo; isso foi tirado.
 
-No Wine o título fica só 3 s antes do cadastro, então os roteiros não chegam
-a aparecer na gravação; o motor toca o pássaro primeiro e depois sorteia os
-demais enquanto a abertura dura.
+Os recursos 0x65–0x74 (101–116) têm origens que casam com o fundo do
+título, mas o original não os usa nele (a origem do McZee bate com o buraco
+do fundo 0x6ca7, e o mesmo roteiro do McZee com chapéus aparece na
+Oficina):
+
+| Roteiro | O quê | Origem |
+|---|---|---|
+| 0x67 | pássaro vermelho atravessa da direita para a esquerda (48 células de 100 ms, sons 0x217, 0x20a, 0x22f) | (628, 134) |
+| 0x66 | porco cor-de-rosa atravessa (som 0x239) | (601, 289) |
+| 0x68 | gafanhoto verde atravessa (som 0x264) | (644, 248) |
+| 0x69 | menino de patins atravessa (som 0x2fc) | (624, 284) |
+| 0x6a–0x74 | McZee sai do buraco com um chapéu (onze chapéus), fica 3 s e volta; sons 0x2f1 e 0x2f4 | (333, 225) |
+| 0x65 | porco parado, 200 ms (sobra de autoria; repete em 0x12c, 0x321–0x323, 0x3e8, 0x457–0x45b) | (401, 189) |
 
 ### Imaginópolis (fundo 0x6cfd) — 0x2bc (700)
 
@@ -175,8 +182,10 @@ travessias acima.
 
 ## O que o motor faz
 
-- `Splash`: pássaro 0x67 aos 0,3 s, depois os outros roteiros do título em
-  ordem sorteada, com pausas de 0,5–1,5 s.
+- `Splash`: título parado e mudo nos dois programas (nenhum roteiro).
+- Luminária "Tchau" (salas, Galeria/Biblioteca e elevador, nos dois
+  programas): troca pela figura com fumaça enquanto o "EPA!" está aberto
+  (`room_spec::Lamp`), ver abaixo.
 - `Street`: clique no hidrante ou na lata toca o roteiro correspondente; na
   fachada, a bola 0x5aa; na porta, a porta giratória 0x640 e depois o
   saguão. Cliques durante um roteiro são ignorados.
@@ -188,3 +197,32 @@ travessias acima.
   uma vez; cliques ignorados até o carrinho sumir.
 - Sons das células viram `Effect::PlaySound(SoundRef::Snd(Artist, id))`.
 - Sem os dados (recurso ou imagem ausente) nada toca e nada quebra.
+
+## Luminária "Tchau" (a "sirene" da saída)
+
+Medido no original, nos dois programas (`shots/fix-siren-bird_luminaria_*.png`):
+
+- **Parada**: não há animação ociosa (15–30 s gravados sem mudança) e passar
+  o mouse por cima não muda nada.
+- **Clique** em qualquer ponto da luminária ou na placa "Tchau": no mesmo
+  quadro em que o "EPA!" de saída aparece, a figura troca pela da alavanca
+  baixada com uma nuvem de fumaça saindo da boca, 1 px acima; sons `2f7`
+  (luminária, 19500 B) e `2fe` (alerta). A fumaça fica enquanto o "EPA!"
+  está aberto; "Continuar trabalhando" volta à figura de sempre. Com um balão
+  aberto (boas-vindas da Galeria/Biblioteca, "Subindo? Ou descendo?" do
+  elevador, dica do McZee), o mesmo clique fecha o balão e abre o "EPA!".
+
+| Programa | Normal (cor; máscara 2 adiante) | Com fumaça | Telas |
+|---|---|---|---|
+| Fine Artist | `681b` 56×132 | `6853` 77×133 (máscara `6859`) | saguão (144,182), Ateliê (473,146), Oficina (477,75), Truques (564,3), Galeria (16,3), elevador (46,6) |
+| Creative Writer | `6917` 56×132 | `691b` 77×133 | saguão (147,162), Escritório (468,85), Projetos (477,75), Idéias (15,7), Biblioteca (496,5), elevador (46,6) |
+
+A tabela de pontos quentes do `ARTIST.EXE` (offsets `0xde550`…`0xdf40e`)
+confirma: em cada uma das seis telas há o par luminária (`6820`, a versão de
+1 bit da `681b`) e luminária com fumaça (`6858`, 1 bit da `6853`, em
+(x, y−1)), os dois com o som `2f7` — inclusive na Galeria, onde o port
+tocava o `264` (gafanhoto, mesmo tamanho de 19500 B). A `6853` casa sem nenhum pixel diferente com a captura do saguão do original
+em (144,181). Antes o port não tinha a fumaça no Fine Artist ("o FA não tem a
+figura") nem na Biblioteca e no elevador do Writer, e na Galeria do FA só a
+placa abria o "EPA!" e, com o balão de boas-vindas aberto, o clique só o
+fechava.

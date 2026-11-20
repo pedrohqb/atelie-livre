@@ -21,7 +21,7 @@ use super::gags::{self, Character};
 use super::gallery_print::PrintPreview;
 use super::portfolio::{self, Action, Binder};
 use super::room_objects::{self as objects, BagLayout, BagPart, MagicBag, Surprises, Target};
-use super::room_spec::RoomKit;
+use super::room_spec::{Lamp, RoomKit};
 use super::room_talk::{self, Helper};
 use super::rooms_data;
 use crate::Frame;
@@ -48,14 +48,16 @@ const PLATE: Rect = (32, 117, 140, 12);
 
 /// Elementos fixos: (cor, máscara, x, y). A Bolsa Mágica e o que sai dela
 /// (livro verde, maleta e varinha) vêm de `room_objects::GALLERY_BAG`.
-const ELEMENTS: [(u16, u16, i32, i32); 5] = [
-    (0x681b, 0x6821, 16, 3),    // Tchau
+const ELEMENTS: [(u16, u16, i32, i32); 4] = [
     (0x6c87, 0x6c89, 430, 193), // impressora no quadro da parede
     (0x6c7f, 0x6c81, 527, 276), // seta "Saguão"
     (0x683b, 0x6841, 445, 348), // buraco do rato
     (0x6c83, 0x6c85, 523, 359), // lixeira
 ];
-const TCHAU: Rect = (16, 90, 56, 45);
+/// Luminária "Tchau": no original o clique em qualquer ponto dela (não só
+/// na placa) abre o "EPA!".
+const LAMP: Lamp = rooms_data::artist_lamp_at(16, 3);
+const TCHAU: Rect = (16, 3, 56, 132);
 const PRINTER: Rect = (430, 193, 60, 74);
 const LOBBY_ARROW: Rect = (527, 276, 91, 46);
 const TRASH: Rect = (523, 359, 92, 108);
@@ -114,8 +116,10 @@ pub mod sfx {
     pub const ALERT: u16 = 0x2fe;
     /// Vinheta de recusa: clique fora de um aviso modal.
     pub const REFUSE: u16 = 0x217;
-    /// Tchau.
-    pub const BYE: u16 = 0x264;
+    /// Luminária "Tchau" (a tabela de pontos quentes do `ARTIST.EXE` dá
+    /// `2f7` para a luminária em todas as telas; o `264`, de mesmo tamanho,
+    /// é o do gafanhoto).
+    pub const BYE: u16 = 0x2f7;
     /// Fala curta do McZee ao clicar nele.
     pub const MCZEE: u16 = 0x252;
     /// Seta "Saguão".
@@ -324,6 +328,9 @@ pub struct GallerySpec {
     /// Fundo inteiro; `None` = papel de parede de corações desenhado.
     pub background: Option<u16>,
     pub elements: &'static [Element],
+    /// Luminária "Tchau" (desenhada depois dos elementos; com fumaça
+    /// enquanto o "EPA!" está aberto).
+    pub lamp: Lamp,
     pub frames: &'static [(i32, i32)],
     /// Figura de cada moldura (cor, máscara), se as molduras não vierem no
     /// fundo ou nos elementos.
@@ -368,6 +375,7 @@ pub const ARTIST_GALLERY: GallerySpec = GallerySpec {
     kit: &rooms_data::ARTIST_KIT,
     background: None,
     elements: &ELEMENTS,
+    lamp: LAMP,
     frames: &FRAMES,
     frame_img: Some(FRAME_IMG),
     frame_size: (200, 140),
@@ -1425,9 +1433,12 @@ impl GalleryRoom {
             }
             let inside_balloon = b.contains(assets, x, y);
             self.balloon = None;
-            // fora do balão, um quadro (clique duplo) e a varinha seguem
+            // fora do balão, um quadro (clique duplo), a varinha e a
+            // luminária (o "EPA!" abre no mesmo clique, como no original)
+            // seguem
             let on_frame = !self.folder_open && self.hit(x, y).is_some();
-            if inside_balloon || !(self.bag.holding_wand || on_frame) {
+            let on_lamp = !self.folder_open && inside(self.spec.quit, x, y);
+            if inside_balloon || !(self.bag.holding_wand || on_frame || on_lamp) {
                 return;
             }
         }
@@ -1897,6 +1908,8 @@ impl Scene for GalleryRoom {
         for &e in rest {
             self.draw_element(f, a, e);
         }
+        let quitting = self.alert.as_ref().is_some_and(|al| al.kind == Modal::Quit);
+        self.spec.lamp.draw(f, a, self.spec.kit.program, quitting);
         if self.spec.frame_img.is_some() {
             self.draw_frames(f, a);
         }
@@ -2113,6 +2126,53 @@ mod tests {
         g.update(&[down(x, y), up(x, y)], 0.1, &a);
         let fx = pick_option(&mut g, 0, &a);
         assert!(fx.contains(&Effect::Quit));
+    }
+
+    /// Como no original: a luminária inteira (não só a placa) abre o "EPA!",
+    /// e com o balão de boas-vindas aberto o mesmo clique o fecha e já abre
+    /// o "EPA!", com o som `2f7` (o `2fe` vem em seguida, da fila).
+    #[test]
+    fn lamp_body_with_welcome_open_goes_straight_to_epa() {
+        let (_d, dir, a) = setup(0);
+        let mut g = GalleryRoom::new(None, Some(dir.path().to_path_buf()), &a);
+        assert!(matches!(g.balloon, Some((Ask::Welcome, _))));
+        let fx = g.update(&[down(44, 40), up(44, 40)], 0.1, &a);
+        assert!(g.balloon.is_none());
+        assert_eq!(g.alert.as_ref().unwrap().kind, Modal::Quit);
+        assert!(fx.contains(&Effect::PlaySound(snd(0x2f7))));
+    }
+
+    /// Com os dados reais: a luminária da Galeria solta fumaça enquanto o
+    /// "EPA!" está aberto e volta ao normal com "Continuar trabalhando".
+    #[test]
+    fn gallery_lamp_smokes_with_real_data() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        for spec in [
+            &ARTIST_GALLERY,
+            &crate::scenes::writer_library::WRITER_LIBRARY,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut g = GalleryRoom::with_spec(spec, None, Some(dir.path().join("ana")), &a);
+            g.balloon = None;
+            let mut idle = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+            g.draw(&mut idle, &a);
+            let (x, y) = (spec.lamp.normal.1.0 + 28, spec.lamp.normal.1.1 + 40);
+            g.update(&[down(x, y), up(x, y)], 0.1, &a);
+            assert_eq!(g.alert.as_ref().unwrap().kind, Modal::Quit);
+            let mut quit = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+            g.draw(&mut quit, &a);
+            let al = &g.alert.as_ref().unwrap().balloon;
+            assert!(
+                spec.lamp
+                    .smoke_shows(&idle, &quit, |x, y| al.contains(&a, x, y))
+            );
+            pick_option(&mut g, 1, &a);
+            let mut back = Frame::new(crate::SCREEN_W, crate::SCREEN_H);
+            g.draw(&mut back, &a);
+            assert!(back.pixels() == idle.pixels());
+        }
     }
 
     /// Clique simples na moldura: "Se você quiser trabalhar neste quadro…";
@@ -2657,6 +2717,20 @@ mod tests {
         assert_eq!((*kind, (b.x, b.y)), (Ask::Tip, (288, 111)));
         g.answer(Ask::Welcome2, 3, &mut fx, &a);
         assert_eq!(g.balloon.as_ref().unwrap().0, Ask::Welcome);
+    }
+
+    /// Biblioteca com o balão de boas-vindas aberto: o clique na luminária
+    /// fecha o balão e já abre o "EPA!" (original, `fix-siren-bird`).
+    #[test]
+    fn writer_library_lamp_with_welcome_open() {
+        let (_d, users, a) = lib_setup(0);
+        let mut g =
+            GalleryRoom::with_spec(&WRITER_LIBRARY, None, Some(users.path().join("ana")), &a);
+        assert!(g.balloon.is_some());
+        let fx = g.update(&[down(520, 60), up(520, 60)], 0.1, &a);
+        assert!(g.balloon.is_none());
+        assert!(fx.contains(&wsnd(lib::sfx::LAMP)));
+        assert_eq!(g.alert.as_ref().unwrap().kind, Modal::Quit);
     }
 
     /// Com os dados reais: a parede de um usuário novo tem os exemplos do
