@@ -791,7 +791,10 @@ impl Layout {
         }
         let lines = b.lines;
         let text_pages = lines.last().map_or(1, |l| l.page + 1);
-        let npages = text_pages.max(doc.object_pages()).max(1);
+        let npages = text_pages
+            .max(doc.object_pages())
+            .max(usize::from(doc.min_pages))
+            .max(1);
         let mut pages = Vec::with_capacity(npages);
         let mut li = 0;
         for p in 0..npages {
@@ -800,7 +803,7 @@ impl Layout {
                 li += 1;
             }
             let objects = (0..doc.objects.len())
-                .filter(|&k| doc.objects[k].on_page(p))
+                .filter(|&k| doc.object_on_page(k, p))
                 .collect();
             let number = dop.page_number.text(p).map(|text| {
                 let [t, l, bt, r] = dop.page_number_box().map(i32::from);

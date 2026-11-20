@@ -32,6 +32,8 @@
 //! - [`splot`]: palavras com forma (`SPLE`): desenho, montagem e escolhas.
 //! - [`print`]: as folhas impressas (página por folha, cartão em quatro,
 //!   faixa em folhas deitadas), com borda e fundo.
+//! - [`project`]: documentos da Oficina de Projetos (folha de cada projeto,
+//!   marcas do `.MAX`, faixa esticada em N folhas).
 
 pub mod assistant;
 pub mod assistant_banner;
@@ -54,6 +56,7 @@ pub mod object;
 pub mod prefs;
 pub mod print;
 pub mod rebus_apply;
+pub mod project;
 pub mod selection;
 pub mod splot;
 pub mod store;

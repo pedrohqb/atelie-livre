@@ -1010,6 +1010,10 @@ pub struct Document {
     pub objects: Vec<FloatObject>,
     pub dop: DopProps,
     pub fonts: FontTable,
+    /// Folhas fixas dos projetos (o `PGD ` dos cartões e das faixas): o
+    /// documento tem pelo menos estas folhas, mesmo vazias. 0 nos
+    /// documentos do Escritório, cujas folhas vêm só do texto e dos objetos.
+    pub min_pages: u16,
 }
 
 impl Default for Document {
@@ -1026,6 +1030,7 @@ impl Document {
             objects: Vec::new(),
             dop: DopProps::default(),
             fonts: FontTable::default(),
+            min_pages: 0,
         }
     }
 
@@ -1572,13 +1577,38 @@ impl Document {
         })
     }
 
-    /// Páginas que os objetos exigem (o maior número de página + 1).
+    /// Páginas que os objetos exigem (o maior número de página + 1; na
+    /// faixa, a última folha que o objeto atravessa).
     pub fn object_pages(&self) -> usize {
-        self.objects
-            .iter()
-            .map(|o| usize::from(o.page) + 1)
+        (0..self.objects.len())
+            .map(|k| self.object_span(k).end)
             .max()
             .unwrap_or(0)
+    }
+
+    /// Folhas em que o objeto `k` aparece a partir da dele. Na faixa
+    /// (`dop.banner`) as folhas ficam lado a lado e um objeto mais largo
+    /// que a folha (a palavra com forma esticada, `projects-faixa.md`)
+    /// continua nas seguintes; nos outros documentos, só a folha dele.
+    pub fn object_span(&self, k: usize) -> std::ops::Range<usize> {
+        let Some(o) = self.objects.get(k) else {
+            return 0..0;
+        };
+        let first = usize::from(o.page);
+        let pw = i32::from(self.dop.page_width).max(1);
+        let right = i32::from(o.x) + i32::from(o.width);
+        let n = if self.dop.banner && right > pw {
+            ((right - 1) / pw + 1) as usize
+        } else {
+            1
+        };
+        first..first + n
+    }
+
+    /// O objeto `k` aparece na folha `page` ([`FloatObject::on_page`] ou,
+    /// na faixa, uma das folhas que ele atravessa).
+    pub fn object_on_page(&self, k: usize, page: usize) -> bool {
+        self.objects[k].on_page(page) || self.object_span(k).contains(&page)
     }
 }
 

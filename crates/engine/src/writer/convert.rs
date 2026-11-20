@@ -416,11 +416,19 @@ pub fn from_max(m: &max::Document) -> (Document, MaxExtra) {
             None => frames.push(f.clone()),
         }
     }
+    // cartões e faixas guardam as folhas no `PGD ` (até as vazias)
+    let min_pages = match m.add.project {
+        max::Project::Card | max::Project::Banner => {
+            m.pages.len().min(usize::from(u16::MAX)) as u16
+        }
+        _ => 0,
+    };
     let mut doc = Document {
         paras,
         objects,
         dop,
         fonts,
+        min_pages,
     };
     // sons em palavras: cada elemento do `SNDT` marca a palavra que começa
     // no seu cp (o fim gravado é só o começo do seguinte)

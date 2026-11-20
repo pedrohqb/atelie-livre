@@ -1139,7 +1139,11 @@ impl Editor {
             return;
         };
         for &k in &sheet.objects {
-            self.draw_object(v, &self.doc.objects[k], ox, oy);
+            // na faixa, a palavra esticada continua nas folhas seguintes
+            let o = &self.doc.objects[k];
+            let shift = (page as i32 - i32::from(o.page)).max(0) * pw;
+            let clip = (ox, oy, ox + pw, oy + ph);
+            self.draw_object(v, o, ox - shift, oy, self.doc.dop.banner.then_some(clip));
         }
         self.draw_lines(v, a, &l, page, ox, oy);
         if selection {
@@ -1245,20 +1249,32 @@ impl Editor {
         f
     }
 
-    fn draw_object(&self, v: &mut Frame, o: &FloatObject, ox: i32, oy: i32) {
+    /// Desenha o objeto com a folha em `(ox, oy)`; com `clip` (x0, y0, x1,
+    /// y1), só o que cair dentro (as folhas da faixa).
+    fn draw_object(
+        &self,
+        v: &mut Frame,
+        o: &FloatObject,
+        ox: i32,
+        oy: i32,
+        clip: Option<(i32, i32, i32, i32)>,
+    ) {
         let (x, y) = (ox + i32::from(o.x), oy + i32::from(o.y));
         if self.encrypted() {
             // Agente Secreto: o objeto vira um retângulo preto
             v.rect(x, y, i32::from(o.width), i32::from(o.height), BLACK);
             return;
         }
+        let (cx0, cy0, cx1, cy1) = clip.unwrap_or((i32::MIN, i32::MIN, i32::MAX, i32::MAX));
         match self.picture(o) {
             Some(img) => {
                 for (k, p) in img.rgba.chunks_exact(4).enumerate() {
-                    if !is_white(p) {
-                        let (dx, dy) =
-                            ((k as u32 % img.width) as i32, (k as u32 / img.width) as i32);
-                        v.put(x + dx, y + dy, [p[0], p[1], p[2]]);
+                    let (px, py) = (
+                        x + (k as u32 % img.width) as i32,
+                        y + (k as u32 / img.width) as i32,
+                    );
+                    if !is_white(p) && (cx0..cx1).contains(&px) && (cy0..cy1).contains(&py) {
+                        v.put(px, py, [p[0], p[1], p[2]]);
                     }
                 }
             }
