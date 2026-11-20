@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(hash(&[0xff; 4]), {
             let mut h = 0u16;
             for _ in 0..4 {
-                h = ((h << 5) | (h >> 11)).wrapping_add(0xff);
+                h = h.rotate_left(5).wrapping_add(0xff);
             }
             h
         });
