@@ -371,3 +371,27 @@ fn real_assets_border_is_copied_when_saving() {
     );
     assert_eq!(m.add.project, formats::max::Project::Newspaper);
 }
+
+/// Um projeto gravado e reaberto pela pasta abre no Escritório sem o
+/// assistente: andar "Oficina de Projetos" e Saída para o andar.
+#[test]
+fn reopened_project_exits_to_the_projects_floor() {
+    let (_d, a) = empty_assets();
+    let (users, mut p) = project(Kind::Card, &a);
+    p.update(&[text("Oi")], 0.0, &a);
+    let file = p
+        .writer_mut()
+        .editor_mut()
+        .save_as("Cartao Teste", "Ana", false)
+        .unwrap();
+    let dir = users.path().join("ana");
+    let w = Writer::open(Some(dir.clone()), &file, &a).unwrap();
+    assert_eq!(w.floor(), project::FLOOR_LABEL);
+    assert_eq!(w.exit_to(), SceneId::Cw(CwScene::Building(Floor::Projects)));
+    // um documento do Escritório continua saindo para a sala
+    let mut e = Writer::new_blank(Some(dir), &a);
+    e.editor_mut().type_text("x");
+    let f = e.editor_mut().save_as("Texto", "Ana", false).unwrap();
+    let w = Writer::open(Some(users.path().join("ana")), &f, &a).unwrap();
+    assert_ne!(w.floor(), project::FLOOR_LABEL);
+}
