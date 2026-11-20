@@ -494,11 +494,15 @@ impl Writer {
         cx.shift = self.shift;
         let r = f(self.tools.get_mut(id), &mut self.ed, &mut cx);
         let shaped = cx.take_shaped();
+        let clip = cx.take_clip();
         if let Some((h, forced)) = cx.take_help() {
             self.mczee.show(h, forced, a);
         }
         if let Some(editing) = shaped {
             self.open_shaped(editing, fx, a);
+        }
+        if let Some(c) = clip {
+            self.clip_request(c, fx, a);
         }
         r
     }
@@ -1381,7 +1385,8 @@ mod tests {
         assert_eq!(w.tool(), ToolId::Removers);
         let (x, y) = center(removers::EXPLOSION.rect());
         assert_eq!((x, y), (457, 77));
-        let fx = w.update(&[click(x, y)], 0.0, &a);
+        // a explosão é escolhida; o clique na página apaga
+        let fx = w.update(&[click(x, y), click(300, 300)], 0.0, &a);
         assert!(w.doc().is_empty());
         assert!(sounds(&fx).contains(&0x025f));
         w.update(&[ctrl(Key::Z)], 0.0, &a);

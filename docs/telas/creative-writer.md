@@ -123,8 +123,8 @@ McZee no nicho `0235`/`0237` (536,47); porta `023d`/`023f` (581,16).
 Estado atual: a Palavra (listas de letra, tamanho, cor, estilo e
 alinhamento, aplicadas à seleção ou ao estilo de digitação), os Adesivos
 (rolos e tira de filme; o adesivo vira objeto solto no ponto de inserção),
-o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos) e a explosão dos
-Re-movedores funcionam; as outras faixas são só desenhadas, com o interruptor trocando de
+o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos), o botão FORMA e os
+Re-movedores funcionam (abaixo); as outras faixas são só desenhadas, com o interruptor trocando de
 página na Preparação da página e no Visor. Botão sem função: som `0233`,
 balão da opção e "ainda não disponível" no registro.
 
@@ -142,6 +142,49 @@ balão da opção e "ainda não disponível" no registro.
 | Visor pág. 1 | Página inteira `08a9` (35,58) → `0fa6[5]`; Aumentar visão `08ad` (122,58) → `[6]`; MENOS ZOOM `0891`/`0893` (209,64) → `[7]`; régua `0885` (278,73) com o bichinho `092c`/`092d`; MAIS ZOOM `0895`/`0897` (434,63) → `[8]` |
 | Visor pág. 2 | Visão normal `0899`/`089b` (55,58) → `[1]`; Duas páginas `089d` (168,58) → `[2]`; Todas as páginas `08a1` (281,58) → `[3]`; Lado a lado `08a5` (394,58) → `[4]` |
 | Imprimir | depressa `02ef`/`02f1` (133,60); fazer escolhas `02f3`/`02f5` (337,59) → `0fa7[0]` |
+
+### FORMA (W7, `scenes/writer/shaped.rs`)
+
+O botão FORMA da Palavra abre o Cavalete de palavras com forma do Fine
+Artist (`scenes::paint::words::shaped_easel`), som `0224`, balão
+`0fa0[11]`, com o nome do usuário no campo (selecionado) e a fonte inicial
+do cavalete. Diferenças do FA: paleta = as 16 cores do `CSCH`
+(`writer::splot::palette`), e ＋/− percorrem os 13 "preferidos" do `TDRL`
+(giro, forma, sombra, padrão, cores e estilos; texto e fonte ficam) em vez
+de mudar o tamanho; o primeiro giro abre `0fa0[19]`. OK (`02ee`) monta o
+`SPLE` (desenho vetorizado da imagem, `writer::splot::build`) e o `TWPB`, e
+põe um objeto `Shaped` no ponto de inserção com 300 pontos de largura (ou
+250 de altura, se passar); NÃO (`02ed`) fecha sem nada. Clicar numa palavra
+com forma da página (com qualquer ferramenta que não trate o clique) reabre
+o cavalete com as escolhas gravadas (`+0x40..0x47` do `SPLE`), e o OK troca
+o mesmo objeto (mesma posição, Flutua-texto, som e borda). Outras
+ferramentas pedem o cavalete com `Cx::open_shaped(Some(k))` (o
+Mover-modificar dos Transformadores). As figuras dos botões vêm do
+`ARTIST.PIC`.
+
+### Re-movedores (W12, `scenes/writer/removers.rs`)
+
+Cada botão escolhe um modo (som `0233` e o balão do botão; o original não
+destaca o botão escolhido, só o cursor muda sobre a página: `0006`,
+`0007`, `0008`, `0009`, `0019`, `0005`); o Ponto de inserção volta ao
+clique normal. O clique na página:
+
+| modo | ação | som | balão |
+|---|---|---|---|
+| Recortar | arrastar sobre as palavras (ao soltar) ou clicar num adesivo/palavra com forma | `022f` | `0fa3[4]` |
+| Copiar | idem, sem tirar | `0288` | `0fa3[5]` |
+| Colar | cada clique cola ali: texto no ponto de inserção, objeto centrado no clique | `028d` | `0fa3[14]`; nada copiado: `0805[19]` |
+| Remove-sons | tira o som do objeto (desfazível) ou os sons de palavra (`SNDT`) sobre o caractere | — | — |
+| Remove-figuras | tira o adesivo ou a palavra com forma (desfazível) | — | — |
+| Jogar tudo fora | apaga texto e objetos (desfazível) | `025f` | — |
+
+O texto recortado ou copiado vai também para a área de transferência da
+sessão (`writer::ideas::session::clip`, a do Caderno de Idéias) por
+`Cx::clip(ClipRequest::Shared)`; o Colar usa a mesma regra do Ctrl+V do
+Writer (o que veio do Caderno tem preferência) por
+`ClipRequest::PasteAt`. Nas três primeiras vezes que a ferramenta é
+escolhida o McZee abre `0fa3[0]` mesmo desligado. Documento codificado pelo
+Agente secreto (que não deixa recortar, `0805[13]`) fica para o W13.
 
 ## Barra de baixo
 
@@ -169,9 +212,10 @@ O texto é desenhado com `WriterFonts` (substitutas livres das TrueType do
 produto, ver `writer-fontes.md`), sem suavizar; os objetos com o desenho do
 metarquivo (`PICT`; encolhidos como o `BLACKONWHITE` do GDI, o branco
 transparente); as figuras do Maçã de pé na base com 4 pontos de cada lado;
-o marca-texto na altura da linha; a seleção em vídeo inverso. Ainda não
-desenhados: Splots (`SPLE`, retângulo cinza no lugar), bordas e fundos de
-página (W14/C7/C8) e os efeitos animados (C4).
+o marca-texto na altura da linha; a seleção em vídeo inverso; os Splots
+(`SPLE`) pelos glifos do arquivo, esticados na moldura
+(`writer::splot::draw`, `docs/formats/sple.md`). Ainda não desenhados:
+bordas e fundos de página (W14/C7/C8) e os efeitos animados (C4).
 
 ## Saída, salvar, NOVO, sair (W21)
 

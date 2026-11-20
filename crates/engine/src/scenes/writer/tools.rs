@@ -358,6 +358,8 @@ pub struct Cx<'a> {
     help_forced: bool,
     /// Pedido de abrir o cavalete de palavras com forma ([`Cx::open_shaped`]).
     shaped: Option<Option<usize>>,
+    /// Pedido dos Re-movedores para a área de transferência ([`Cx::clip`]).
+    clip: Option<super::removers::ClipRequest>,
 }
 
 impl<'a> Cx<'a> {
@@ -370,6 +372,7 @@ impl<'a> Cx<'a> {
             help: None,
             help_forced: false,
             shaped: None,
+            clip: None,
         }
     }
 
@@ -401,6 +404,16 @@ impl<'a> Cx<'a> {
 
     pub(super) fn take_shaped(&mut self) -> Option<Option<usize>> {
         self.shaped.take()
+    }
+
+    /// Pede à cena a área de transferência da sessão (compartilhar o que o
+    /// editor copiou, ou colar num ponto).
+    pub fn clip(&mut self, r: super::removers::ClipRequest) {
+        self.clip = Some(r);
+    }
+
+    pub(super) fn take_clip(&mut self) -> Option<super::removers::ClipRequest> {
+        self.clip.take()
     }
 
     /// Fecha o balão do McZee que estiver aberto.
