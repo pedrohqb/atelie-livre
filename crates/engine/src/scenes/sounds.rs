@@ -33,36 +33,94 @@ pub const SPOTS_NAME: &str = "ultimo.sons.json";
 /// Faixas de teatro: contorno de 1 bit `0x024e` com máscara `0x024f`.
 const BANNER_PIC: u16 = 0x024e;
 const BANNER_MASK: u16 = 0x024f;
-const BANNER_X0: i32 = 9;
-const BANNER_Y: i32 = 61;
 const BANNER_W: i32 = 112;
 const BANNER_H: i32 = 37;
 pub const PER_PAGE: usize = 3;
 /// Topo do texto na placa amarela, relativo à faixa.
 const PLATE_TEXT_Y: i32 = 20;
-/// Controle de volume: trilho `0x0251` e cursor `0x0259` (com máscaras).
-const VOLUME: Rect = (368, 56, 26, 44);
-const TRACK: (u16, u16, i32, i32) = (0x0251, 0x0257, 374, 62);
-const KNOB: (u16, u16, i32) = (0x0259, 0x025b, 370);
-const KNOB_TOP: i32 = 63;
-const KNOB_BOTTOM: i32 = 88;
-/// Cachorrinho e Gravador (imagens coloridas com máscara).
-pub const DOG: Rect = (405, 58, 42, 40);
-const DOG_PIC: (u16, u16, i32, i32) = (0x025d, 0x0263, 409, 63);
-pub const RECORDER: Rect = (456, 59, 43, 41);
-const RECORDER_PIC: (u16, u16) = (0x0265, 0x0267);
-pub const ARROW_UP: Rect = (504, 58, 16, 14);
-pub const ARROW_DOWN: Rect = (504, 90, 16, 14);
-const PAGE_BOX: Rect = (505, 75, 16, 12);
-/// Lista de nomes: caixas de 94×24 com borda laranja, uma a cada 23 px.
-const LIST_X: i32 = 19;
-const LIST_Y: i32 = 97;
-const ROW_W: i32 = 94;
-const ROW_H: i32 = 24;
-const ROW_STEP: i32 = 23;
-/// Linhas visíveis da lista (a de "Sem Som" incluída); com mais, a última
-/// linha vira as setas de rolagem.
-const LIST_ROWS: usize = 14;
+
+/// Figura com máscara num lugar fixo: (figura, máscara, x, y).
+pub type Placed = (u16, u16, i32, i32);
+
+/// Onde fica cada coisa da faixa do Seleciona-sons e de que programa vêm as
+/// figuras e os sons. A pintura do Fine Artist e o Escritório do Creative
+/// Writer têm a mesma ferramenta (as mesmas categorias, lista, Cachorrinho
+/// e Gravador) com medidas e figuras diferentes: [`ARTIST`] e
+/// `scenes::writer::sounds::LAYOUT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout {
+    pub program: Program,
+    /// Faixa de teatro: figura, máscara e se a figura é só o contorno de 1
+    /// bit a pintar com as cores medidas (pintura) ou já colorida (Writer).
+    pub banner: (u16, u16, bool),
+    pub banner_x0: i32,
+    pub banner_step: i32,
+    pub banner_y: i32,
+    /// Controle de volume: área do clique, trilho e cursor (figura,
+    /// máscara, x) com o alto do cursor indo de `knob_top` (100) a
+    /// `knob_bottom` (0).
+    pub volume: Rect,
+    pub track: Placed,
+    pub knob: (u16, u16, i32),
+    pub knob_top: i32,
+    pub knob_bottom: i32,
+    pub dog: Rect,
+    pub dog_pic: Placed,
+    pub recorder: Rect,
+    pub recorder_pic: (u16, u16),
+    pub arrow_up: Rect,
+    pub arrow_down: Rect,
+    /// Fundo atrás das setas e do número da página (Writer: `08d9`).
+    pub arrows_back: Option<Placed>,
+    pub page_box: Rect,
+    /// Lista de nomes: `x` debaixo da 1ª faixa e o passo de uma faixa para a
+    /// outra (0 = sempre no mesmo lugar), topo, (largura, altura, passo)
+    /// das linhas e quantas cabem (a de "Sem Som" incluída; com mais, a
+    /// última vira as setas de rolagem).
+    pub list_x0: i32,
+    pub list_step: i32,
+    pub list_y: i32,
+    pub row: (i32, i32, i32),
+    pub list_rows: usize,
+    /// Linha das setas da lista: caixa laranja como as outras (pintura) ou
+    /// branca, de 16 px, só com o contorno (Writer).
+    pub plain_arrows: bool,
+    /// Área do documento: o clique ali vai para o objeto debaixo.
+    pub canvas: Rect,
+}
+
+/// A faixa na tela de pintura (varredura `paint-sounds`).
+pub const ARTIST: Layout = Layout {
+    program: Program::Artist,
+    banner: (BANNER_PIC, BANNER_MASK, true),
+    banner_x0: 9,
+    banner_step: BANNER_W,
+    banner_y: 61,
+    volume: (368, 56, 26, 44),
+    track: (0x0251, 0x0257, 374, 62),
+    knob: (0x0259, 0x025b, 370),
+    knob_top: 63,
+    knob_bottom: 88,
+    dog: (405, 58, 42, 40),
+    dog_pic: (0x025d, 0x0263, 409, 63),
+    recorder: (456, 59, 43, 41),
+    recorder_pic: (0x0265, 0x0267),
+    arrow_up: (504, 58, 16, 14),
+    arrow_down: (504, 90, 16, 14),
+    arrows_back: None,
+    page_box: (505, 75, 16, 12),
+    list_x0: 19,
+    list_step: 0,
+    list_y: 97,
+    row: (94, 24, 23),
+    list_rows: 14,
+    plain_arrows: false,
+    canvas: (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32),
+};
+pub const DOG: Rect = ARTIST.dog;
+pub const RECORDER: Rect = ARTIST.recorder;
+pub const ARROW_UP: Rect = ARTIST.arrow_up;
+pub const ARROW_DOWN: Rect = ARTIST.arrow_down;
 
 /// Sons do `ARTIST.SND` (medidos no original).
 pub const SND_CATEGORY: u16 = 0x0233;
@@ -182,10 +240,6 @@ const BANNER_SHADE: [(i32, i32); 17] = [
     (65, 16),
 ];
 
-fn canvas_rect() -> Rect {
-    (ORIGIN.0, ORIGIN.1, CANVAS_W as i32, CANVAS_H as i32)
-}
-
 pub(crate) fn pic(id: u16) -> crate::assets::ImageRef {
     crate::assets::ImageRef::Pic(Program::Artist, id)
 }
@@ -244,14 +298,6 @@ impl Reply {
     fn done() -> Reply {
         Reply {
             handled: true,
-            ..Reply::default()
-        }
-    }
-
-    fn sound(id: u16) -> Reply {
-        Reply {
-            handled: true,
-            fx: vec![snd(id)],
             ..Reply::default()
         }
     }
@@ -391,18 +437,62 @@ pub fn banner_image(outline: &Image, mask: &Image) -> Option<Image> {
     })
 }
 
-/// Volume (0–100) para a altura do cursor e vice-versa.
-fn knob_y(volume: u8) -> i32 {
-    KNOB_BOTTOM - (volume.min(100) as i32 * (KNOB_BOTTOM - KNOB_TOP) + 50) / 100
+impl Layout {
+    /// Altura do cursor do volume (0–100) e vice-versa.
+    fn knob_y(&self, volume: u8) -> i32 {
+        let (top, bottom) = (self.knob_top, self.knob_bottom);
+        bottom - (volume.min(100) as i32 * (bottom - top) + 50) / 100
+    }
+
+    fn volume_at(&self, y: i32) -> u8 {
+        // o meio do cursor (9 px) segue o ponteiro
+        let (top, bottom) = (self.knob_top, self.knob_bottom);
+        let at = (y - 4).clamp(top, bottom);
+        ((bottom - at) * 100 / (bottom - top)) as u8
+    }
+
+    fn pic(&self, id: u16) -> crate::assets::ImageRef {
+        crate::assets::ImageRef::Pic(self.program, id)
+    }
+
+    fn snd(&self, id: u16) -> Effect {
+        Effect::PlaySound(SoundRef::Snd(self.program, id))
+    }
+
+    fn banner_x(&self, slot: usize) -> i32 {
+        self.banner_x0 + slot as i32 * self.banner_step
+    }
+
+    /// Faixa de teatro já colorida (`None` = desenho de reserva).
+    fn banner_image(&self, assets: &Assets) -> Option<Image> {
+        let (img, mask, paint) = self.banner;
+        if !assets.has_image(&self.pic(img)) {
+            return None;
+        }
+        let (img, mask) = (assets.image(&self.pic(img)), assets.image(&self.pic(mask)));
+        if paint {
+            banner_image(&img, &mask)
+        } else {
+            Some(masked_image(&img, &mask))
+        }
+    }
 }
 
-fn volume_at(y: i32) -> u8 {
-    // o meio do cursor (9 px) segue o ponteiro
-    let top = (y - 4).clamp(KNOB_TOP, KNOB_BOTTOM);
-    ((KNOB_BOTTOM - top) * 100 / (KNOB_BOTTOM - KNOB_TOP)) as u8
+/// A figura com o fora da máscara transparente.
+fn masked_image(img: &Image, mask: &Image) -> Image {
+    let mut out = img.clone();
+    if (mask.width, mask.height) == (img.width, img.height) {
+        for (p, m) in out.rgba.chunks_exact_mut(4).zip(mask.rgba.chunks_exact(4)) {
+            if m[0] >= 128 {
+                p[3] = 0;
+            }
+        }
+    }
+    out
 }
 
 pub struct Sounds {
+    layout: Layout,
     cats: Vec<Category>,
     page: usize,
     /// Categoria com a lista de nomes aberta.
@@ -419,20 +509,26 @@ pub struct Sounds {
 }
 
 impl Sounds {
+    /// A ferramenta da tela de pintura.
     pub fn new(assets: &Assets) -> Sounds {
-        let banner = if assets.has_image(&pic(BANNER_PIC)) {
-            banner_image(
-                &assets.image(&pic(BANNER_PIC)),
-                &assets.image(&pic(BANNER_MASK)),
-            )
-        } else {
-            None
-        };
-        Sounds::with_categories(load_categories(assets), banner)
+        Sounds::with_layout(ARTIST, assets)
+    }
+
+    /// A ferramenta com outra faixa (o Escritório do Writer).
+    pub fn with_layout(layout: Layout, assets: &Assets) -> Sounds {
+        let banner = layout.banner_image(assets);
+        let mut s = Sounds::with_categories(load_categories(assets), banner);
+        s.layout = layout;
+        s
+    }
+
+    pub fn layout(&self) -> &Layout {
+        &self.layout
     }
 
     fn with_categories(cats: Vec<Category>, banner: Option<Image>) -> Sounds {
         Sounds {
+            layout: ARTIST,
             cats,
             page: 0,
             open: None,
@@ -509,13 +605,9 @@ impl Sounds {
 
     pub fn update(&mut self, _dt: f32) {}
 
-    fn banner_rect(slot: usize) -> Rect {
-        (
-            BANNER_X0 + slot as i32 * BANNER_W,
-            BANNER_Y - 3,
-            BANNER_W,
-            BANNER_H + 3,
-        )
+    fn banner_rect(&self, slot: usize) -> Rect {
+        let l = &self.layout;
+        (l.banner_x(slot), l.banner_y - 3, BANNER_W, BANNER_H + 3)
     }
 
     fn list_len(&self) -> usize {
@@ -526,19 +618,28 @@ impl Sounds {
 
     /// A lista tem mais linhas do que cabem: a última vira as setas.
     fn list_scrolls(&self) -> bool {
-        self.list_len() > LIST_ROWS
+        self.list_len() > self.layout.list_rows
     }
 
     fn visible_rows(&self) -> usize {
         if self.list_scrolls() {
-            LIST_ROWS - 1
+            self.layout.list_rows - 1
         } else {
             self.list_len()
         }
     }
 
-    fn row_rect(k: usize) -> Rect {
-        (LIST_X, LIST_Y + k as i32 * ROW_STEP, ROW_W, ROW_H)
+    /// Linha `k` da lista aberta (debaixo da faixa dela, no Writer).
+    fn row_rect(&self, k: usize) -> Rect {
+        let l = &self.layout;
+        let slot = self.open.map_or(0, |c| c % PER_PAGE) as i32;
+        let (w, h, step) = l.row;
+        (
+            l.list_x0 + l.list_step * slot,
+            l.list_y + k as i32 * step,
+            w,
+            h,
+        )
     }
 
     /// Clique com a ferramenta ativa (sem diálogo aberto).
@@ -546,25 +647,26 @@ impl Sounds {
         // lista de nomes aberta
         if self.open.is_some() {
             let rows = self.visible_rows();
-            if let Some(k) = (0..rows).find(|&k| inside(Self::row_rect(k), x, y)) {
+            if let Some(k) = (0..rows).find(|&k| inside(self.row_rect(k), x, y)) {
                 return self.pick(self.scroll + k);
             }
-            if self.list_scrolls() && inside(Self::row_rect(LIST_ROWS - 1), x, y) {
-                let r = Self::row_rect(LIST_ROWS - 1);
-                let step = LIST_ROWS - 2;
-                let max = self.list_len().saturating_sub(LIST_ROWS - 1);
+            let last = self.layout.list_rows - 1;
+            if self.list_scrolls() && inside(self.row_rect(last), x, y) {
+                let r = self.row_rect(last);
+                let step = last - 1;
+                let max = self.list_len().saturating_sub(last);
                 self.scroll = if x < r.0 + r.2 / 2 {
                     self.scroll.saturating_sub(step)
                 } else {
                     (self.scroll + step).min(max)
                 };
-                return Reply::sound(SND_PAGE);
+                return self.reply(SND_PAGE);
             }
         }
         let first = self.page * PER_PAGE;
         if let Some(slot) = (0..PER_PAGE)
             .filter(|s| first + s < self.cats.len())
-            .find(|&s| inside(Self::banner_rect(s), x, y))
+            .find(|&s| inside(self.banner_rect(s), x, y))
         {
             let c = first + slot;
             if self.open == Some(c) {
@@ -573,33 +675,34 @@ impl Sounds {
             }
             self.open = Some(c);
             self.scroll = 0;
-            return Reply::sound(SND_CATEGORY).with_help(HELP_PICK);
+            return self.reply(SND_CATEGORY).with_help(HELP_PICK);
         }
-        if inside(ARROW_UP, x, y) || inside(ARROW_DOWN, x, y) {
+        let l = self.layout;
+        if inside(l.arrow_up, x, y) || inside(l.arrow_down, x, y) {
             let n = self.pages();
-            self.page = if inside(ARROW_UP, x, y) {
+            self.page = if inside(l.arrow_up, x, y) {
                 (self.page + n - 1) % n
             } else {
                 (self.page + 1) % n
             };
             self.open = None;
-            return Reply::sound(SND_PAGE);
+            return self.reply(SND_PAGE);
         }
-        if inside(VOLUME, x, y) {
+        if inside(l.volume, x, y) {
             self.dragging = true;
-            let mut r = Reply::sound(SND_VOLUME).with_help(HELP_VOLUME);
+            let mut r = self.reply(SND_VOLUME).with_help(HELP_VOLUME);
             r.fx.extend(self.set_volume(y, assets));
             return r;
         }
-        if inside(DOG, x, y) {
+        if inside(l.dog, x, y) {
             self.open = None;
-            return Reply::sound(SND_DOG).with_help(HELP_DOG);
+            return self.reply(SND_DOG).with_help(HELP_DOG);
         }
-        if inside(RECORDER, x, y) {
+        if inside(l.recorder, x, y) {
             self.open = None;
-            return Reply::sound(SND_RECORDER).with_help(HELP_RECORDER);
+            return self.reply(SND_RECORDER).with_help(HELP_RECORDER);
         }
-        if inside(canvas_rect(), x, y) {
+        if inside(l.canvas, x, y) {
             self.open = None;
             return Reply {
                 handled: true,
@@ -626,9 +729,18 @@ impl Sounds {
         r
     }
 
+    /// Resposta com um som do programa da faixa.
+    fn reply(&self, id: u16) -> Reply {
+        Reply {
+            handled: true,
+            fx: vec![self.layout.snd(id)],
+            ..Reply::default()
+        }
+    }
+
     /// Volume pela altura `y` do ponteiro.
     fn set_volume(&self, y: i32, assets: &Assets) -> Option<Effect> {
-        let v = volume_at(y);
+        let v = self.layout.volume_at(y);
         (v != assets.volume()).then(|| {
             assets.set_volume(v);
             Effect::SetVolume(v)
@@ -645,17 +757,18 @@ impl Sounds {
 
     /// Fim do arrasto: um som de amostra na altura nova.
     pub fn release(&mut self) -> Option<Effect> {
-        std::mem::take(&mut self.dragging).then(|| snd(SND_VOLUME_TEST))
+        std::mem::take(&mut self.dragging).then(|| self.layout.snd(SND_VOLUME_TEST))
     }
 
     /// Faixa de opções: faixas de teatro, volume, Cachorrinho, Gravador e setas.
     pub fn draw_strip(&self, f: &mut Frame, a: &Assets) {
+        let l = &self.layout;
         let font = a.font(8);
         // a placa usa a letra pequena (Pablo 6 pt), como no original
         let small = a.font(6).or_else(|| font.clone());
         let first = self.page * PER_PAGE;
         for (slot, c) in self.cats.iter().skip(first).take(PER_PAGE).enumerate() {
-            let (x, y) = (BANNER_X0 + slot as i32 * BANNER_W, BANNER_Y);
+            let (x, y) = (l.banner_x(slot), l.banner_y);
             match &self.banner {
                 Some(img) => f.blit(img, x, y),
                 None => {
@@ -680,18 +793,22 @@ impl Sounds {
             }
         }
         if self.cats.is_empty() {
-            f.text(BANNER_X0, BANNER_Y + 14, "sem MAG100.SND", BLACK);
+            f.text(l.banner_x0, l.banner_y + 14, "sem MAG100.SND", BLACK);
         }
         let masked = |f: &mut Frame, img: u16, mask: u16, x: i32, y: i32| {
-            f.blit_masked(&a.image(&pic(img)), &a.image(&pic(mask)), x, y);
+            f.blit_masked(&a.image(&l.pic(img)), &a.image(&l.pic(mask)), x, y);
         };
-        masked(f, TRACK.0, TRACK.1, TRACK.2, TRACK.3);
-        masked(f, KNOB.0, KNOB.1, KNOB.2, knob_y(a.volume()));
-        masked(f, DOG_PIC.0, DOG_PIC.1, DOG_PIC.2, DOG_PIC.3);
-        masked(f, RECORDER_PIC.0, RECORDER_PIC.1, RECORDER.0, RECORDER.1);
-        masked(f, 0x03b3, 0x03b5, ARROW_UP.0, ARROW_UP.1);
-        masked(f, 0x03b7, 0x03b9, ARROW_DOWN.0, ARROW_DOWN.1);
-        let b = PAGE_BOX;
+        if let Some((img, mask, x, y)) = l.arrows_back {
+            masked(f, img, mask, x, y);
+        }
+        masked(f, l.track.0, l.track.1, l.track.2, l.track.3);
+        masked(f, l.knob.0, l.knob.1, l.knob.2, l.knob_y(a.volume()));
+        masked(f, l.dog_pic.0, l.dog_pic.1, l.dog_pic.2, l.dog_pic.3);
+        let (rec, rec_mask) = l.recorder_pic;
+        masked(f, rec, rec_mask, l.recorder.0, l.recorder.1);
+        masked(f, 0x03b3, 0x03b5, l.arrow_up.0, l.arrow_up.1);
+        masked(f, 0x03b7, 0x03b9, l.arrow_down.0, l.arrow_down.1);
+        let b = l.page_box;
         f.rect(b.0, b.1, b.2, b.3, BLACK);
         f.rect(b.0 + 1, b.1 + 1, b.2 - 2, b.3 - 2, WHITE);
         let n = (self.page + 1).to_string();
@@ -706,45 +823,63 @@ impl Sounds {
 
     /// Lista de nomes aberta e diálogos.
     pub fn draw_overlay(&self, f: &mut Frame, a: &Assets) {
-        if let Some(cat) = self.open.and_then(|c| self.cats.get(c)) {
-            let font = a.font(8);
-            let names: Vec<&str> = std::iter::once("Sem Som")
-                .chain(cat.sounds.iter().map(|(n, _)| n.as_str()))
-                .skip(self.scroll)
-                .take(self.visible_rows())
-                .collect();
-            let box_at = |f: &mut Frame, k: usize| {
-                let r = Self::row_rect(k);
-                f.rect(r.0, r.1, r.2, r.3, BLACK);
-                f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, ORANGE);
-                f.rect(r.0 + 3, r.1 + 3, r.2 - 6, r.3 - 6, BLACK);
-                f.rect(r.0 + 4, r.1 + 4, r.2 - 8, r.3 - 8, WHITE);
-                r
-            };
-            for (k, name) in names.iter().enumerate() {
-                let r = box_at(f, k);
-                match &font {
-                    Some(fo) => {
-                        let shown = crate::ui::clip_text(name, |s| fo.width(s) as i32, r.2 - 12);
-                        let w = fo.width(&shown) as i32;
-                        f.text_font(fo, r.0 + r.2 / 2 - w / 2, r.1 + 5, &shown, BLACK);
-                    }
-                    None => f.text(r.0 + 6, r.1 + 8, name, BLACK),
-                }
-            }
-            if self.list_scrolls() {
-                let r = box_at(f, LIST_ROWS - 1);
-                let (up, down) = (a.image(&pic(0x03b3)), a.image(&pic(0x03b7)));
-                let (um, dm) = (a.image(&pic(0x03b5)), a.image(&pic(0x03b9)));
-                f.blit_masked(&up, &um, r.0 + r.2 / 4 - 8, r.1 + 5);
-                f.blit_masked(&down, &dm, r.0 + 3 * r.2 / 4 - 8, r.1 + 5);
-            }
-        }
+        self.draw_list(f, a);
         if let Some(d) = &self.finder {
             d.draw(f, a);
         }
         if let Some(r) = &self.recorder {
             r.draw(f, a);
+        }
+    }
+
+    /// Só a lista de nomes aberta (os diálogos são desenhados à parte).
+    pub fn draw_list(&self, f: &mut Frame, a: &Assets) {
+        let Some(cat) = self.open.and_then(|c| self.cats.get(c)) else {
+            return;
+        };
+        let l = &self.layout;
+        let font = a.font(8);
+        let names: Vec<&str> = std::iter::once("Sem Som")
+            .chain(cat.sounds.iter().map(|(n, _)| n.as_str()))
+            .skip(self.scroll)
+            .take(self.visible_rows())
+            .collect();
+        let box_at = |f: &mut Frame, k: usize| {
+            let r = self.row_rect(k);
+            f.rect(r.0, r.1, r.2, r.3, BLACK);
+            f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, ORANGE);
+            f.rect(r.0 + 3, r.1 + 3, r.2 - 6, r.3 - 6, BLACK);
+            f.rect(r.0 + 4, r.1 + 4, r.2 - 8, r.3 - 8, WHITE);
+            r
+        };
+        let text_y = (l.row.1 - 14) / 2;
+        for (k, name) in names.iter().enumerate() {
+            let r = box_at(f, k);
+            match &font {
+                Some(fo) => {
+                    let shown = crate::ui::clip_text(name, |s| fo.width(s) as i32, r.2 - 12);
+                    let w = fo.width(&shown) as i32;
+                    f.text_font(fo, r.0 + r.2 / 2 - w / 2, r.1 + text_y, &shown, BLACK);
+                }
+                None => f.text(r.0 + 6, r.1 + 8, name, BLACK),
+            }
+        }
+        if self.list_scrolls() {
+            let r = self.row_rect(l.list_rows - 1);
+            let (up, down) = (a.image(&l.pic(0x03b3)), a.image(&l.pic(0x03b7)));
+            let (um, dm) = (a.image(&l.pic(0x03b5)), a.image(&l.pic(0x03b9)));
+            if l.plain_arrows {
+                // Writer: caixa branca de 16 px colada na última linha
+                let r = (r.0, r.1, r.2, 16);
+                f.rect(r.0, r.1, r.2, r.3, BLACK);
+                f.rect(r.0 + 1, r.1 + 1, r.2 - 2, r.3 - 2, WHITE);
+                f.blit_masked(&up, &um, r.0 + 24, r.1 + 2);
+                f.blit_masked(&down, &dm, r.0 + 58, r.1 + 2);
+            } else {
+                let r = box_at(f, l.list_rows - 1);
+                f.blit_masked(&up, &um, r.0 + r.2 / 4 - 8, r.1 + 5);
+                f.blit_masked(&down, &dm, r.0 + 3 * r.2 / 4 - 8, r.1 + 5);
+            }
         }
     }
 
@@ -861,7 +996,7 @@ mod tests {
     }
 
     fn row_center(k: usize) -> (i32, i32) {
-        let r = Sounds::row_rect(k);
+        let r = fake(0).row_rect(k);
         (r.0 + r.2 / 2, r.1 + r.3 / 2)
     }
 
@@ -879,7 +1014,7 @@ mod tests {
         s.click(ARROW_DOWN.0 + 4, ARROW_DOWN.1 + 4, &a);
         assert_eq!(s.page(), 1);
         // terceira faixa da página 2 = sexta categoria (Ação)
-        let b = Sounds::banner_rect(2);
+        let b = fake(0).banner_rect(2);
         let r = s.click(b.0 + 50, b.1 + 20, &a);
         assert_eq!(r.fx, vec![snd(SND_CATEGORY)]);
         assert_eq!(r.help, Some(HELP_PICK));
@@ -895,7 +1030,7 @@ mod tests {
     fn pick_puts_the_sound_in_hand_and_silence_too() {
         let (_d, a) = assets();
         let mut s = fake(3);
-        let b = Sounds::banner_rect(1);
+        let b = fake(0).banner_rect(1);
         s.click(b.0 + 50, b.1 + 20, &a);
         let (x, y) = row_center(2);
         let r = s.click(x, y, &a);
@@ -926,10 +1061,10 @@ mod tests {
         let (_d, a) = assets();
         let mut s = fake(8);
         s.page = 1;
-        let b = Sounds::banner_rect(2);
+        let b = fake(0).banner_rect(2);
         s.click(b.0 + 50, b.1 + 20, &a);
         assert!(s.list_scrolls());
-        let r = Sounds::row_rect(LIST_ROWS - 1);
+        let r = fake(0).row_rect(ARTIST.list_rows - 1);
         s.click(r.0 + r.2 - 10, r.1 + 10, &a);
         // 24 linhas, 13 visíveis: a rolagem para na última página
         assert_eq!(s.scroll, 11);
@@ -947,16 +1082,19 @@ mod tests {
     fn volume_follows_the_knob() {
         let (_d, a) = assets();
         let mut s = fake(1);
-        assert_eq!(knob_y(100), KNOB_TOP);
-        assert_eq!(knob_y(0), KNOB_BOTTOM);
-        let r = s.click(VOLUME.0 + 5, KNOB_TOP + 4, &a);
+        assert_eq!(ARTIST.knob_y(100), ARTIST.knob_top);
+        assert_eq!(ARTIST.knob_y(0), ARTIST.knob_bottom);
+        let r = s.click(ARTIST.volume.0 + 5, ARTIST.knob_top + 4, &a);
         assert_eq!(r.help, Some(HELP_VOLUME));
         assert!(r.fx.contains(&Effect::SetVolume(100)));
         assert_eq!(a.volume(), 100);
-        assert_eq!(s.drag(KNOB_BOTTOM + 30, &a), Some(Effect::SetVolume(0)));
-        assert_eq!(s.drag(KNOB_BOTTOM + 30, &a), None);
+        assert_eq!(
+            s.drag(ARTIST.knob_bottom + 30, &a),
+            Some(Effect::SetVolume(0))
+        );
+        assert_eq!(s.drag(ARTIST.knob_bottom + 30, &a), None);
         assert_eq!(s.release(), Some(snd(SND_VOLUME_TEST)));
-        assert_eq!(s.drag(KNOB_TOP, &a), None);
+        assert_eq!(s.drag(ARTIST.knob_top, &a), None);
     }
 
     #[test]
