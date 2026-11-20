@@ -27,6 +27,8 @@ const HELP_DOG: usize = 12;
 const TIP_PICK: usize = 3;
 
 pub struct FindPictures {
+    /// Rótulo do segundo campo da direita ("Artista"; "Autor" no Writer).
+    label: &'static str,
     list: FileList,
     /// Miniatura do desenho escolhido.
     preview: Option<Canvas>,
@@ -80,11 +82,18 @@ pub fn sample_entries(data_dir: &Path) -> Vec<Entry> {
 impl FindPictures {
     pub fn new(entries: Vec<Entry>) -> FindPictures {
         FindPictures {
+            label: "Artista",
             list: FileList::new(entries),
             preview: None,
             outside: false,
             prompt: false,
         }
+    }
+
+    /// Outro rótulo para o segundo campo da direita.
+    pub fn with_label(mut self, label: &'static str) -> FindPictures {
+        self.label = label;
+        self
     }
 
     pub fn entries(&self) -> &[Entry] {
@@ -111,7 +120,8 @@ impl FindPictures {
             .map(|c| shrink(&c, 4));
     }
 
-    fn swap_entries(&mut self, entries: Vec<Entry>, outside: bool) {
+    /// Troca a listagem (`outside` = desenhos de exemplo).
+    pub fn swap_entries(&mut self, entries: Vec<Entry>, outside: bool) {
         self.list.set_entries(entries);
         self.outside = outside;
         self.preview = None;
@@ -120,7 +130,8 @@ impl FindPictures {
 }
 
 /// O que o clique no diálogo decidiu.
-enum Outcome {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
     Nothing,
     Cancel,
     /// Usar a figura deste caminho, com este título.
@@ -130,7 +141,8 @@ enum Outcome {
 }
 
 impl FindPictures {
-    fn click(&mut self, x: i32, y: i32, pal: &[Rgb], fx: &mut Vec<Effect>) -> Outcome {
+    /// Clique no diálogo (`pal`: a paleta para a prévia).
+    pub fn click(&mut self, x: i32, y: i32, pal: &[Rgb], fx: &mut Vec<Effect>) -> Outcome {
         if self.prompt {
             if inside(PROMPT_YES, x, y) {
                 fx.push(sfx::play(sfx::OPTION));
@@ -280,9 +292,17 @@ impl Paint {
     }
 
     pub(super) fn finder_draw(&self, f: &mut Frame, a: &Assets) {
-        let Some(fd) = &self.finder else {
-            return;
-        };
+        if let Some(fd) = &self.finder {
+            fd.draw(f, a, &self.pal);
+        }
+    }
+}
+
+impl FindPictures {
+    /// O diálogo sobre a tela apagada: lista, prévia, título, artista e a
+    /// pergunta "fora de Imaginópolis".
+    pub fn draw(&self, f: &mut Frame, a: &Assets, pal: &[Rgb]) {
+        let fd = self;
         gray_region(f, (0, 0, f.width() as i32, f.height() as i32));
         dialog::draw_left(f, a, &fd.list, fd.outside, |f, y| {
             // quadrinho de figura
@@ -299,7 +319,7 @@ impl Paint {
                 t.h as i32 + 2,
                 BLACK,
             );
-            blit_canvas(f, t, &self.pal, PREVIEW.0, PREVIEW.1);
+            blit_canvas(f, t, pal, PREVIEW.0, PREVIEW.1);
         }
         let (title, artist) = match fd.selected() {
             Some(e) => (e.title.clone(), e.artist.clone()),
@@ -311,7 +331,7 @@ impl Paint {
                     .unwrap_or_default(),
             ),
         };
-        dialog::draw_right(f, a, &title, &artist, true);
+        dialog::draw_right_as(f, a, &title, &artist, self.label, true);
         if fd.prompt {
             let pen = Pen::new(a);
             let font = pen.font();

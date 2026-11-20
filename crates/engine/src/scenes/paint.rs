@@ -54,8 +54,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub use crate::paint::COLORS;
 const SWATCHES: usize = COLORS.len();
 
-mod find_pictures;
-mod sticker_easel;
+pub(crate) mod find_pictures;
+pub(crate) mod sticker_easel;
 use crate::ui::inside;
 use find_pictures::FindPictures;
 use sticker_easel::StickerEasel;

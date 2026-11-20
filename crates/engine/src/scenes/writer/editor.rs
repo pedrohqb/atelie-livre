@@ -41,8 +41,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-/// Bibliotecas de clip-art do Creative Writer (o Fine Artist tem também `MAG100.ART`).
-pub const LIBRARIES: [&str; 2] = ["MAXMAG10.ART", "MAX100.ART"];
+/// Bibliotecas de clip-art dos rolos de adesivos: as mesmas quatro do Fine
+/// Artist (o original mostra os rolos de todas, em ordem de número).
+pub const LIBRARIES: [&str; 4] = crate::clipart::LIBRARIES;
 
 const BLACK: [u8; 3] = [0, 0, 0];
 const WHITE: [u8; 3] = [255, 255, 255];
@@ -998,6 +999,9 @@ impl Editor {
             self.draw_object(v, &self.doc.objects[k], ox, oy);
         }
         self.draw_lines(v, a, &l, page, ox, oy);
+        if selection {
+            super::sounds::draw_word_boxes(&self.doc, &l, v, page, ox, oy);
+        }
         if let Some(n) = &sheet.number {
             let font = RunFont::default();
             let w = self.fonts.text_width(&font, &n.text);
