@@ -559,6 +559,12 @@ impl Writer {
 
     /// Atalhos com Ctrl (`office.md` §6). `true` = tratado.
     fn shortcut(&mut self, key: Key, fx: &mut Vec<Effect>, a: &Assets) -> bool {
+        if matches!(key, Key::X | Key::C) && self.ed.encrypted() {
+            // Agente Secreto: "Você não pode recortar nem copiar…"
+            fx.push(snd(transformers::SND_EPA));
+            self.mczee.show(transformers::ENCRYPTED_CUT_COPY, true, a);
+            return true;
+        }
         match key {
             Key::X => {
                 if self.ed.cut() {
@@ -759,7 +765,10 @@ impl Scene for Writer {
                     if let Some((r, _)) = self.rename.as_mut() {
                         r.type_text(t);
                     } else if self.dialog.is_none() && !self.ctrl {
-                        self.ed.type_text(t);
+                        let tool = self.tool;
+                        if !self.with_tool(tool, &mut fx, assets, |w, ed, cx| w.text(ed, cx, t)) {
+                            self.ed.type_text(t);
+                        }
                     }
                 }
                 Input::Shift(on) => self.shift = on,

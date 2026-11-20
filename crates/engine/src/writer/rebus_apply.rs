@@ -71,7 +71,11 @@ fn shift_removed(p: &mut Pos, at: Pos) {
 
 /// Põe a figura `lookup(palavra)` depois de cada palavra conhecida que ainda
 /// não tem uma, em todo o documento; a seleção acompanha o texto.
-pub fn place(doc: &mut Document, sel: &mut Selection, lookup: impl Fn(&str) -> Option<u8>) -> Placed {
+pub fn place(
+    doc: &mut Document,
+    sel: &mut Selection,
+    lookup: impl Fn(&str) -> Option<u8>,
+) -> Placed {
     let mut placed = 0;
     let mut known = 0;
     for pi in 0..doc.paras.len() {
