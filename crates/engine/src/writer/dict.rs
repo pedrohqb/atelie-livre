@@ -235,9 +235,17 @@ impl Dictionary {
         match &self.backend {
             Backend::Original { spell, .. } => spell.suggestions(word, self.variant.mask(), max),
             Backend::Free { hun, .. } => {
-                let mut out = Vec::new();
-                hun.suggest(word, &mut out);
-                out.retain(|s| s != word);
+                let mut raw = Vec::new();
+                hun.suggest(word, &mut raw);
+                // o Hunspell do pt_BR às vezes devolve a própria palavra com
+                // um espaço no fim ("pexe" → "pexe ")
+                let mut out: Vec<String> = Vec::new();
+                for s in raw {
+                    let s = s.trim();
+                    if !s.is_empty() && s != word && !out.iter().any(|o| o == s) {
+                        out.push(s.to_string());
+                    }
+                }
                 out.truncate(max);
                 out
             }
@@ -443,6 +451,17 @@ mod tests {
             all.push(v.iter().collect());
         }
         assert_eq!(all, ["aab", "aba", "baa"]);
+    }
+
+    #[test]
+    fn sugestoes_do_hunspell_sem_a_propria_palavra() {
+        // só com o pt_BR do sistema instalado
+        let Some(d) = Dictionary::free_system(Variant::Brasil) else {
+            return;
+        };
+        let s = d.suggestions("pexe", 12);
+        assert!(s.contains(&"peixe".to_string()), "{s:?}");
+        assert!(s.iter().all(|w| w.trim() == w && w != "pexe"), "{s:?}");
     }
 
     #[test]

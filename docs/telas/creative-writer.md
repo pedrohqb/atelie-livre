@@ -26,7 +26,7 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `stickers.rs` | Seleciona-adesivos |
 | `sounds.rs` | Seleciona-sons |
 | `page_strip.rs` | Preparação da página |
-| `speller.rs` | Corretor e troca-palavras (abelha) |
+| `speller.rs` | Corretor e troca-palavras (abelha) — `creative-writer-abelha.md` |
 | `egg.rs` | Ovo desfazer |
 | `removers.rs` | Re-movedores |
 | `transformers.rs` | Transformadores ([creative-writer-transformadores.md](creative-writer-transformadores.md)) |
@@ -77,6 +77,9 @@ balões e menu do McZee.
 - `cx.help((bloco, registro))`: pede o balão do McZee (só aparece com a ajuda
   ligada); `cx.help_even_off(..)` aparece mesmo desligada (Re-movedores nas
   três primeiras vezes); `cx.close_help()` fecha o balão;
+  `cx.help_at(h, ((x, y), ponta))` abre o balão com o canto em `(x, y)` e o
+  rabicho até `ponta` (em cima ou embaixo), em vez de junto ao McZee (os
+  painéis da abelha);
 - `cx.log(..)`, `cx.fx.push(Effect::..)`: registro e outros efeitos;
 - `cx.ctrl`, `cx.shift`: modificadores (Ctrl+clique no Aplicador, Coelho…).
 

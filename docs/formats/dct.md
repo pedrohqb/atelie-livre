@@ -118,7 +118,9 @@ O port gera as sugestões em camadas — mesma palavra com a caixa registrada;
 uma troca fonética; uma edição (tirar, pôr, trocar ou inverter uma letra); a
 duas edições se houver poucas — com empate pela ordem do dicionário. Reproduz
 `gatu` e os conjuntos acima, mas **não a ordem exata** do original, que usa o
-modelo de n-gramas (0x21CEF, seg. 146:0x02E3) para ranquear.
+modelo de n-gramas (0x21CEF, seg. 146:0x02E3) para ranquear. A comparação palavra a
+palavra está em `docs/telas/creative-writer-abelha.md` ("Ordem das
+sugestões").
 
 ## `THES.DCT` (277 504 bytes)
 
