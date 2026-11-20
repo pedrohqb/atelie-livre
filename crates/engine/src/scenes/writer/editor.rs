@@ -15,15 +15,19 @@
 //! Na Visão normal a folha começa em (21, 107) na tela — o texto, com as
 //! margens de 72 pontos do documento novo, em (93, 179), como no original
 //! (`office.md` §2, `writer-fontes.md`) — e as folhas ficam empilhadas,
-//! com [`PAGE_GAP`] entre elas.
+//! com [`PAGE_GAP`] entre elas. O Visor de páginas muda o zoom e a
+//! arrumação ([`Editor::view`], `view.rs`): as conversões e o desenho passam
+//! todos por [`Editor::sheets`].
 
 use super::tools::inside;
+use super::view::{Sheets, View};
 use crate::Frame;
 use crate::Image;
 use crate::assets::Assets;
 use crate::clipart::{ClipRoll, load_rolls, parse_list};
 use crate::scene::Key;
 use crate::ui::Rect;
+use crate::writer::borders;
 use crate::writer::cipher;
 use crate::writer::convert::{self, MaxExtra};
 use crate::writer::doc::{CharChange, CharProps, Document, DopProps, Item, ParaChange};
@@ -55,8 +59,12 @@ const BACKDROP: [u8; 3] = [140, 140, 140];
 pub const PAGE: Rect = (23, 108, 593, 349);
 /// Canto da primeira folha na tela, sem rolagem (Visão normal).
 pub const ORIGIN: (i32, i32) = (21, 107);
-/// Espaço entre duas folhas empilhadas na vista (provisório: não medido).
-pub const PAGE_GAP: i32 = 8;
+/// Espaço entre duas folhas empilhadas na vista: nenhum. Cada folha tem a
+/// sua moldura preta de 1 px e a de baixo encosta na de cima (medido no
+/// Visor do original, `view.rs`).
+pub const PAGE_GAP: i32 = 0;
+/// Fundo da vista "todas as páginas" da barra de baixo (`office.md` §4).
+const OVERVIEW: [u8; 3] = [208, 22, 222];
 /// Período do piscar do cursor (meio período aceso).
 pub const CARET_PERIOD: f32 = 1.0;
 /// Folga (pontos) mantida em volta do cursor ao rolar até ele.
@@ -96,7 +104,8 @@ pub fn writer_fonts(assets: &Assets) -> Rc<WriterFonts> {
     })
 }
 
-fn to_owned(c: &chnk::Chunk) -> OwnedChunk {
+/// Cópia de um chunk lido (para guardar no documento).
+pub(super) fn to_owned(c: &chnk::Chunk) -> OwnedChunk {
     OwnedChunk {
         tag: c.tag,
         id: c.id,
@@ -222,6 +231,15 @@ fn is_white(p: &[u8]) -> bool {
     p[3] == 0 || (p[0] > 250 && p[1] > 250 && p[2] > 250)
 }
 
+/// O que define o fundo e a borda desenhados: as referências e a folha.
+type ArtKey = (Option<ObjRef>, Option<ObjRef>, [u16; 6]);
+
+/// Pixels não brancos do fundo e da borda de uma folha de `width` pontos.
+struct ArtInk {
+    width: u32,
+    ink: Vec<(u32, [u8; 3])>,
+}
+
 /// Desenhos dos objetos já decodificados, por conteúdo e tamanho.
 type PictureCache = HashMap<(ObjRef, u16, u16), Option<Rc<Image>>>;
 
@@ -246,8 +264,16 @@ pub struct Editor {
     rebus: HashMap<u8, (i32, i32)>,
     layout: RefCell<Option<Rc<Layout>>>,
     pictures: RefCell<PictureCache>,
-    /// Rolagem da vista, em pontos: (x, y) da pilha de folhas no canto.
+    /// Rolagem da vista, em pixels da tela (pontos na Visão normal).
     pub scroll: (i32, i32),
+    /// Zoom e arrumação das folhas (Visor de páginas); mude com
+    /// [`Editor::set_view`].
+    pub view: View,
+    /// Folhas reduzidas ou ampliadas para o zoom atual, por (folha, tamanho).
+    scaled: RefCell<HashMap<(usize, i32, i32), Rc<Frame>>>,
+    /// Fundo e borda da folha desenhados (pixels não brancos), pela chave
+    /// do que os define.
+    art: RefCell<Option<(ArtKey, Rc<ArtInk>)>>,
     /// Rolos de adesivos das bibliotecas do Writer.
     pub rolls: Vec<ClipRoll>,
     libs: Vec<(&'static str, Rc<Vec<u8>>)>,
@@ -300,6 +326,9 @@ impl Editor {
             layout: RefCell::new(None),
             pictures: RefCell::new(HashMap::new()),
             scroll: (0, 0),
+            view: View::default(),
+            scaled: RefCell::new(HashMap::new()),
+            art: RefCell::new(None),
             rolls,
             libs,
             blink: 0.0,
@@ -346,6 +375,7 @@ impl Editor {
 
     fn invalidate(&mut self) {
         *self.layout.get_mut() = None;
+        self.scaled.get_mut().clear();
     }
 
     /// Documento embaralhado pelo Agente Secreto (`ADD[5]`): a tela troca
@@ -400,23 +430,43 @@ impl Editor {
     // ---------------------------------------------------------------
     // Vista
 
-    /// Altura de uma folha mais o espaço até a seguinte.
-    fn page_step(&self) -> i32 {
-        i32::from(self.doc.dop.page_height) + PAGE_GAP
+    /// Onde as folhas caem na tela na vista atual (sem a rolagem).
+    pub fn sheets(&self) -> Sheets {
+        self.view.sheets(
+            i32::from(self.doc.dop.page_width),
+            i32::from(self.doc.dop.page_height),
+            self.layout().page_count(),
+        )
+    }
+
+    /// Pixels por ponto na vista atual (1 na Visão normal).
+    pub fn scale(&self) -> f64 {
+        self.sheets().scale
+    }
+
+    fn origin_in(s: &Sheets, page: usize) -> (i32, i32) {
+        match s.origins.get(page) {
+            Some(&o) => o,
+            None => {
+                let n = s.origins.len().max(1);
+                let (x, y) = s.origins.last().copied().unwrap_or(ORIGIN);
+                (x, y + (page + 1 - n) as i32 * (s.h + PAGE_GAP))
+            }
+        }
     }
 
     /// Canto da folha `page` na tela.
     pub fn page_origin(&self, page: usize) -> (i32, i32) {
-        (
-            ORIGIN.0 - self.scroll.0,
-            ORIGIN.1 + page as i32 * self.page_step() - self.scroll.1,
-        )
+        let (x, y) = Self::origin_in(&self.sheets(), page);
+        (x - self.scroll.0, y - self.scroll.1)
     }
 
     /// Ponto da folha → tela.
     pub fn to_screen(&self, page: usize, x: i32, y: i32) -> (i32, i32) {
-        let (ox, oy) = self.page_origin(page);
-        (ox + x, oy + y)
+        let s = self.sheets();
+        let (ox, oy) = Self::origin_in(&s, page);
+        let k = |v: i32| (f64::from(v) * s.scale).floor() as i32;
+        (ox - self.scroll.0 + k(x), oy - self.scroll.1 + k(y))
     }
 
     /// Tela → ponto da folha (`None` fora da vista ou entre folhas).
@@ -424,45 +474,67 @@ impl Editor {
         if !inside(PAGE, x, y) {
             return None;
         }
-        let sy = y - ORIGIN.1 + self.scroll.1;
-        if sy < 0 {
-            return None;
-        }
-        let step = self.page_step();
-        let page = (sy / step) as usize;
-        let py = sy - page as i32 * step;
-        let px = x - ORIGIN.0 + self.scroll.0;
+        let s = self.sheets();
         let (w, h) = (
             i32::from(self.doc.dop.page_width),
             i32::from(self.doc.dop.page_height),
         );
-        (page < self.layout().page_count() && py < h && (0..w).contains(&px)).then_some(PagePoint {
-            page,
-            x: px,
-            y: py,
+        let (sx, sy) = (x + self.scroll.0, y + self.scroll.1);
+        s.origins.iter().enumerate().find_map(|(page, &(ox, oy))| {
+            let inside_sheet = (ox..ox + s.w).contains(&sx) && (oy..oy + s.h).contains(&sy);
+            let p = |v: i32| (f64::from(v) / s.scale).floor() as i32;
+            inside_sheet.then(|| PagePoint {
+                page,
+                x: p(sx - ox).clamp(0, w - 1),
+                y: p(sy - oy).clamp(0, h - 1),
+            })
         })
     }
 
-    /// Folha no meio da vista ("Pág. N" da barra de baixo).
+    /// Folha no meio da vista ("Pág. N" da barra de baixo): a que contém o
+    /// meio da vista ou, entre folhas, a mais perto dele.
     pub fn page(&self) -> usize {
-        let step = self.page_step();
-        let mid = self.scroll.1 + (PAGE.1 - ORIGIN.1) + PAGE.3 / 2;
-        (mid.max(0) / step).clamp(0, self.layout().page_count() as i32 - 1) as usize
+        let s = self.sheets();
+        let (cx, cy) = (
+            PAGE.0 + PAGE.2 / 2 + self.scroll.0,
+            PAGE.1 + PAGE.3 / 2 + self.scroll.1,
+        );
+        let dist = |&(x, y): &(i32, i32)| {
+            let dx = (x - cx).max(cx - (x + s.w - 1)).max(0);
+            let dy = (y - cy).max(cy - (y + s.h - 1)).max(0);
+            (dy, dx)
+        };
+        (0..s.origins.len())
+            .min_by_key(|&k| dist(&s.origins[k]))
+            .unwrap_or(0)
     }
 
     /// Rola até mostrar o alto da folha `page`.
     pub fn show_page(&mut self, page: usize) {
-        let n = self.layout().page_count();
-        self.scroll.1 = page.min(n - 1) as i32 * self.page_step();
+        let s = self.sheets();
+        let n = s.origins.len().max(1);
+        let (_, y) = Self::origin_in(&s, page.min(n - 1));
+        self.scroll.1 = y - ORIGIN.1;
+        self.scroll_by(0, 0);
     }
 
-    /// Rola a vista (setas da barra de baixo, Visor); limitada à pilha.
+    /// Rola a vista (setas da barra de baixo, Visor); limitada às folhas.
     pub fn scroll_by(&mut self, dx: i32, dy: i32) {
-        let n = self.layout().page_count() as i32;
-        let max_y = (n * self.page_step() - PAGE_GAP - PAGE.3 - (PAGE.1 - ORIGIN.1)).max(0);
-        let max_x = (i32::from(self.doc.dop.page_width) - PAGE.2 - (PAGE.0 - ORIGIN.0)).max(0);
+        let (max_x, max_y) = self.sheets().max_scroll();
         self.scroll.0 = (self.scroll.0 + dx).clamp(0, max_x);
         self.scroll.1 = (self.scroll.1 + dy).clamp(0, max_y);
+    }
+
+    /// Troca a vista (Visor de páginas), mantendo a folha do meio no alto.
+    pub fn set_view(&mut self, v: View) {
+        if v == self.view {
+            return;
+        }
+        let page = self.page();
+        self.view = v;
+        self.scroll = (0, 0);
+        self.scaled.get_mut().clear();
+        self.show_page(page);
     }
 
     /// Rola o mínimo para o cursor aparecer.
@@ -470,12 +542,13 @@ impl Editor {
         let l = self.layout();
         let c = l.caret(self.sel.caret);
         let (_, sy) = self.to_screen(c.page, c.x, c.top);
+        let height = (f64::from(c.height) * self.scale()).ceil() as i32;
         let top = PAGE.1 + FOLLOW_MARGIN.min(PAGE.3 / 4);
         let bottom = PAGE.1 + PAGE.3 - FOLLOW_MARGIN.min(PAGE.3 / 4);
         if sy < top {
             self.scroll.1 -= top - sy;
-        } else if sy + c.height > bottom {
-            self.scroll.1 += sy + c.height - bottom;
+        } else if sy + height > bottom {
+            self.scroll.1 += sy + height - bottom;
         }
         let (sx, _) = self.to_screen(c.page, c.x, c.top);
         if sx < PAGE.0 {
@@ -941,44 +1014,81 @@ impl Editor {
     // ---------------------------------------------------------------
     // Desenho
 
-    /// As folhas visíveis, com os objetos, o texto, a seleção (vídeo
-    /// inverso), o número de página e o ponto de inserção.
+    /// As folhas visíveis, com a moldura, os objetos, o texto, a seleção
+    /// (vídeo inverso), o número de página e o ponto de inserção. Fora da
+    /// Visão normal em 100 % as folhas são desenhadas em tamanho real e
+    /// reduzidas (ou ampliadas) para o zoom da vista.
     pub fn draw_page(&self, f: &mut Frame, a: &Assets) {
         let (vx, vy, vw, vh) = PAGE;
         let mut v = Frame::new(vw as u32, vh as u32);
-        v.fill(BACKDROP);
+        v.fill(if self.view.overview {
+            OVERVIEW
+        } else {
+            BACKDROP
+        });
         let l = self.layout();
-        let (pw, ph) = (
-            i32::from(self.doc.dop.page_width),
-            i32::from(self.doc.dop.page_height),
-        );
+        let s = self.sheets();
+        let normal = self.view.is_normal();
         for page in 0..l.page_count() {
             let (ox, oy) = self.page_origin(page);
             let (ox, oy) = (ox - vx, oy - vy);
-            if oy >= vh || oy + ph <= 0 || ox >= vw || ox + pw <= 0 {
+            if oy >= vh || oy + s.h <= 0 || ox >= vw || ox + s.w <= 0 {
                 continue;
             }
-            self.draw_sheet(&mut v, a, page, ox, oy, true);
-            super::effects_draw::draw(
-                &self.doc,
-                &l,
-                &mut v,
-                page,
-                ox,
-                oy,
-                (vx, vy),
-                self.effects_ms,
-            );
+            if normal {
+                // a folha do port fica 1 px à esquerda da do original (x 21
+                // em vez de 22): as molduras dos lados ficam de fora, só as
+                // linhas de cima e de baixo separam as folhas
+                self.draw_sheet(&mut v, a, page, ox, oy, true);
+                super::effects_draw::draw(
+                    &self.doc,
+                    &l,
+                    &mut v,
+                    page,
+                    ox,
+                    oy,
+                    (vx, vy),
+                    self.effects_ms,
+                );
+                v.rect(ox, oy, s.w, 1, BLACK);
+                v.rect(ox, oy + s.h - 1, s.w, 1, BLACK);
+            } else {
+                // as vistas reduzidas mostram a folha parada (sem os
+                // efeitos animados)
+                copy_into(&mut v, &self.scaled_sheet(a, page, s.w, s.h), ox, oy);
+                v.frame_rect(ox, oy, s.w, s.h, 1, BLACK);
+            }
+        }
+        if !normal && !self.view.overview {
+            for r in l.selection_rects(self.sel.range()) {
+                let (x0, y0, x1, y1) = r.rect;
+                let (sx0, sy0) = self.to_screen(r.page, x0, y0);
+                let (sx1, sy1) = self.to_screen(r.page, x1, y1);
+                invert(&mut v, sx0 - vx, sy0 - vy, sx1 - sx0, sy1 - sy0);
+            }
         }
         if self.caret_visible
+            && !self.view.overview
             && self.sel.is_empty()
             && self.blink % CARET_PERIOD < CARET_PERIOD / 2.0
         {
             let c = l.caret(self.sel.caret);
             let (x, y) = self.to_screen(c.page, c.x, c.top);
-            v.rect(x - vx, y - vy, 1, c.height.max(1), BLACK);
+            let h = (f64::from(c.height) * s.scale).round() as i32;
+            v.rect(x - vx, y - vy, 1, h.max(1), BLACK);
         }
         copy_into(f, &v, vx, vy);
+    }
+
+    /// A folha `page` no tamanho `w × h` da vista (guardada até a próxima
+    /// mudança do documento).
+    fn scaled_sheet(&self, a: &Assets, page: usize, w: i32, h: i32) -> Rc<Frame> {
+        if let Some(f) = self.scaled.borrow().get(&(page, w, h)) {
+            return f.clone();
+        }
+        let f = Rc::new(resample(&self.render_page(a, page), w, h));
+        self.scaled.borrow_mut().insert((page, w, h), f.clone());
+        f
     }
 
     /// A folha `page` inteira, em tamanho real (1 ponto = 1 pixel), com o
@@ -1014,6 +1124,15 @@ impl Editor {
             i32::from(self.doc.dop.page_height),
         );
         v.rect(ox, oy, pw, ph, WHITE);
+        if let Some(art) = self.art_ink() {
+            for &(i, rgb) in &art.ink {
+                v.put(
+                    ox + (i % art.width) as i32,
+                    oy + (i / art.width) as i32,
+                    rgb,
+                );
+            }
+        }
         let Some(sheet) = l.pages.get(page) else {
             return;
         };
@@ -1046,6 +1165,64 @@ impl Editor {
                 }
             }
         }
+    }
+
+    /// Fundo e borda da folha (Preparação da página), desenhados uma vez
+    /// em tamanho real a partir das cópias guardadas no documento.
+    fn art_ink(&self) -> Option<Rc<ArtInk>> {
+        let d = &self.doc.dop;
+        if d.border.is_none() && d.background.is_none() {
+            return None;
+        }
+        let key: ArtKey = (
+            d.border,
+            d.background,
+            [
+                d.page_width,
+                d.page_height,
+                d.margin_top,
+                d.margin_left,
+                d.margin_bottom,
+                d.margin_right,
+            ],
+        );
+        if let Some((k, ink)) = self.art.borrow().as_ref()
+            && *k == key
+        {
+            return Some(ink.clone());
+        }
+        let to_max = |r: ObjRef| max::ObjRef::new(&r.tag, r.id);
+        let art = borders::PageArt::from_refs(
+            d.border.map(to_max),
+            d.background.map(to_max),
+            &|r| {
+                self.extra.object(ObjRef {
+                    tag: r.tag.0,
+                    id: r.id,
+                })
+            },
+        );
+        let geom = borders::PageGeom {
+            width: f64::from(d.page_width),
+            height: f64::from(d.page_height),
+            margin_top: f64::from(d.margin_top),
+            margin_left: f64::from(d.margin_left),
+            margin_bottom: f64::from(d.margin_bottom),
+            margin_right: f64::from(d.margin_right),
+        };
+        let img = borders::render_page(&geom, &art, 1.0);
+        let ink = Rc::new(ArtInk {
+            width: img.width.max(1),
+            ink: img
+                .rgba
+                .chunks_exact(4)
+                .enumerate()
+                .filter(|(_, p)| !is_white(p))
+                .map(|(i, p)| (i as u32, [p[0], p[1], p[2]]))
+                .collect(),
+        });
+        *self.art.borrow_mut() = Some((key, ink.clone()));
+        Some(ink)
     }
 
     /// A folha `page` num quadro do tamanho dela (sem seleção nem cursor).
@@ -1256,6 +1433,7 @@ impl Editor {
         self.scroll = (0, 0);
         self.changed = false;
         self.pictures.get_mut().clear();
+        *self.art.get_mut() = None;
         self.invalidate();
         self.sel = Selection::at(self.doc.start());
     }
@@ -1413,6 +1591,33 @@ fn picture_chunk(
 }
 
 /// Inverte as cores do retângulo (vídeo inverso da seleção).
+/// Folha `src` em `w × h`: ampliar repete pixels; reduzir junta cada bloco
+/// pelo mínimo de cada canal (o `BLACKONWHITE`, modo padrão do
+/// `StretchBlt`, que não deixa o texto sumir).
+fn resample(src: &Frame, w: i32, h: i32) -> Frame {
+    let (w, h) = (w.max(1) as u32, h.max(1) as u32);
+    let (sw, sh) = (src.width().max(1), src.height().max(1));
+    let px = src.pixels();
+    let mut out = Frame::new(w, h);
+    for y in 0..h {
+        let (y0, y1) = (y * sh / h, ((y + 1) * sh / h).max(y * sh / h + 1).min(sh));
+        for x in 0..w {
+            let (x0, x1) = (x * sw / w, ((x + 1) * sw / w).max(x * sw / w + 1).min(sw));
+            let mut c = [255u8; 3];
+            for sy in y0..y1 {
+                for sx in x0..x1 {
+                    let i = ((sy * sw + sx) * 4) as usize;
+                    for k in 0..3 {
+                        c[k] = c[k].min(px[i + k]);
+                    }
+                }
+            }
+            out.put(x as i32, y as i32, c);
+        }
+    }
+    out
+}
+
 fn invert(f: &mut Frame, x: i32, y: i32, w: i32, h: i32) {
     for yy in y.max(0)..(y + h).min(f.height() as i32) {
         for xx in x.max(0)..(x + w).min(f.width() as i32) {

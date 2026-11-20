@@ -32,6 +32,7 @@ mod speller;
 mod stickers;
 pub mod tools;
 mod transformers;
+pub mod view;
 mod viewer;
 mod word_lists;
 mod word_strip;
