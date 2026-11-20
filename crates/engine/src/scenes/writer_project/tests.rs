@@ -127,10 +127,10 @@ fn tool_button_menu_and_shaped_word_drive_the_news_script() {
     assert_eq!(p.assistant().at(), "cria-colunas");
     at(&mut p, &a, COLUMNS);
     assert_eq!(p.assistant().at(), "n-colunas");
-    // o menu de colunas é da Preparação da página: qualquer interface que
-    // mude o documento serve
-    p.writer_mut().editor_mut().apply_dop(|d| d.set_columns(3));
-    p.update(&[], 0.0, &a);
+    // o menu de colunas da Preparação da página (itens de 49 px a partir
+    // de y = 94): "3 colunas" muda o documento, e isso é o item do menu
+    at(&mut p, &a, (210, 94 + 2 * 49 + 20));
+    assert_eq!(p.writer().doc().dop.columns, 3);
     assert_eq!(p.assistant().at(), "manchete?");
     p.send(Event::Option(0), &mut fx, &a);
     // a Palavra não está ativa (a Página está): "Clique aqui."
@@ -291,8 +291,10 @@ fn banner_refuses_tall_and_backgrounds_with_the_rex() {
     p.writer_mut()
         .editor_mut()
         .apply_dop(|d| std::mem::swap(&mut d.page_width, &mut d.page_height));
+    // a faixa é sempre Larga: a folha volta, sem aviso (o de Alto é da
+    // Preparação da página)
     let fx = p.update(&[], 0.0, &a);
-    assert!(sounds(&fx).contains(&SND_REX));
+    assert!(!sounds(&fx).contains(&SND_REX));
     assert_eq!(
         (
             p.writer().doc().dop.page_width,
@@ -300,6 +302,17 @@ fn banner_refuses_tall_and_backgrounds_with_the_rex() {
         ),
         project::BANNER_PAGE
     );
+    // fundo na faixa: volta, com o Rex
+    let fundo = Some(ObjRef {
+        tag: *b"BDR ",
+        id: 9,
+    });
+    p.writer_mut()
+        .editor_mut()
+        .apply_dop(|d| d.background = fundo);
+    let fx = p.update(&[], 0.0, &a);
+    assert!(sounds(&fx).contains(&SND_REX));
+    assert_eq!(p.writer().doc().dop.background, None);
     // o jornal muda de orientação à vontade
     let (_u, mut n) = project(Kind::News, &a);
     n.writer_mut()
@@ -449,4 +462,16 @@ fn real_assets_shaped_easel_ok_moves_the_news_on() {
     assert!(!p.writer().shaped().is_open());
     assert_eq!(p.writer().doc().objects.len(), 1);
     assert_eq!(p.assistant().at(), "livre");
+}
+
+#[test]
+fn set_view_uses_the_page_viewer() {
+    let (_d, a) = empty_assets();
+    let (_u, mut p) = project(Kind::Card, &a);
+    let mut fx = Vec::new();
+    // cartão em branco → "todas as páginas"
+    p.send(Event::Option(1), &mut fx, &a);
+    assert_eq!(p.assistant().at(), "branco?");
+    p.send(Event::Option(1), &mut fx, &a);
+    assert_eq!(p.writer().editor().view.arrange, Arrange::All);
 }

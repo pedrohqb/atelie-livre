@@ -26,12 +26,12 @@
 //!
 //! O botão do McZee da faixa do Imprimir abre a máquina de impressão do
 //! Escritório (`scenes::writer::print`, com o projeto gravado no
-//! documento); quando ela fecha, o assistente recebe `Printed`. Gancho
-//! para outra frente: as visões de página (`SetView`) são do Visor
-//! (cw-tool-page) e, enquanto não existem no main, só são registradas.
+//! documento); quando ela fecha, o assistente recebe `Printed`. As visões
+//! (`SetView`) são as do Visor de páginas (`Editor::set_view`).
 
 use super::portfolio::{Action as BinderAction, Binder};
 use super::writer::tools::{SWITCH_RECT, inside};
+use super::writer::view::Arrange;
 use super::writer::{PAGE, ToolId, Writer};
 use super::writer_portfolio::{DocItem, WRITER_BINDER, list_documents, project_area};
 use crate::Frame;
@@ -293,9 +293,19 @@ impl ProjectScene {
     fn command(&mut self, c: Command, fx: &mut Vec<Effect>, a: &Assets) {
         match c {
             Command::OpenSamples => self.open_samples(a),
-            Command::SetView(v) => fx.push(Effect::Log(format!(
-                "assistente: visão {v:?} (gancho do Visor, cw-tool-page)"
-            ))),
+            Command::SetView(v) => {
+                // as visões do Visor de páginas (página 2 da faixa)
+                let ed = self.w.editor_mut();
+                let mut view = ed.view;
+                view.overview = false;
+                view.arrange = match v {
+                    max::View::Normal => Arrange::Normal,
+                    max::View::TwoPages => Arrange::Two,
+                    max::View::AllPages => Arrange::All,
+                    max::View::SideBySide => Arrange::Side,
+                };
+                ed.set_view(view);
+            }
             Command::SetPages(n) => {
                 let ed = self.w.editor_mut();
                 ed.record();
@@ -469,13 +479,17 @@ impl ProjectScene {
         true
     }
 
-    /// Restrições do projeto: desfaz e mostra o aviso do Rex.
+    /// Restrições do projeto: desfaz e, se for o caso, mostra o aviso do
+    /// Rex.
     fn restrict(&mut self, before: &Snapshot, fx: &mut Vec<Effect>, a: &Assets) {
         let mut doc = self.w.editor().doc().clone();
-        let Some((block, rec)) = project::restrict(self.kind, before, &mut doc) else {
+        let Some(r) = project::restrict(self.kind, before, &mut doc) else {
             return;
         };
         *self.w.editor_mut().doc_mut() = doc;
+        let project::Refused::Alert(block, rec) = r else {
+            return;
+        };
         fx.push(sound(SND_REX));
         let records = a.dialogs(Program::Writer, block);
         if let Some(r) = records.get(rec) {
@@ -539,7 +553,10 @@ impl Scene for ProjectScene {
                 .clamp(1, u16::from(max::BANNER_MAX_PAGES)) as u8;
             project::stretch_banner(ed.doc_mut(), n);
         }
-        pending.extend(project::events(self.kind, &before, &after));
+        // o que mudou no documento vem antes dos cliques: a borda aplicada
+        // com um clique na página é "escolhida" e depois "aplicada"
+        let clicks = std::mem::replace(&mut pending, project::events(self.kind, &before, &after));
+        pending.extend(clicks);
         self.last = self.snapshot();
         if self.naming && self.w.renaming().is_none() && self.w.dialog().is_none() {
             self.naming = false;

@@ -214,9 +214,16 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
   qualquer interface das ferramentas (menus da Preparação da página,
   cavalete de Forma), que são de outros ramos. Limitação: escolher no menu
   o valor que já estava (2 colunas no jornal) não muda nada e não avança.
-- **Restrições** (`writer::project::restrict`, P20): a faixa não muda de
-  Alto/Largo (`0805[17]`) e cartão e faixa não têm fundo (`0805[32]`): a
-  mudança é desfeita e o Rex avisa no meio da tela (som `02fe`).
+- **Restrições** (`writer::project::restrict`, P20): a Preparação da
+  página já recusa Alto na faixa (`0805[17]`) e fundo no cartão e na faixa
+  (`0805[32]`). A cena é a rede de segurança: a folha da faixa que mudar
+  de tamanho volta em silêncio (a faixa de 577×595 conta como "Alto", e
+  escolher Largo nela trocaria as medidas) e um fundo posto por outro
+  caminho volta com o Rex (som `02fe`).
+- **Ordem**: os eventos do documento vão antes dos de clique do mesmo
+  quadro (a borda aplicada com um clique na página é `BorderPicked` e
+  depois `PageClicked`, e o roteiro do cartão não fica parado no
+  "aplique a borda").
 - **Teclado**: com o campo de páginas da faixa no balão, os dígitos,
   Backspace/Delete e Enter (= Segue) vão ao assistente; com a pasta
   aberta, ao fichário; senão ao editor (o nome na barra de baixo é o
@@ -244,8 +251,8 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
   evento e o Max fica apagado (o mesmo pontilhado cinza) e não responde.
   Os balões do cavalete apontam o campo (234,295) e o OK (512,393), com o
   "Quando terminar, clique aqui." embaixo dele (`projects_33_manchete_3`).
-- **Gancho**: `SetView` só é registrado até as visões de página existirem
-  (Visor, cw-tool-page).
+- **Visões**: `SetView` troca o arranjo do Visor de páginas
+  (`Editor::set_view`: normal, duas páginas, todas, lado a lado).
 
 ### Faixa: palavra através das folhas (P12)
 

@@ -35,11 +35,9 @@ pub const BORDER_LIBRARIES: [&str; 4] =
 
 /// Andar na barra de baixo durante um projeto (e nos projetos reabertos).
 pub const FLOOR_LABEL: &str = "Oficina de Projetos";
-/// Avisos do Rex do bloco `0805` (`projects-faixa.md`): "Você não pode
-/// mudar para Alto. As faixas são sempre impressas como Largo." e "Você não
+/// Aviso do Rex do bloco `0805` (`projects-bordas-fundos.md`): "Você não
 /// pode pôr um fundo…" (cartão e faixa).
 pub const ALERT_BLOCK: u16 = 0x0805;
-pub const ALERT_BANNER_TALL: usize = 17;
 pub const ALERT_NO_BACKGROUND: usize = 32;
 /// O cartão tem 4 folhas: a quinta não é impressa (`3c00[106]`).
 pub const CARD_FIFTH_PAGE: usize = 5;
@@ -245,19 +243,31 @@ pub fn events(kind: Kind, before: &Snapshot, after: &Snapshot) -> Vec<Event> {
     v
 }
 
+/// Como uma mudança proibida foi recusada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refused {
+    /// Desfeita sem aviso (a faixa é sempre Larga: escolher Largo nela não
+    /// muda nada; o aviso de Alto é da Preparação da página).
+    Silently,
+    /// Desfeita com o aviso do Rex (`bloco`, registro).
+    Alert(u16, usize),
+}
+
 /// O que o projeto não aceita (`projects-faixa.md`, `projects-bordas-fundos.md`):
-/// a faixa não muda de Alto/Largo e cartões e faixas não têm fundo. Desfaz
-/// a mudança no `doc` e devolve o aviso do Rex (`0805[N]`).
-pub fn restrict(kind: Kind, before: &Snapshot, doc: &mut Document) -> Option<(u16, usize)> {
+/// a faixa não muda de tamanho de folha e cartões e faixas não têm fundo.
+/// Desfaz a mudança no `doc`. A Preparação da página já recusa as duas
+/// coisas com os avisos `0805[17]`/`[32]`; isto é a rede de segurança para
+/// qualquer outro caminho (o fundo volta com o aviso `0805[32]`).
+pub fn restrict(kind: Kind, before: &Snapshot, doc: &mut Document) -> Option<Refused> {
     let d = &mut doc.dop;
     if kind == Kind::Banner && (d.page_width, d.page_height) != before.size {
         (d.page_width, d.page_height) = before.size;
         d.page_number_rect = None;
-        return Some((ALERT_BLOCK, ALERT_BANNER_TALL));
+        return Some(Refused::Silently);
     }
     if kind != Kind::News && d.background.is_some() && d.background != before.background {
         d.background = before.background;
-        return Some((ALERT_BLOCK, ALERT_NO_BACKGROUND));
+        return Some(Refused::Alert(ALERT_BLOCK, ALERT_NO_BACKGROUND));
     }
     None
 }
@@ -406,10 +416,7 @@ mod tests {
         let (mut d, _) = blank(Kind::Banner);
         let s0 = Snapshot::of(&d, 1);
         std::mem::swap(&mut d.dop.page_width, &mut d.dop.page_height);
-        assert_eq!(
-            restrict(Kind::Banner, &s0, &mut d),
-            Some((ALERT_BLOCK, ALERT_BANNER_TALL))
-        );
+        assert_eq!(restrict(Kind::Banner, &s0, &mut d), Some(Refused::Silently));
         assert_eq!((d.dop.page_width, d.dop.page_height), BANNER_PAGE);
         let fundo = Some(ObjRef {
             tag: *b"BDR ",
@@ -418,7 +425,7 @@ mod tests {
         d.dop.background = fundo;
         assert_eq!(
             restrict(Kind::Banner, &s0, &mut d),
-            Some((ALERT_BLOCK, ALERT_NO_BACKGROUND))
+            Some(Refused::Alert(ALERT_BLOCK, ALERT_NO_BACKGROUND))
         );
         assert_eq!(d.dop.background, None);
         // o jornal aceita fundo e muda de orientação
