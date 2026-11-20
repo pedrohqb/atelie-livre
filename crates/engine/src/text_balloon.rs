@@ -235,6 +235,8 @@ pub struct TextBalloon {
     /// O texto do campo com o cursor está todo selecionado: digitar o
     /// substitui, Backspace o apaga.
     pub select_all: bool,
+    /// Palavras do glossário: (registro de destino, título dele).
+    pub glossary: Vec<(usize, String)>,
 }
 
 struct Layout {
@@ -338,7 +340,26 @@ impl TextBalloon {
             buttons,
             alert: false,
             select_all: false,
+            glossary: Vec::new(),
         }
+    }
+
+    /// Resolve as palavras do glossário (`0xffff`) com os registros do
+    /// bloco do balão: a palavra é o título do registro de destino, como
+    /// nos balões de ajuda (`help::HelpBalloon`).
+    pub fn with_glossary(mut self, records: &[Record]) -> TextBalloon {
+        self.glossary = self
+            .items()
+            .iter()
+            .filter_map(|i| match i {
+                Item::Picture { id, param } if *id == formats::what::PIC_GLOSSARY => {
+                    let k = usize::from(*param & 0x7fff);
+                    records.get(k).map(|r| (k, r.title.trim().to_string()))
+                }
+                _ => None,
+            })
+            .collect();
+        self
     }
 
     /// O mesmo balão como aviso (cantos retos).
@@ -497,13 +518,18 @@ impl TextBalloon {
     }
 
     fn layout(&self, a: &Assets, font: Option<&Font>) -> Layout {
-        let none = |_: usize| None;
+        let glossary = |k: usize| {
+            self.glossary
+                .iter()
+                .find(|(r, _)| *r == k)
+                .map(|(_, w)| w.clone())
+        };
         let ctx = Ctx {
             assets: a,
             program: Program::Artist,
             font,
             name: "",
-            glossary: &none,
+            glossary: &glossary,
             own: None,
         };
         let laid = rich::layout(&self.items(), self.w - WRAP_LESS, &ctx);
@@ -779,6 +805,61 @@ mod tests {
             ctrl: false,
             alt: false,
         }
+    }
+
+    /// Palavra do glossário (`0xffff`, parâmetro = registro com a
+    /// definição): o texto é o título do registro de destino, que o balão
+    /// só conhece com os registros do bloco (`with_glossary`). Sem eles a
+    /// palavra sumia ("abra a sua  e procure", no nome do Jornal).
+    #[test]
+    fn glossary_words_come_from_the_block() {
+        let (_d, a) = empty_assets();
+        let t = |s: &str| Item::Text {
+            text: s.into(),
+            bold: false,
+            color: 0xf,
+            indent: 0,
+            key: false,
+            signature: false,
+        };
+        let rec = |title: &str, items: Vec<Item>| Record {
+            title: title.into(),
+            width: 300,
+            height: 40,
+            style: 0,
+            items,
+        };
+        let records = vec![
+            rec(
+                "nome",
+                vec![
+                    t("abra a sua "),
+                    Item::Picture {
+                        id: formats::what::PIC_GLOSSARY,
+                        param: 1,
+                    },
+                    t(" e procure."),
+                ],
+            ),
+            rec("pasta", vec![t("Onde ficam os documentos.")]),
+        ];
+        let words = |b: &TextBalloon| -> Vec<(String, bool)> {
+            b.layout(&a, None)
+                .laid
+                .runs
+                .iter()
+                .filter_map(|r| match r {
+                    rich::Run::Text { text, glossary, .. } => Some((text.clone(), *glossary)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let b = TextBalloon::from_record(&records[0], 0, 0, "", Vec::new()).with_glossary(&records);
+        assert!(
+            words(&b).contains(&("pasta".to_string(), true)),
+            "{:?}",
+            words(&b)
+        );
     }
 
     #[test]

@@ -1295,7 +1295,7 @@ impl Assistant {
                 .and_then(|al| al.max)
                 .map(|m| m.to_string())
                 .unwrap_or_default();
-            let mut b = TextBalloon::from_record(r, 0, 0, &name, buttons);
+            let mut b = TextBalloon::from_record(r, 0, 0, &name, buttons).with_glossary(&records);
             let options = option_kinds(r);
             if s.role == Role::Step {
                 if let Some(id) = self.radio {
