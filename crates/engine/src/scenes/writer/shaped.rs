@@ -229,11 +229,8 @@ impl ShapedHost {
             Some(o) => (o.page, o.x, o.y),
             None => {
                 let c = ed.layout().caret(ed.sel.caret);
-                (
-                    c.page as u16,
-                    c.x.clamp(0, i32::from(i16::MAX)) as i16,
-                    c.top.clamp(0, i32::from(i16::MAX)) as i16,
-                )
+                let (x, y) = place_at(&ed.doc().dop, c.x, c.top, w, h);
+                (c.page as u16, x, y)
             }
         };
         let mut o = FloatObject::new(ObjectKind::Shaped, ObjRef::sple(0), page, x, y, w, h);
@@ -265,6 +262,17 @@ impl ShapedHost {
             e.draw(f, a, &d.ctx());
         }
     }
+}
+
+/// Canto de um objeto novo `w × h` no ponto de inserção `(x, y)` da
+/// folha: dentro das margens, como o original (o "Ana" posto depois de
+/// "resolveu ler" começa perto da margem esquerda, `office_34_forma_ok`).
+pub fn place_at(dop: &crate::writer::doc::DopProps, x: i32, y: i32, w: u16, h: u16) -> (i16, i16) {
+    let left = i32::from(dop.margin_left);
+    let right = i32::from(dop.page_width) - i32::from(dop.margin_right) - i32::from(w);
+    let bottom = i32::from(dop.page_height) - i32::from(dop.margin_bottom) - i32::from(h);
+    let top = i32::from(dop.margin_top);
+    (x.min(right).max(left) as i16, y.min(bottom).max(top) as i16)
 }
 
 /// Chunk `SPLE` (partes `SPLE` e `TWPB`) do Splot `s` com `w × h` pontos na
@@ -345,6 +353,18 @@ mod tests {
         // desfazível
         w.editor_mut().undo_step();
         assert!(w.doc().objects.is_empty());
+    }
+
+    #[test]
+    fn new_objects_stay_inside_the_margins() {
+        let dop = crate::writer::doc::DopProps::default();
+        assert_eq!(
+            (dop.page_width, dop.margin_left, dop.margin_right),
+            (595, 72, 72)
+        );
+        assert_eq!(place_at(&dop, 400, 200, 300, 119), (223, 200));
+        assert_eq!(place_at(&dop, 80, 200, 300, 119), (80, 200));
+        assert_eq!(place_at(&dop, 10, 700, 300, 119), (72, 601));
     }
 
     #[test]
