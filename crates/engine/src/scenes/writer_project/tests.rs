@@ -156,6 +156,15 @@ fn page_click_and_levers_are_events() {
         [Event::ButtonClicked(Button::BorderRoll)]
     );
     assert_eq!(p.classify(300, 300, &a), [Event::PageClicked]);
+    // FORMA só na primeira página da faixa da Palavra
+    at(&mut p, &a, WORD_TOOL);
+    assert_eq!(
+        p.classify(SHAPE.0, SHAPE.1, &a),
+        [Event::ButtonClicked(Button::Shape)]
+    );
+    at(&mut p, &a, (515, 70));
+    assert!(p.writer().tools().word.more());
+    assert!(p.classify(SHAPE.0, SHAPE.1, &a).is_empty());
     at(&mut p, &a, (80, 28));
     assert_eq!(p.writer().tool(), ToolId::Stickers);
     assert_eq!(

@@ -92,7 +92,7 @@ const fn hit(tool: ToolId, more: Option<bool>, rect: Rect, button: Button) -> Hi
 }
 
 pub const HITS: &[Hit] = &[
-    hit(ToolId::Word, None, (443, 57, 46, 41), Button::Shape),
+    hit(ToolId::Word, Some(false), (443, 57, 46, 41), Button::Shape),
     hit(
         ToolId::Page,
         Some(false),
@@ -394,13 +394,16 @@ impl ProjectScene {
         if let Some(id) = ToolId::at(x, y) {
             return vec![Event::ToolClicked(tool_of(id))];
         }
-        if inside(SWITCH_RECT, x, y)
-            && let Some(k) = self.lever(tool)
-        {
-            self.more[k] = !self.more[k];
+        // a Palavra diz em que página da faixa está; a Página e o Visor, a
+        // cena acompanha pelas alavancas
+        let word = (tool == ToolId::Word).then(|| w.tools().word.more());
+        if inside(SWITCH_RECT, x, y) && (word.is_some() || self.lever(tool).is_some()) {
+            if let Some(k) = self.lever(tool) {
+                self.more[k] = !self.more[k];
+            }
             return vec![Event::ButtonClicked(Button::Lever)];
         }
-        let more = self.lever(tool).map(|k| self.more[k]);
+        let more = word.or_else(|| self.lever(tool).map(|k| self.more[k]));
         if let Some(h) = HITS.iter().find(|h| {
             h.tool == tool && (h.more.is_none() || h.more == more) && inside(h.rect, x, y)
         }) {
