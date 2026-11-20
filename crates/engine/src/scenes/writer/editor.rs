@@ -1145,6 +1145,9 @@ impl Editor {
             let clip = (ox, oy, ox + pw, oy + ph);
             self.draw_object(v, o, ox - shift, oy, self.doc.dop.banner.then_some(clip));
         }
+        for (x, y0, y1) in self.doc.dop.column_rules() {
+            v.rect(ox + x, oy + y0, 1, y1 - y0, BLACK);
+        }
         self.draw_lines(v, a, &l, page, ox, oy);
         if selection {
             super::sounds::draw_word_boxes(&self.doc, &l, v, page, ox, oy);

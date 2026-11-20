@@ -778,6 +778,20 @@ impl DopProps {
             })
             .collect()
     }
+
+    /// Fios entre as colunas do jornal (`newspaper`, `DOP 0x4c`;
+    /// `projects_05_jornal_a`): `(x, y0, y1)` no meio de cada vão, da margem
+    /// de cima à de baixo. Vazio nos outros documentos.
+    pub fn column_rules(&self) -> Vec<(i32, i32, i32)> {
+        if !self.newspaper {
+            return Vec::new();
+        }
+        let (_, y0, _, y1) = self.text_area();
+        self.column_spans()
+            .windows(2)
+            .map(|w| ((w[0].1 + w[1].0) / 2, y0, y1))
+            .collect()
+    }
 }
 
 /// Uma fonte da tabela `FONT`.
@@ -1614,6 +1628,22 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn newspaper_has_rules_between_columns() {
+        let mut d = super::DopProps::default();
+        d.set_columns(2);
+        assert!(d.column_rules().is_empty(), "só no jornal");
+        d.newspaper = true;
+        let spans = d.column_spans();
+        let r = d.column_rules();
+        assert_eq!(r.len(), 1);
+        let (x, y0, y1) = r[0];
+        assert!(spans[0].1 < x && x < spans[1].0);
+        assert_eq!((y0, y1), (d.text_area().1, d.text_area().3));
+        d.set_columns(1);
+        assert!(d.column_rules().is_empty());
+    }
+
     use super::*;
     use crate::writer::object::{ObjectKind, Wrap};
 
