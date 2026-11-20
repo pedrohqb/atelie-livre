@@ -181,14 +181,77 @@ página (W14/C7/C8) e os efeitos animados (C4).
   "Salvar este trabalho": sem arquivo, o título vira campo de nome e Return
   (ou clicar fora) grava; com arquivo, `0202[3]` ("Vou salvar “@” agora":
   as duas versões / só a nova / ainda não). "Jogar fora": nada é gravado.
+  Salvar grava sempre num arquivo novo (`store::path_for`: "Gato Teste"
+  regravado vira `GATO_T11.MAX`, `GATO_T12.MAX`…), como o original; "só a
+  nova" apaga depois o arquivo antigo, se ele estiver na pasta do usuário
+  (um exemplo do Max aberto como cópia nunca é apagado), e as molduras da
+  Biblioteca que apontavam para ele passam para o novo
+  (`prefs::remember_saved`).
   Depois vai à sala Escritório (`SceneId::Studio.in_program(Writer)`). "Ops!"
   fecha o diálogo e a porta.
 - **SALVAR** (menu do McZee), **Ctrl+S** e clique no título: campo de nome;
   se o documento já tem arquivo, Return pergunta `0202[3]`.
 - **NOVO** (menu) e **Ctrl+Q**: com mudanças, o "Epa!" (sem abrir a porta);
   depois, documento em branco ou sair do programa.
+- **Maleta** (menu) e **Ctrl+O**: com mudanças, o "Epa!" (sem abrir a
+  porta); depois a pasta (`CwScene::Portfolio`) por cima, som `02f1`. O JÁ
+  da pasta emite `Effect::OpenDocument`, que troca o editor pelo documento
+  escolhido; Voltar volta ao mesmo documento.
 - Fechar a janela sem escolher grava num `KIDSnnnn.MAX` (ou no arquivo do
   documento). Arquivos e nomes: `docs/formats/arquivos-do-port.md`.
+
+## Último documento e `Effect::OpenDocument`
+
+O Escritório abre (`Writer::new`) o último documento do usuário, o `FILR 0`
+do `~MAXUSER.INF` (`writer::prefs::last_document`): o mesmo que o quadro da
+sala Escritório mostra. Um usuário novo abre o exemplo do Max ("O Ponto de
+Fuga", `SAMP9.MAX`) como cópia, sem arquivo próprio; um usuário sem
+`~MAXUSER.INF` mas com documentos na pasta (gravados antes de o port
+guardar as preferências) abre o mais recente deles (`store::latest`).
+Salvar (SALVAR, Ctrl+S, "Epa!", a gravação automática ao fechar) torna o
+arquivo gravado o último (`prefs::remember_saved`).
+
+Três lugares abrem um documento no editor por `Effect::OpenDocument(caminho)`
+(o app desempilha tudo e põe `Writer::open`): o clique duplo no quadro da
+sala Escritório, o JÁ (ou clique duplo) da pasta `WriterPortfolio` e o
+clique duplo numa moldura da Biblioteca. A pasta e a Biblioteca gravam o
+documento como último antes de emitir o efeito; o quadro já é o último.
+
+## Caderno de Idéias no editor (W20)
+
+O 5º botão do menu do McZee abre o `NotebookView` da Oficina de Idéias
+(`scenes/writer_ideas/notebook.rs`, com `NotebookView::in_editor`) por cima
+da página, numa sobreposição (`scenes/writer/notebook.rs`): sons `022d` e
+`0209`, balão do McZee `0faa[2]`, moldura do Escritório pontilhada de cinza
+100 (`ideas_89_caderno_editor`). Tesoura e câmera pedem os balões do McZee
+`0faa[4]`/`[3]` (Lembretes) e `[20]`/`[19]` (Máquina e Figuras) em vez dos
+do Max. O que é copiado vai para a área de transferência da sessão, que o
+Ctrl+V do editor cola. OK grava as três abas e fecha; o caderno não
+descarta. Enquanto ele está aberto, o editor não recebe teclas nem cliques.
+
+## Central de Controle (W23, Ctrl+Shift+A)
+
+No original a tela fica preta e aparece a barra de menus escondida do
+`WRITER.EXE` (`MENU 0x3e8`, `office.md` §6, `office_121`..`124`). O port
+(`scenes/writer/control_center.rs`) a desenha sobre o quadro: fundo preto,
+janela branca com **Arquivo**, **Editar** e **Ferramentas**, listas e
+caixas no estilo do Windows 3.1 com a geometria dos `DIALOG` (1 unidade =
+6/4 px na horizontal, 13/8 px na vertical). Os textos vêm do executável por
+`formats::winres_ui` (sem ele, os embutidos). Habilitados como no original:
+
+| Comando | O que o port faz |
+|---|---|
+| Salvar Como… | fecha a Central e abre o campo de nome |
+| Salvar Como Texto… | `ed.save_text()` (`<NOME>.TXT` na pasta) |
+| Opções de Impressão… (`DIALOG 0x1b58`) | só registra: o port imprime pelo `lp` |
+| Voltar ao Creative Writer, Esc | fecha |
+| Sobre o Creative Writer… (`0x7d0`) | a caixa, OK fecha |
+| Controle de Som… (`0xbb8`) | `Effect::SetVolume(100 ou 0)` |
+| Decodificar Documento… (`0x1388`) | a caixa, sem efeito |
+| Redefinir Máquina de Idéias… (`0x1770`) | apaga as entradas do usuário |
+
+Novo, Abrir, Sair e todo o Editar aparecem cinza. Com a Central aberta, toda
+a entrada vai para ela.
 
 ## Teclado
 
@@ -197,7 +260,8 @@ Letras, Enter, Backspace, Delete; ←→↑↓, Home/End (da linha), Ctrl+←→
 Shift, estendem a seleção. Ctrl+X/C/V (área de transferência interna; sons
 `022f`/`0288`/`028d`, balões `0fa3[8]`/`[12]`/`[14]`), Ctrl+Z (alterna
 desfazer/refazer, sons `020e`/`0217`), Ctrl+A (tudo), Ctrl+S (salvar),
-Ctrl+Q (sair, com o "Epa!" se houver mudanças).
+Ctrl+Q (sair, com o "Epa!" se houver mudanças), Ctrl+O (pasta),
+Ctrl+Shift+A (Central de Controle).
 
 ## McZee
 
@@ -215,8 +279,12 @@ Ctrl+Q (sair, com o "Epa!" se houver mudanças).
   McZee `041b` (desligar: `0faa[1]`), NOVO `084d`, maleta `044f`, SALVAR
   `08af`, Caderno de Idéias `0c01`, Varinha `0457`, cara de sol `03f3` (piada do
   `WHAT 0201` do Writer), livro verde `0453` (história). Escolher toca `022d`.
-  NOVO e SALVAR funcionam (ver "Saída, salvar…"); maleta e Caderno ainda
-  só registram "ainda não disponível".
+  NOVO, maleta e SALVAR: ver "Saída, salvar…"; Caderno: ver "Caderno de
+  Idéias no editor"; livro verde: a história do Writer
+  (`CwScene::BookStory`) por cima.
+- **Máscara (piada)**: uma piada sorteada do `WHAT 0201` num balão sem
+  rabicho centrado em (320,240) (medido nas capturas `ideas_96`/`97`), com
+  um dos sons `0226`/`0283`/`0312` (o mesmo PCM); um clique fecha.
 - **Ligar/desligar**: "É, por favor dê o fora" desliga os balões automáticos;
   com a ajuda desligada o nicho pergunta `0faa[0]` ("Sim, por favor!" religa).
 - **Varinha**: cursor de varinha (`000f`) até escolher uma ferramenta; clique
@@ -303,7 +371,7 @@ precisam da cópia em `ed.extra` (use `add_object` com o chunk) para irem ao
 manter_antigo)`, `ed.save_auto()`, `ed.save_text()`, `ed.discard()`. A
 cena: `Writer::new(pasta, a)` (último documento), `Writer::new_blank(pasta,
 a)` (`CwScene::NewDocument`), `Writer::open(pasta, caminho, a)` (e o
-`--open ARQ.MAX` do app, para testes), `Writer::idea_story(pasta, apelido,
+`--open ARQ.MAX` do app e o `Effect::OpenDocument`), `Writer::idea_story(pasta, apelido,
 a)` (`CwScene::IdeaStory`: a história da Oficina de Idéias, ver
 `creative-writer-ideias.md`), `.with_author(nome)`, `.with_user(apelido)`
 (a área de transferência da sessão, que o Caderno de Idéias também usa:
