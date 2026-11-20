@@ -99,6 +99,9 @@ pub const STRIP: [StripButton; 9] = [
     ),
 ];
 
+/// Botão FORMA (abre o cavalete de palavras com forma, `super::shaped`).
+const FORMA: usize = 7;
+
 /// Lista aberta por cada botão da página 1 (os outros são ações).
 const LISTS: [Option<List>; 9] = [
     Some(List::Fonts),
@@ -293,6 +296,7 @@ impl ToolStrip for WordStrip {
                 }
                 self.list = Some(list);
             }
+            None if k == FORMA => cx.open_shaped(None),
             None => unavailable(&STRIP[k], cx),
         }
         true

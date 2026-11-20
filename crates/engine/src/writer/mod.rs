@@ -23,6 +23,7 @@
 //! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
 //!   "Salvar como texto".
 //! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
+//! - [`splot`]: palavras com forma (`SPLE`): desenho, montagem e escolhas.
 
 pub mod assistant;
 pub mod assistant_banner;
@@ -39,5 +40,6 @@ pub mod layout;
 pub mod object;
 pub mod prefs;
 pub mod selection;
+pub mod splot;
 pub mod store;
 pub mod undo;

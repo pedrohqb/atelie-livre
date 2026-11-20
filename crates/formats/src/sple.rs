@@ -328,7 +328,7 @@ pub fn write(s: &Sple) -> Vec<u8> {
 }
 
 fn write_glyph(v: &mut Vec<u8>, g: &Glyph) {
-    let mut put = |x: u16, v: &mut Vec<u8>| v.extend(x.to_le_bytes());
+    let put = |x: u16, v: &mut Vec<u8>| v.extend(x.to_le_bytes());
     put(g.tag, v);
     put(g.points() as u16, v);
     put(g.contours.len() as u16, v);
@@ -398,8 +398,8 @@ pub fn shape_record(scrd: &[u8]) -> Vec<u8> {
 /// #8c8c8c); o port usa o mesmo para todas as sombras (o desenho vem dos
 /// glifos).
 const SHADOW_BLOCK: [u16; 30] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 12, 0x8c8c, 0x8c8c, 0x8c8c, 0, 0, 0, 0, 0,
-    0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 12, 0x8c8c, 0x8c8c, 0x8c8c, 0, 0, 0, 0,
+    0, 0, 0, 0,
 ];
 
 /// Monta um Splot novo. As partes que o original usa só para reabrir o
@@ -497,7 +497,10 @@ mod tests {
             bounds: [0, 0, 100, 300],
             glyphs: vec![Glyph::solid(
                 [0, 0, 0],
-                vec![vec![(0, 0), (10, 0), (10, 10), (0, 10)], vec![(2, 2), (4, 2), (3, 4)]],
+                vec![
+                    vec![(0, 0), (10, 0), (10, 10), (0, 10)],
+                    vec![(2, 2), (4, 2), (3, 4)],
+                ],
             )],
         })
     }

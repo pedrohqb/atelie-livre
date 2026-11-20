@@ -6,11 +6,38 @@ use formats::sple::{self, Fill};
 /// `(arquivo, texto, fonte, nº de glifos, forma, sombra, padrão, cores)`.
 const SAMPLES: [(&str, &str, &str, usize, u8, u8, u8, u8); 6] = [
     ("SAMP7", "Feliz Aniversário!", "Impact", 34, 3, 6, 7, 0x12),
-    ("SAMP13", "Tomara Que Você Melhore Logo!", "Lucida Handwriting", 50, 6, 1, 0, 0x14),
+    (
+        "SAMP13",
+        "Tomara Que Você Melhore Logo!",
+        "Lucida Handwriting",
+        50,
+        6,
+        1,
+        0,
+        0x14,
+    ),
     ("SAMP14", "SUA MANCHETE AQUI", "Impact", 30, 7, 6, 0, 0x17),
     ("SAMP15", "SUA MANCHETE AQUI", "Impact", 30, 0, 1, 0, 0),
-    ("SAMP16", "Sua Manchete Aqui", "Lucida Blackletter", 15, 0, 0, 0, 0),
-    ("SAMP17", "Nosso Melhor Trabalho Em Grupo", "Impact", 26, 0, 0, 0, 0x12),
+    (
+        "SAMP16",
+        "Sua Manchete Aqui",
+        "Lucida Blackletter",
+        15,
+        0,
+        0,
+        0,
+        0,
+    ),
+    (
+        "SAMP17",
+        "Nosso Melhor Trabalho Em Grupo",
+        "Impact",
+        26,
+        0,
+        0,
+        0,
+        0x12,
+    ),
 ];
 
 #[test]

@@ -126,8 +126,14 @@ fn pats_sshd_smnm_tdrl() {
     );
     // os 13 "preferidos" do Writer: formas, sombras e conjuntos de cores válidos
     let favs: Vec<_> = t.iter().map(splot_res::favorite).collect();
-    assert!(favs.iter().all(|f| f.shape <= 14 && f.shadow <= 7 && f.pattern <= 13));
+    assert!(
+        favs.iter()
+            .all(|f| f.shape <= 14 && f.shadow <= 7 && f.pattern <= 13)
+    );
     assert!(favs.iter().all(|f| f.color_set < 24));
-    assert_eq!((favs[0].shape, favs[0].shadow, favs[0].color_set), (14, 7, 6));
+    assert_eq!(
+        (favs[0].shape, favs[0].shadow, favs[0].color_set),
+        (14, 7, 6)
+    );
     assert_eq!(favs[4].angle, 270);
 }

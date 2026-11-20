@@ -356,6 +356,8 @@ pub struct Cx<'a> {
     pub shift: bool,
     help: Option<HelpRef>,
     help_forced: bool,
+    /// Pedido de abrir o cavalete de palavras com forma ([`Cx::open_shaped`]).
+    shaped: Option<Option<usize>>,
 }
 
 impl<'a> Cx<'a> {
@@ -367,6 +369,7 @@ impl<'a> Cx<'a> {
             shift: false,
             help: None,
             help_forced: false,
+            shaped: None,
         }
     }
 
@@ -388,6 +391,16 @@ impl<'a> Cx<'a> {
     pub fn help_even_off(&mut self, h: HelpRef) {
         self.help = Some(h);
         self.help_forced = true;
+    }
+
+    /// Pede o Cavalete de palavras com forma: novo (`None`) ou para
+    /// modificar o objeto `Some(k)` da página.
+    pub fn open_shaped(&mut self, editing: Option<usize>) {
+        self.shaped = Some(editing);
+    }
+
+    pub(super) fn take_shaped(&mut self) -> Option<Option<usize>> {
+        self.shaped.take()
     }
 
     /// Fecha o balão do McZee que estiver aberto.
