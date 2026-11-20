@@ -260,6 +260,7 @@ impl ProjectScene {
             word_active: tool == ToolId::Word,
             open_strip: Some(tool_of(tool)),
             pages: pages.min(usize::from(u8::MAX)) as u8,
+            printing: self.w.printing(),
         };
     }
 
@@ -440,9 +441,11 @@ impl ProjectScene {
         if self.notice.take().is_some() {
             return true;
         }
-        let ev = self
-            .max
-            .click(a, x, y)
+        // a máquina de impressão cobre a tela: os balões do Max ficam
+        // escondidos e os cliques são dela
+        let ev = (!self.w.printing())
+            .then(|| self.max.click(a, x, y))
+            .flatten()
             .or_else(|| inside(DOOR_RECT, x, y).then_some(Event::MaxClicked))
             // com o cavalete ou a máquina por cima, o Max fica apagado
             .filter(|&e| !(e == Event::MaxClicked && self.overlay()));
@@ -593,7 +596,9 @@ impl Scene for ProjectScene {
         if let Some(n) = &self.notice {
             n.draw(f, a);
         }
-        self.max.draw(f, a);
+        if !self.w.printing() {
+            self.max.draw(f, a);
+        }
     }
 
     fn leave(&mut self) -> Vec<Effect> {

@@ -250,7 +250,11 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
 - **Impressão**: o McZee da faixa do Imprimir abre a máquina de impressão
   do Escritório (`scenes::writer::print`, com o projeto gravado no
   documento); quando ela fecha (`Writer::printing` volta a `false`), a cena
-  manda `Printed` e o assistente vai ao "Tudo pronto!".
+  manda `Printed` e o assistente vai ao "Tudo pronto!". Com a máquina já
+  aberta (a criança usou a ferramenta antes de responder "Você quer
+  imprimir?"), os balões do Max somem e não pegam cliques enquanto ela
+  está por cima, e o "É, imprimir" vai direto a `imprimindo`
+  (`Cond::Printing`, `Context::printing`).
 - **Telas por cima** (cavalete de palavras com forma, máquina de
   impressão, Caderno, Central de Controle): os cliques são delas, nada vira
   evento e o Max fica apagado (o mesmo pontilhado cinza) e não responde.
