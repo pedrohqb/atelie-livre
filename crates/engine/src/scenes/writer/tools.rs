@@ -441,6 +441,11 @@ pub trait ToolStrip {
         false
     }
 
+    /// Texto digitado; `true` = tratado (senão vai para o documento).
+    fn text(&mut self, _ed: &mut Editor, _cx: &mut Cx, _text: &str) -> bool {
+        false
+    }
+
     /// Passagem do tempo (animações).
     fn tick(&mut self, _ed: &mut Editor, _dt: f32) {}
 

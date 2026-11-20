@@ -14,6 +14,7 @@ pub mod error;
 pub mod fnt;
 pub mod gif;
 pub mod glob;
+pub mod maca;
 pub mod macpaint;
 pub mod macres;
 pub mod mag;

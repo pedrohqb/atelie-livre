@@ -27,7 +27,7 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `speller.rs` | Corretor e troca-palavras (abelha) |
 | `egg.rs` | Ovo desfazer |
 | `removers.rs` | Re-movedores |
-| `transformers.rs` | Transformadores |
+| `transformers.rs` | Transformadores ([creative-writer-transformadores.md](creative-writer-transformadores.md)) |
 | `viewer.rs` | Visor de páginas |
 | `print.rs` | Imprimir |
 
@@ -52,6 +52,7 @@ Cada arquivo de ferramenta define uma `struct` com `Default` e implementa
 | `motion(ed, cx, x, y)` | mouse movido (para arrastos: guarde o estado no `press`) |
 | `release(ed, cx, x, y)` | botão solto |
 | `key(ed, cx, key, ctrl) -> bool` | tecla; `false` deixa a tecla ir para o editor de texto |
+| `text(ed, cx, texto) -> bool` | texto digitado; `false` deixa o texto ir para o documento (campos dos painéis) |
 | `tick(ed, dt)` | animação |
 | `draw_strip(ed, f, a)` | faixa de opções (y 56..104), sobre o fundo cinza-claro |
 | `draw_front(ed, f, a)` | por cima da página (tiras de filme, listas, painéis) |
@@ -323,6 +324,7 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.rolls` | rolos de adesivos das bibliotecas do Writer |
 | `ed.title()`, `ed.file()`, `ed.dir()`, `ed.changed()` | título, arquivo `.MAX`, pasta do usuário, mudado desde a gravação |
 | `ed.picture(&obj)` | desenho do objeto no tamanho atual (`Rc<Image>`, branco = transparente) |
+| `ed.encrypted()` | documento embaralhado pelo Agente Secreto (`ADD[5]`): a tela troca as letras e cobre os objetos; recuse recortar/copiar/jogar fora (`0805[13]`, `[42]`) |
 
 ### Coordenadas e vista
 
@@ -350,6 +352,8 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.insert_sticker(rolo, item)` | o mesmo, no ponto de inserção |
 | `ed.add_picture(&img, título, folha, x, y)` | imagem própria (Cavalete, Cachorrinho, Caderno) como objeto: `PICT` com `META` (DIB de 24 bits) e `TWPB` |
 | `ed.remove_object(k)` | tira o objeto `k` |
+| `ed.replace_picture(k, &img)` | troca a figura do objeto `k` por uma imagem (o OK do cavalete): `PICT` novo, mesmo lugar e flutuação |
+| `ed.secret_ok(senha, ctrl_shift)` | OK do painel SENHA (embaralha/desembaralha a exibição; não entra no Ovo) |
 | `ed.clear_all()` | Jogar tudo fora (texto e objetos) |
 | `ed.cut()`, `ed.copy()`, `ed.paste()` | texto da seleção ↔ área de transferência |
 | `ed.edit(\|doc, sel\| …)` | qualquer outra ação: guarda o estado, roda, rediagrama e rola até o cursor |

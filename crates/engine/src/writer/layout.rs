@@ -222,6 +222,9 @@ struct Cand {
     desc: i32,
     /// `(x0, x1, primeira caixa, fim)` de cada segmento usado.
     runs: Vec<(i32, i32, usize, usize)>,
+    /// Começo do primeiro segmento livre, antes do recuo (onde fica o
+    /// marcador).
+    start: i32,
 }
 
 impl Cand {
@@ -342,23 +345,27 @@ impl Builder<'_> {
     }
 
     /// Enche uma linha na faixa `y..y+h` a partir do item `k`; `Err(y)` =
-    /// não coube nada, tentar de novo em `y`.
+    /// não coube nada, tentar de novo em `y`. O recuo `indent` (recuos e
+    /// marcadores) conta a partir do começo do primeiro segmento livre: ao
+    /// lado de um objeto, da borda dele (SAMP16), e não da margem `left`.
     #[allow(clippy::too_many_arguments)]
     fn fill(
         &self,
         ms: &[Metric],
         mark: Metric,
         k0: usize,
-        left: i32,
+        (left, indent): (i32, i32),
         right: i32,
         y: i32,
         h: i32,
         ignore: bool,
     ) -> Result<Cand, i32> {
-        let segs = self.segments(left, right, y, y + h, ignore);
-        if segs.is_empty() {
+        let mut segs = self.segments(left, right, y, y + h, ignore);
+        let Some(&(start, first_end)) = segs.first() else {
             return Err(self.skip_y(y, h));
-        }
+        };
+        segs[0].0 = (start + indent).min(first_end - 1);
+        let left = (left + indent).min(right - 1);
         let n = ms.len();
         let mut k = k0;
         let mut boxes: Vec<ItemBox> = Vec::new();
@@ -425,6 +432,7 @@ impl Builder<'_> {
             asc,
             desc,
             runs,
+            start,
         })
     }
 
@@ -499,7 +507,7 @@ impl Builder<'_> {
         loop {
             let (cl, cr) = self.cols[self.col];
             let dc = drop.map_or(0, |d| d.extra(line_no, self.page, self.col, self.y));
-            let left = (cl + extra + dc).min(cr - 1);
+            let left = ((cl + dc).min(cr - 1), extra);
             let ignore = stuck > 2 * self.cols.len();
             let h_est = match drop {
                 Some(d) if line_no == 0 => d.line_h,
@@ -620,7 +628,7 @@ impl Builder<'_> {
             d.placed = Some((self.page, self.col, top));
             start = 0;
         }
-        let bullet = (props.bullets && line_no == 0).then_some(cl + extra - BULLET_INDENT);
+        let bullet = (props.bullets && line_no == 0).then_some(c.start + extra - BULLET_INDENT);
         let h = c.height();
         self.lines.push(Line {
             para: pi,
@@ -1226,6 +1234,35 @@ mod tests {
         assert!(l.pages.iter().all(|p| p.objects == vec![0]));
         let g = gap_of(&l);
         assert!((32..=60).contains(&g), "{g}");
+    }
+
+    /// SAMP16 (Jornal Mágico): a manchete fica numa palavra com forma à
+    /// esquerda e os parágrafos têm recuo da 1ª linha. O recuo conta a
+    /// partir de onde o texto começa ao lado do objeto, não da margem
+    /// (senão o objeto "engole" o recuo).
+    #[test]
+    fn indent_counts_from_the_object_edge() {
+        let mut d = doc(&words(300));
+        let mut o = sticker(60, 60, 70, 300);
+        o.wrap = Wrap::Box;
+        d.add_object(o);
+        let edge = 130 + WRAP_GAP;
+        d.apply_para(d.all(), ParaChange::Indent(Indent::FirstLine));
+        let l = lay(&d);
+        assert_eq!(l.lines[0].boxes[0].x, edge + INDENT);
+        assert_eq!(l.lines[1].boxes[0].x, edge);
+        d.apply_para(d.all(), ParaChange::Indent(Indent::Hanging));
+        let l = lay(&d);
+        assert_eq!(l.lines[0].boxes[0].x, edge);
+        assert_eq!(l.lines[1].boxes[0].x, edge + INDENT);
+        d.apply_para(d.all(), ParaChange::Indent(Indent::None));
+        d.apply_para(d.all(), ParaChange::Style(ParaStyle::Bullets));
+        let l = lay(&d);
+        assert_eq!(l.lines[0].bullet, Some(edge));
+        assert_eq!(l.lines[0].boxes[0].x, edge + BULLET_INDENT);
+        // abaixo do objeto volta a valer a margem
+        let below = l.lines.iter().find(|ln| ln.top >= 366).unwrap();
+        assert_eq!(below.boxes[0].x, 72 + BULLET_INDENT);
     }
 
     #[test]
