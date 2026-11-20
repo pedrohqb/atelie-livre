@@ -25,12 +25,13 @@ O Escritório fica em `crates/engine/src/scenes/writer/`:
 | `effects_draw.rs` | efeitos especiais animados na vista da página |
 | `stickers.rs` | Seleciona-adesivos |
 | `sounds.rs` | Seleciona-sons |
-| `page_strip.rs` | Preparação da página |
+| `page_strip.rs` | Preparação da página (listas, rolos FUNDO e BORDA) |
 | `speller.rs` | Corretor e troca-palavras (abelha) |
 | `egg.rs` | Ovo desfazer |
 | `removers.rs` | Re-movedores |
 | `transformers.rs` | Transformadores ([creative-writer-transformadores.md](creative-writer-transformadores.md)) |
 | `viewer.rs` | Visor de páginas |
+| `view.rs` | zoom e arrumação das folhas na vista (sem desenho) |
 | `print.rs` | Imprimir: faixa, máquina de impressão do McZee e `print_document` (ver [`creative-writer-impressao.md`](creative-writer-impressao.md)) |
 
 O `Editor` usa o modelo rico (`crates/engine/src/writer/{doc,object,layout,
@@ -126,10 +127,60 @@ McZee no nicho `0235`/`0237` (536,47); porta `023d`/`023f` (581,16).
 
 Estado atual: a Palavra (as duas páginas, com pincel arrastado,
 Aplicador e Ponto de inserção; ver `creative-writer-palavra.md`), os Adesivos
-e os Sons (seções abaixo), o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos), o botão FORMA e os
-Re-movedores funcionam (abaixo); as outras faixas são só desenhadas, com o interruptor trocando de
-página na Preparação da página e no Visor. Botão sem função: som `0233`,
-balão da opção e "ainda não disponível" no registro.
+e os Sons (seções abaixo), o Ovo (DESFAZER/REFAZER e a fila de até 20
+ovos), o botão FORMA, os Re-movedores (abaixo), a Preparação da página e o
+Visor de páginas funcionam; as outras faixas são só desenhadas. Botão sem função: som
+`0233`, balão da opção e "ainda não disponível" no registro.
+
+### Preparação da página (W14/P13)
+
+- **Listas** (Cria-colunas, Alto ou largo, Margens, Nº de página): descem
+  do botão com o topo em y 94, itens de 49 px separados por linhas pretas
+  (`office_63`..`66`); x/largura 188/59, 267/67, 346/59 e 404/59 (a do Nº
+  de página fica à esquerda do botão); figura do item (`0c0f`… colunas,
+  `0c33`/`0c35` Alto/Largo, `0c05`… margens, `0c17`… números) centrada em
+  x 226, 309, 384, 442 e em pé no meio do item; ✓ `029d` em (x + 4, topo +
+  19) no valor atual. Escolher toca `022d` e muda o `DOP` (uma ação do
+  Ovo); clicar fora ou Esc fecha. Faixa (`WIZA banr` ou `0x5b`) não aceita
+  Alto: `0805[17]`.
+- **Rolos** FUNDO (pág. 1) e BORDA 1–3 (pág. 2): tira de 86 px de largura
+  com x = começo do corpo do rolo + 10 (62, 128, 222, 316), linhas de 77 px
+  a partir de y 98 (4 à vista: "Nada" e 3 miniaturas `PKBM`, a atual em
+  amarelo 255,238,76), setas ↑↓ `02db`/`02df` em (x + 19, 408) e (x + 53,
+  408) que rolam um item (som `02bc`). FUNDO lista os fundos de
+  `0MAX100.BOR` da orientação da folha; as bordas vêm de `0MAX100`,
+  `1MAX100` e `2MAX100.BOR`. "Nada" tira na hora; uma miniatura toca `022d`
+  + `021c` e arma o rolo de pintar (cursor `001d`): o clique seguinte numa
+  margem da folha (fora da área do texto e dos objetos) põe em todas as
+  folhas (som `0220`); clique dentro do texto repete o balão `0fa5[2]`/`[3]`.
+  Cartão e faixa recusam fundo (`0805[32]`); borda que não cabe na margem
+  abre `0fa5[11]`.
+- **Documento**: a borda vira uma cópia `BDR n` + `DOP 0x58`/`0x5a` e as
+  larguras `0x47`/`0x48` (`Border::dop_widths`); o fundo copia o `IBGF`
+  (renumerado, com o `PICT` e o `FRAM` que aponta), grava `DOP 0x56` e
+  põe as molduras de tipo 6 em `DopProps::obstacles`, que a diagramação
+  contorna. Borda em adesivo ainda não existe.
+
+### Visor de páginas (W15/P11)
+
+Medidas em `cw/w_page/*` (documento de duas folhas "Alto"); geometria em
+`view.rs`, com testes:
+
+| botão | efeito |
+|---|---|
+| Página inteira | folha inteira na altura da vista (44 %, 189..450 × 107..456) |
+| Aumentar visão | folha (ou par) enchendo a largura (100 % na folha Alto) |
+| MENOS / MAIS ZOOM | níveis 25, 33, 50, 67, 75, 100, 125, 200 %; folha `⌊595·z⌋` px centrada na janela, topo em y 107 |
+| bichinho `092c` | x = 278 + ⌊k·121/7⌋ no nível k; fora dos níveis, no meio dos dois vizinhos |
+| Visão normal | 100 %, folhas empilhadas |
+| Duas páginas | pares encostados, centrados, no zoom atual limitado a 630 px por par; 8 px entre pares |
+| Todas as páginas | o maior zoom em que todas cabem (2 folhas: 44 %, x 58..581) |
+| Lado a lado | uma fileira, 8 px em cima e embaixo, 12 px dos lados (2 folhas: 42 %, 70..569 × 115..448) |
+
+Cada folha tem moldura preta de 1 px e as empilhadas encostam (sem vão:
+`PAGE_GAP` = 0). Fora da Visão normal as folhas são desenhadas em tamanho
+real e reduzidas pela média (ampliadas repetindo pixels); o clique na folha
+reduzida põe o cursor no ponto certo (`to_page` desfaz o zoom).
 
 | ferramenta | botões (figura/máscara em (x,y) → balão) |
 |---|---|
@@ -241,9 +292,14 @@ em (33,464) e "Escritório"), 194..445 (nome do documento, "Documento Novo"
 sem nome; clicar vira campo de nome, som `0232`, balão `0faa[14]`) e
 471..610 (ícone de páginas `0c37`/`0c39` em (475,463), "Pág. N" = folha no
 meio da vista, setas ▲ `02db` (543,463), ▼ `02df` (560,463), ◀ `0819`
-(577,463), ▶ `0871` (594,463)). As setas rolam a vista meia altura
-(`ARROW_STEP`, provisório) com os sons `02bc`..`02bf`; a primeira seta usada
-abre `0faa[11]`. "Todas as páginas" é tarefa do Visor.
+(577,463), ▶ `0871` (594,463)). As setas rolam a vista 36 px
+(`ARROW_STEP`, medido em `w_page/t0`→`t1`) com os sons `02bc`..`02bf`; a
+primeira seta usada abre `0faa[11]`. O ícone de páginas abre a **visão
+geral**: todas as folhas como em "Todas as páginas", fundo roxo
+(208,22,222), o resto da tela pontilhado de cinza e o balão `0faa[12]`; a
+barra de ferramentas não responde e clicar numa folha volta à vista de
+antes mostrando o alto dela (som `0309`; `allp`, `allp2`). O som de abrir
+tem o tamanho de `0209`/`0282`/`030a` (ambíguo; o port toca `0282`).
 
 ## Página (Visão normal)
 
@@ -251,8 +307,11 @@ A folha tem o tamanho do documento em pontos (595 × 792 no documento novo)
 e, na Visão normal, 1 ponto = 1 pixel: a folha começa em (21,107) na tela
 (`editor::ORIGIN`), e o texto, com as margens de 72 pontos, em (93,179),
 como no original (`office.md` §2, medido em `w26_01_typed`). A vista
-(`PAGE`, x 23..615, y 108..456) mostra a pilha de folhas com `PAGE_GAP` (8,
-não medido) entre elas, fundo cinza 140; o ponto de inserção é uma linha
+(`PAGE`, x 23..615, y 108..456) mostra a pilha de folhas encostadas
+(`PAGE_GAP` = 0, medido no Visor; uma linha preta em cima e embaixo de cada
+folha as separa), fundo cinza 140. No original a folha começa em x 22 (a
+moldura preta da esquerda fica em 22 e a da direita em 616); o port segue 1
+px à esquerda. O ponto de inserção é uma linha
 preta de 1 px da altura da linha (`office_95_desfazer`). Ao editar ou mover
 o cursor, a vista rola o mínimo para ele aparecer.
 
@@ -262,8 +321,10 @@ metarquivo (`PICT`; encolhidos como o `BLACKONWHITE` do GDI, o branco
 transparente); as figuras do Maçã de pé na base com 4 pontos de cada lado;
 o marca-texto na altura da linha; a seleção em vídeo inverso; os Splots
 (`SPLE`) pelos glifos do arquivo, esticados na moldura
-(`writer::splot::draw`, `docs/formats/sple.md`). Ainda não desenhados:
-bordas e fundos de página (W14/C7/C8) e os efeitos animados (C4).
+(`writer::splot::draw`, `docs/formats/sple.md`). Borda e fundo da folha
+(`DOP 0x58`/`0x56`) são desenhados uma vez em tamanho real
+(`borders::render_page`) e guardados até mudarem. Ainda não desenhados:
+os efeitos animados (C4).
 
 ## Saída, salvar, NOVO, sair (W21)
 
@@ -424,7 +485,8 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.to_page(x, y)` | ponto da tela → `PagePoint { page, x, y }` da folha (`None` fora das folhas) |
 | `ed.to_screen(page, x, y)` / `ed.page_origin(page)` | folha → tela |
 | `ed.object_at(x, y)` | objeto sob o ponto da tela (o de cima) |
-| `ed.scroll`, `ed.scroll_by(dx, dy)` | rolagem da vista (setas, Visor) |
+| `ed.scroll`, `ed.scroll_by(dx, dy)` | rolagem da vista em pixels da tela (setas, Visor) |
+| `ed.view`, `ed.set_view(v)`, `ed.sheets()`, `ed.scale()` | vista do Visor (`view::View`: arrumação, zoom, visão geral), onde cada folha cai e os pixels por ponto |
 | `ed.page()`, `ed.show_page(n)` | folha no meio da vista; rolar até o alto da folha `n` |
 | `ed.follow_caret()` | rolar o mínimo para o cursor aparecer |
 | `ed.draw_sheet(f, a, page, x, y, seleção)` | desenha a folha inteira em tamanho real em qualquer quadro (Visor: reduza o quadro; Imprimir: monte a folha) |

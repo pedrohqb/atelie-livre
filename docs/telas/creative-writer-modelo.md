@@ -89,7 +89,8 @@ página".
 | `page_number_rect` | `0x51`–`0x54` | (topo, esq., base, dir.); `None` = centrado no pé, 64 × 15 (`page_number_box`; confere com `S4.MAX` "Largo": (580, 364, 595, 428)) |
 | `border`, `border_alt` | `0x58`, `0x5a` | `BDR n`; o original grava os dois iguais (`set_border`) |
 | `border_inner`, `border_outer` | `0x47`, `0x48` | larguras da borda |
-| `background` | **?** | rolo FUNDO; o sprm não aparece em nenhum exemplo — a conversão o ignora até ser medido (W26) |
+| `background` | `0x56` | `IBGF n` (rolo FUNDO); a gravação põe, troca ou tira o sprm no lugar dele entre os sprms sem campo |
+| `obstacles` | molduras `FRAM` tipo 6, página `0xffff` | as molduras do fundo que desviam o texto (a diagramação as contorna como objetos: `0x29` 1 = texto só à esquerda, 2 = só à direita, 3 = nada ao lado); voltam ao arquivo depois das outras molduras |
 
 A folha "carta 612 × 792" do plano: o original grava 595 de largura (e 792 ×
 595 em "Largo"); o modelo segue o arquivo. Na Visão normal 1 pt ≈ 1 pixel: a

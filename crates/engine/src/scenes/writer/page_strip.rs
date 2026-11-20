@@ -432,7 +432,15 @@ pub fn apply_background(ed: &mut Editor, a: &Assets, id: u16) -> Option<()> {
         ibgf.pict = chunk(b"PICT", pid).map(|p| keep_chunk(ed, to_owned(p), true));
     }
     if let Some(fid) = ibgf.fram {
-        ibgf.fram = chunk(b"FRAM", fid).map(|p| keep_chunk(ed, to_owned(p), false));
+        // `FRAM 0` é o das molduras do próprio documento: a cópia do fundo
+        // vai num número a partir de 1 (o original grava `FRAM 1`)
+        ibgf.fram = chunk(b"FRAM", fid).map(|p| {
+            let mut c = to_owned(p);
+            c.id = ed.extra.free_id(*b"FRAM").max(1);
+            let id = c.id;
+            ed.extra.objects.push(c);
+            id
+        });
     }
     let mut copy = to_owned(ic);
     for p in copy.parts.iter_mut().filter(|p| p.tag.0 == *b"IBGF") {
@@ -871,5 +879,73 @@ mod tests {
             (s.roll(), s.armed(), ed.doc().dop.border),
             (None, None, None)
         );
+    }
+
+    #[test]
+    fn real_assets_background_and_border_survive_save_and_open() {
+        let Some(a) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut ed = Editor::blank(Some(dir.path().to_path_buf()), &a);
+        ed.type_text("Era uma vez");
+        let mut s = PageStrip::default();
+        // rolo FUNDO: Nada + 12 fundos de folha Alta; o 1º é o Scroll
+        press(&mut s, &mut ed, &a, 100, 75);
+        let cat = s.catalog(&a);
+        assert_eq!(cat.items(Roll::Background, false).len(), 12);
+        assert!(
+            cat.items(Roll::Background, false)[0]
+                .name
+                .ends_with("Scroll")
+        );
+        assert!(cat.items(Roll::Border(0), false)[0].name.ends_with("Paw"));
+        let (x, y) = center(Roll::Background.row_rect(1));
+        let fx = press(&mut s, &mut ed, &a, x, y);
+        assert!(fx.contains(&snd(SND_PICK)));
+        assert!(s.armed().is_some());
+        assert_eq!(
+            s.cursor(&ed, 40, 300),
+            Some(cursors::writer(cursors::ROLLER))
+        );
+        // clique no meio do texto não aplica; na margem, sim
+        press(&mut s, &mut ed, &a, 300, 200);
+        assert!(ed.doc().dop.background.is_none());
+        let fx = press(&mut s, &mut ed, &a, 40, 300);
+        assert!(fx.contains(&snd(SND_APPLY)));
+        assert!(ed.doc().dop.background.is_some());
+        assert_eq!(ed.doc().dop.obstacles.len(), 4);
+        // o texto passa para baixo do rolo de cima do pergaminho
+        assert!(ed.layout().lines[0].top > 120);
+        // borda Paw (rolo 1)
+        press(&mut s, &mut ed, &a, 515, 70);
+        press(&mut s, &mut ed, &a, 150, 75);
+        let (x, y) = center(Roll::Border(0).row_rect(1));
+        press(&mut s, &mut ed, &a, x, y);
+        press(&mut s, &mut ed, &a, 40, 300);
+        assert!(ed.doc().dop.border.is_some());
+        assert_eq!(ed.doc().dop.border_inner, Some(33));
+        // a folha ganha tinta na margem (borda e fundo)
+        let f = ed.render_page(&a, 0);
+        let inked = (0..60).filter(|&y| f.pixel(30, y * 10)[0] < 128).count();
+        assert!(inked > 0);
+        // gravar e abrir de novo
+        let path = ed.save_as("fundo", "teste", false).unwrap();
+        let mut back = Editor::blank(Some(dir.path().to_path_buf()), &a);
+        back.open(&path).unwrap();
+        let d = &back.doc().dop;
+        assert_eq!(d.obstacles.len(), 4);
+        assert!(back.extra.object(d.background.unwrap()).is_some());
+        assert!(back.extra.object(d.border.unwrap()).is_some());
+        assert_eq!(back.render_page(&a, 0).pixels(), f.pixels());
+        // Nada tira o fundo (desfazível)
+        press(&mut s, &mut back, &a, 515, 70);
+        press(&mut s, &mut back, &a, 100, 75);
+        let (x, y) = center(Roll::Background.row_rect(0));
+        press(&mut s, &mut back, &a, x, y);
+        assert!(back.doc().dop.background.is_none());
+        assert!(back.doc().dop.obstacles.is_empty());
+        assert!(back.undo_step());
+        assert!(back.doc().dop.background.is_some());
     }
 }
