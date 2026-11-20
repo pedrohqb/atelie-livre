@@ -270,3 +270,30 @@ fn export_for_original() {
         .unwrap();
     eprintln!("{}", p.display());
 }
+
+/// Sons em palavras (`SNDT`): cada elemento marca a palavra que começa no
+/// seu cp; abrir e regravar devolve a mesma tabela (com os 4 bytes sem uso).
+#[test]
+fn word_sounds_land_on_their_words() {
+    let Some(data) = data_dir() else { return };
+    let dir = data.join("SHARED").join("USERS").join("MAX");
+    for (file, want) in [("SAMP6.MAX", 2), ("SAMP14.MAX", 0)] {
+        let Ok(bytes) = std::fs::read(dir.join(file)) else {
+            continue;
+        };
+        let m = max::read(&bytes).unwrap();
+        let (doc, extra) = from_max(&m);
+        let words = doc.word_sounds();
+        let text: Vec<String> = words
+            .iter()
+            .map(|(r, _, s)| format!("{:?}={}", doc.text_range(*r), s.id))
+            .collect();
+        eprintln!("{file}: {:?} -> {text:?}", m.word_sounds);
+        if want > 0 {
+            assert_eq!(words.len(), want, "{file}");
+        }
+        assert_eq!(words.len(), m.word_sounds.len(), "{file}");
+        let back = to_max(&doc, &extra, &[], None);
+        assert_eq!(back.word_sounds, m.word_sounds, "{file}");
+    }
+}

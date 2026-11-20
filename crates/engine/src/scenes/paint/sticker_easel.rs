@@ -665,7 +665,7 @@ fn band_v(f: &mut Frame, x: i32, y: i32, w: i32, h: i32, outer: bool) {
 }
 
 /// Tira a cor de um trecho da tela (ferramentas desligadas).
-pub(super) fn gray_region(f: &mut Frame, r: Rect) {
+pub(crate) fn gray_region(f: &mut Frame, r: Rect) {
     for y in r.1.max(0)..(r.1 + r.3).min(f.height() as i32) {
         for x in r.0.max(0)..(r.0 + r.2).min(f.width() as i32) {
             let p = f.pixel(x as u32, y as u32);

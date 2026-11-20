@@ -238,8 +238,14 @@ n × cb             elementos
   (quebra antes de "GGGGGG"): `02 00 02 00 ff 00 | 0 42 86 | 0000 0000`.
 - **`SNDT`** (sons em palavras): elemento de 10 bytes = 4 bytes (sem uso
   aparente; lixo de memória num exemplo) + `SND ` + `u16` número do chunk.
-  `SAMP6`: cps 0, 134, 140 com `SND 62` e `SND 803` (o 2º cobre "Mães.\r").
-  A semântica exata do 1º elemento (cp 0) ainda não foi conferida no original.
+  `SAMP6`: cps 0, 134, 140 com `SND 62` e `SND 803`. Cada elemento marca a
+  "palavra" que **começa** no seu cp: `SND 62` vai para as duas linhas
+  vazias do começo (casas seguidas de `\r`), `SND 803` para "Mães."; o fim
+  de cada elemento é só o começo do seguinte, e o do último é o tamanho do
+  texto menos 1 (antes do `\r` final do documento; `SAMP6` tem 141 cps).
+  No original, a palavra com som aparece emoldurada de preto. O port lê e
+  regrava assim (`writer::convert`, `CharProps::sound`), mantendo os 4
+  bytes sem uso de cada elemento.
 
 ## FONT — tabela de fontes
 

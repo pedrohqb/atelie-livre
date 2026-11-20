@@ -223,6 +223,10 @@ pub struct CharProps {
     pub underline: bool,
     /// `0x0b`.
     pub effect: Option<Effect>,
+    /// Som da palavra (Seleciona-sons; tabela `SNDT` do `.MAX`): todos os
+    /// itens de uma [`Document::sound_run`] levam o mesmo. Não é sprm: não
+    /// entra nas páginas `FDPC`, e o texto digitado nunca o herda.
+    pub sound: Option<ObjRef>,
 }
 
 impl CharProps {
@@ -231,9 +235,17 @@ impl CharProps {
         self.color.unwrap_or(BLACK)
     }
 
-    /// Sem nenhum sprm.
+    /// Sem nenhum sprm (o som da palavra não é sprm).
     pub fn is_default(&self) -> bool {
-        *self == CharProps::default()
+        self.without_sound() == CharProps::default()
+    }
+
+    /// As mesmas propriedades sem o som da palavra.
+    pub fn without_sound(self) -> CharProps {
+        CharProps {
+            sound: None,
+            ..self
+        }
     }
 }
 
@@ -1171,7 +1183,8 @@ impl Document {
     }
 
     /// Propriedades para o que for digitado em `p`: as do caractere antes,
-    /// senão as do seguinte, senão as do `\r` do parágrafo.
+    /// senão as do seguinte, senão as do `\r` do parágrafo — sem o som da
+    /// palavra (o que se digita não ganha som).
     pub fn props_at(&self, p: Pos) -> CharProps {
         let p = self.clamp(p);
         let par = &self.paras[p.para];
@@ -1183,6 +1196,7 @@ impl Document {
             .or_else(|| par.items[p.index..].iter().find_map(Item::props))
             .copied()
             .unwrap_or(par.mark)
+            .without_sound()
     }
 
     /// Insere o texto em `p`; `\n` (ou `\r`) quebra o parágrafo e outros
@@ -1221,7 +1235,7 @@ impl Document {
         // o `\r` do primeiro pedaço fica com o estilo do último caractere
         let mark = par.mark;
         if let Some(last) = par.items.iter().rev().find_map(Item::props) {
-            par.mark = *last;
+            par.mark = last.without_sound();
         }
         let next = Paragraph {
             props,
@@ -1418,6 +1432,141 @@ impl Document {
             .is_some()
     }
 
+    // --- sons em palavras -------------------------------------------------
+    //
+    // O texto, para os sons, é uma fila de "casas": cada item e o `\r` de
+    // cada parágrafo (a casa `Pos(k, len)`). Uma palavra com som é uma
+    // `sound_run`: a sequência máxima de casas da mesma classe — letras
+    // (inclusive pontuação colada e figuras) ou espaços e `\r`. Assim é no
+    // original: o som posto numa linha vazia toca nas linhas vazias
+    // seguidas, e não na palavra depois delas.
+
+    /// A casa depois de `p` (o `\r` leva ao começo do parágrafo seguinte).
+    fn next_cell(&self, p: Pos) -> Option<Pos> {
+        if p.index < self.paras[p.para].len() {
+            Some(Pos::new(p.para, p.index + 1))
+        } else {
+            (p.para + 1 < self.paras.len()).then(|| Pos::new(p.para + 1, 0))
+        }
+    }
+
+    /// A casa em `p` é de letras (`true`) ou de espaço/`\r` (`false`).
+    fn cell_is_word(&self, p: Pos) -> bool {
+        self.item(p).is_some_and(|i| i.is_word())
+    }
+
+    fn cell_sound(&self, p: Pos) -> Option<ObjRef> {
+        let par = &self.paras[p.para];
+        match par.items.get(p.index) {
+            Some(Item::Char(_, props)) => props.sound,
+            Some(Item::Rebus(_)) => None,
+            None => par.mark.sound,
+        }
+    }
+
+    fn set_cell_sound(&mut self, p: Pos, s: Option<ObjRef>) {
+        let par = &mut self.paras[p.para];
+        match par.items.get_mut(p.index) {
+            Some(Item::Char(_, props)) => props.sound = s,
+            Some(Item::Rebus(_)) => {}
+            None => par.mark.sound = s,
+        }
+    }
+
+    /// Primeira e última casa (inclusive) da "palavra" dos sons em `p`.
+    fn run_cells(&self, p: Pos) -> (Pos, Pos) {
+        let p = self.clamp(p);
+        let word = self.cell_is_word(p);
+        let mut s = p;
+        while let Some(q) = self.prev(s).filter(|&q| self.cell_is_word(q) == word) {
+            s = q;
+        }
+        let mut e = p;
+        while let Some(q) = self.next_cell(e).filter(|&q| self.cell_is_word(q) == word) {
+            e = q;
+        }
+        (s, e)
+    }
+
+    /// Casas de `first` a `last`, inclusive.
+    fn cells(&self, (first, last): (Pos, Pos)) -> Vec<Pos> {
+        let mut v = vec![first];
+        let mut p = first;
+        while p < last {
+            match self.next_cell(p) {
+                Some(q) => {
+                    v.push(q);
+                    p = q;
+                }
+                None => break,
+            }
+        }
+        v
+    }
+
+    /// Intervalo de texto das casas `first..=last` (o `\r` final do
+    /// documento não tem posição depois dele: o intervalo para antes).
+    fn cells_range(&self, (first, last): (Pos, Pos)) -> Range {
+        let end = self
+            .next_cell(last)
+            .unwrap_or_else(|| Pos::new(last.para, self.paras[last.para].len()));
+        Range::new(first, end.max(first))
+    }
+
+    /// A "palavra" dos sons em `p` (a casa em `p`; `p` no fim de um
+    /// parágrafo é o `\r` dele).
+    pub fn sound_run(&self, p: Pos) -> Range {
+        self.cells_range(self.run_cells(p))
+    }
+
+    /// O som da palavra em `p` (o da primeira casa com som dela) e a palavra.
+    pub fn word_sound(&self, p: Pos) -> Option<(Range, ObjRef)> {
+        let run = self.run_cells(p);
+        let s = self
+            .cells(run)
+            .into_iter()
+            .find_map(|q| self.cell_sound(q))?;
+        Some((self.cells_range(run), s))
+    }
+
+    /// Põe (ou tira, com `None`) o som da palavra em `p`; devolve a palavra.
+    pub fn set_word_sound(&mut self, p: Pos, s: Option<ObjRef>) -> Range {
+        let run = self.run_cells(p);
+        for q in self.cells(run) {
+            self.set_cell_sound(q, s);
+        }
+        self.cells_range(run)
+    }
+
+    /// Palavras com som, na ordem do texto: a palavra, a primeira casa com
+    /// som (a âncora gravada no `SNDT`) e o som.
+    pub fn word_sounds(&self) -> Vec<(Range, Pos, ObjRef)> {
+        let mut out = Vec::new();
+        let mut p = Some(self.start());
+        while let Some(at) = p {
+            let run = self.run_cells(at);
+            if let Some((q, s)) = self
+                .cells(run)
+                .into_iter()
+                .find_map(|q| self.cell_sound(q).map(|s| (q, s)))
+            {
+                out.push((self.cells_range(run), q, s));
+            }
+            p = self.next_cell(run.1);
+        }
+        out
+    }
+
+    /// Algum som em palavra.
+    pub fn has_word_sounds(&self) -> bool {
+        self.paras.iter().any(|p| {
+            p.mark.sound.is_some()
+                || p.items
+                    .iter()
+                    .any(|i| i.props().is_some_and(|c| c.sound.is_some()))
+        })
+    }
+
     /// Páginas que os objetos exigem (o maior número de página + 1).
     pub fn object_pages(&self) -> usize {
         self.objects
@@ -1442,6 +1591,37 @@ mod tests {
 
     fn doc(text: &str) -> Document {
         Document::from_text(text, CharProps::default())
+    }
+
+    #[test]
+    fn word_sound_covers_the_word_and_is_not_typed() {
+        let mut d = doc("um gato preto.\n\n\nfim");
+        let snd = ObjRef::snd(62);
+        // no meio de "gato": a palavra inteira, sem o espaço
+        let r = d.set_word_sound(Pos::new(0, 4), Some(snd));
+        assert_eq!(d.text_range(r), "gato");
+        assert_eq!(d.word_sound(Pos::new(0, 3)).map(|(_, s)| s), Some(snd));
+        assert_eq!(d.word_sound(Pos::new(0, 2)), None);
+        assert!(d.has_word_sounds());
+        // a pontuação colada é da palavra
+        let r = d.set_word_sound(Pos::new(0, 10), Some(ObjRef::snd(803)));
+        assert_eq!(d.text_range(r), "preto.");
+        // linhas vazias seguidas formam uma "palavra"
+        let r = d.set_word_sound(Pos::new(1, 0), Some(ObjRef::snd(5)));
+        assert_eq!(r, Range::new(Pos::new(0, 14), Pos::new(3, 0)));
+        let all: Vec<u16> = d.word_sounds().iter().map(|w| w.2.id).collect();
+        assert_eq!(all, vec![62, 803, 5]);
+        // o que se digita colado não ganha som, mas o texto em volta sim
+        assert_eq!(d.props_at(Pos::new(0, 5)).sound, None);
+        d.set_word_sound(Pos::new(0, 4), None);
+        assert_eq!(d.word_sound(Pos::new(0, 4)), None);
+        assert!(
+            CharProps {
+                sound: Some(snd),
+                ..CharProps::default()
+            }
+            .is_default()
+        );
     }
 
     #[test]

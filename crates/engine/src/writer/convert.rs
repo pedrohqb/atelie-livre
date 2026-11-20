@@ -125,6 +125,7 @@ fn char_props(p: &max::CharProps) -> CharProps {
         italic: p.italic,
         underline: p.underline,
         effect: p.effect.map(|e| Effect::from_code(e.code())),
+        sound: None,
     }
 }
 
@@ -378,12 +379,18 @@ pub fn from_max(m: &max::Document) -> (Document, MaxExtra) {
             None => frames.push(f.clone()),
         }
     }
-    let doc = Document {
+    let mut doc = Document {
         paras,
         objects,
         dop,
         fonts,
     };
+    // sons em palavras: cada elemento do `SNDT` marca a palavra que começa
+    // no seu cp (o fim gravado é só o começo do seguinte)
+    for w in &m.word_sounds {
+        let at = pos_of(&doc, w.start);
+        doc.set_word_sound(at, Some(to_ref(w.sound)));
+    }
     let extra = MaxExtra {
         objects: m.objects.clone(),
         word_sounds: m.word_sounds.clone(),
@@ -511,18 +518,47 @@ pub fn to_max(
         pages,
         dop: max_dop(&doc.dop, &extra.dop_extra),
         frames,
-        word_sounds: extra
-            .word_sounds
-            .iter()
-            .filter(|w| w.end <= len)
-            .copied()
-            .collect(),
+        word_sounds: word_sounds(doc, extra, len),
         objects: extra.objects.clone(),
         selection,
         printer: extra.printer.clone(),
         thumbnail: extra.thumbnail.clone(),
         add: extra.add.clone(),
     }
+}
+
+/// Tabela `SNDT`: um elemento por palavra com som, no cp da primeira casa
+/// com som, até o começo do seguinte; o último vai até antes do `\r` final
+/// do documento (como o original grava: `SAMP6`, 141 cps, termina em 140). Os 4 bytes sem uso voltam como vieram; um som sem
+/// cópia no documento (colado de outro) fica de fora.
+fn word_sounds(doc: &Document, extra: &MaxExtra, len: u32) -> Vec<max::WordSound> {
+    let anchors: Vec<(u32, ObjRef)> = doc
+        .word_sounds()
+        .into_iter()
+        .filter(|(_, _, s)| extra.object(*s).is_some())
+        .map(|(_, at, s)| (cp_of(doc, at).min(len), s))
+        .collect();
+    anchors
+        .iter()
+        .enumerate()
+        .map(|(k, &(start, s))| {
+            let sound = from_ref(s);
+            let reserved = extra
+                .word_sounds
+                .iter()
+                .find(|w| w.start == start && w.sound == sound)
+                .map_or([0; 4], |w| w.reserved);
+            max::WordSound {
+                start,
+                end: anchors
+                    .get(k + 1)
+                    .map_or(len.saturating_sub(1), |a| a.0)
+                    .max(start),
+                sound,
+                reserved,
+            }
+        })
+        .collect()
 }
 
 /// Cor `#rrggbb` de uma `MacColor` (para registros e testes).

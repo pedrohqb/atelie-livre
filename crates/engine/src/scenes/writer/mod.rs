@@ -931,8 +931,8 @@ impl Writer {
             return;
         }
         if self.mczee.wand() && inside(PAGE, x, y) {
-            // W11: tocar o som da palavra ou do adesivo
-            fx.push(Effect::Log("Varinha Mágica: nenhum som aqui".into()));
+            // tocar o som da palavra ou do objeto
+            fx.extend(sounds::wand_sound(&self.ed, x, y, a));
             return;
         }
         let tool = self.tool;
@@ -1075,13 +1075,14 @@ impl Scene for Writer {
                     alt: false,
                 } => self.key(key, ctrl, &mut fx, assets),
                 Input::Text(ref t) => {
+                    let tool = self.tool;
                     if let Some((r, _)) = self.rename.as_mut() {
                         r.type_text(t);
-                    } else if self.dialog.is_none() && !self.ctrl {
-                        let tool = self.tool;
-                        if !self.with_tool(tool, &mut fx, assets, |w, ed, cx| w.text(ed, cx, t)) {
-                            self.ed.type_text(t);
-                        }
+                    } else if !self.with_tool(tool, &mut fx, assets, |w, ed, cx| w.text(ed, cx, t))
+                        && self.dialog.is_none()
+                        && !self.ctrl
+                    {
+                        self.ed.type_text(t);
                     }
                 }
                 Input::Shift(on) => self.shift = on,
@@ -1834,11 +1835,13 @@ mod tests {
         // de novo na mesma: som de reabrir o balão
         let fx = w.update(&[tool(ToolId::Word)], 0.0, &a);
         assert_eq!(sounds(&fx), vec![SND_TOOL_AGAIN]);
-        // botão de faixa ainda sem função: som de opção e registro
+        // o Gravador dos Sons abre (som 0224) e toma os cliques; Esc fecha
         w.update(&[tool(ToolId::Sounds)], 0.0, &a);
         let fx = w.update(&[click(470, 70)], 0.0, &a);
-        assert!(logs(&fx).contains("Gravador"));
-        assert_eq!(sounds(&fx), vec![tools::SND_OPTION]);
+        assert_eq!(sounds(&fx), vec![0x0224]);
+        assert!(w.tools.get(ToolId::Sounds).modal());
+        w.update(&[key(Key::Escape)], 0.0, &a);
+        assert!(!w.tools.get(ToolId::Sounds).modal());
         // o interruptor troca a página da faixa da Preparação da página
         w.update(&[tool(ToolId::Page)], 0.0, &a);
         let fx = w.update(&[click(515, 70), click(150, 75)], 0.0, &a);
@@ -2186,6 +2189,12 @@ mod tests {
         let c = w.tools().stickers.film().cell(0);
         w.update(&[click(c.0 + 5, c.1 + 5)], 0.0, &a);
         assert!(!w.tools().stickers.film_open());
+        // na mão: o clique na folha cola (centrado no clique)
+        assert!(w.tools().stickers.held().is_some());
+        let ed = w.editor();
+        let caret = ed.layout().caret(ed.sel.caret);
+        let (x, y) = ed.to_screen(caret.page, caret.x, caret.top);
+        w.update(&[click(x, y)], 0.0, &a);
         let o = w.doc().objects[0].clone();
         assert!(o.width != 32 || o.height != 32);
         assert!(o.outline.is_some());

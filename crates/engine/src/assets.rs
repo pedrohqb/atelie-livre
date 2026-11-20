@@ -50,6 +50,10 @@ pub enum SoundRef {
     },
     /// Arquivo `.wav` do usuário (Cachorrinho, Gravador).
     File(PathBuf),
+    /// Som guardado dentro de um documento (chunk `SND ` do `.MAX`),
+    /// registrado com [`Assets::register_wave`]; o número é o resumo do
+    /// conteúdo.
+    Wave(u64),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -531,6 +535,23 @@ impl Assets {
         }
     }
 
+    /// Registra um som que vem dentro de um documento (WAVE completo) e
+    /// devolve a referência para tocá-lo; `None` se não decodifica.
+    pub fn register_wave(&self, data: &[u8]) -> Option<SoundRef> {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        data.hash(&mut h);
+        let r = SoundRef::Wave(h.finish());
+        let known = self.sounds.borrow().get(&r).is_some_and(|s| s.is_some());
+        if !known {
+            let pcm = wave::decode(data).ok()?;
+            self.sounds
+                .borrow_mut()
+                .insert(r.clone(), Some(Rc::new(pcm)));
+        }
+        Some(r)
+    }
+
     pub fn sound(&self, r: &SoundRef) -> Option<Rc<Pcm>> {
         if let Some(s) = self.sounds.borrow().get(r) {
             return s.clone();
@@ -566,6 +587,7 @@ impl Assets {
                 let data = std::fs::read(path).map_err(|e| e.to_string())?;
                 return wave::decode(&data).map_err(|e| e.to_string());
             }
+            SoundRef::Wave(_) => return Err("som de documento não registrado".into()),
         };
         wave::decode(data).map_err(|e| e.to_string())
     }

@@ -54,9 +54,9 @@ Cada arquivo de ferramenta define uma `struct` com `Default` e implementa
 | `motion(ed, cx, x, y)` | mouse movido (para arrastos: guarde o estado no `press`) |
 | `release(ed, cx, x, y)` | botão solto |
 | `key(ed, cx, key, ctrl) -> bool` | tecla; `false` deixa a tecla ir para o editor de texto |
-| `text(ed, cx, texto) -> bool` | texto digitado; `false` deixa o texto ir para o documento (campos dos painéis) |
+| `text(ed, cx, texto) -> bool` | texto digitado; `false` deixa o texto ir para o documento (campos dos painéis e o nome do Gravador) |
 | `tick(ed, dt)` | animação |
-| `update(ed, cx, dt)` | passagem do tempo com efeitos (sons, avisos): trabalhos que terminam sozinhos, como a impressão |
+| `update(ed, cx, dt)` | passagem do tempo com efeitos (sons, avisos): trabalhos que terminam sozinhos, como a impressão; o tempo do Gravador |
 | `draw_strip(ed, f, a)` | faixa de opções (y 56..104), sobre o fundo cinza-claro |
 | `draw_front(ed, f, a)` | por cima da página (tiras de filme, listas, painéis) |
 | `cursor(ed, x, y)` | cursor do mouse; `None` = padrão (texto na página, mão no resto) |
@@ -126,8 +126,7 @@ McZee no nicho `0235`/`0237` (536,47); porta `023d`/`023f` (581,16).
 
 Estado atual: a Palavra (as duas páginas, com pincel arrastado,
 Aplicador e Ponto de inserção; ver `creative-writer-palavra.md`), os Adesivos
-(rolos e tira de filme; o adesivo vira objeto solto no ponto de inserção),
-o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos), o botão FORMA e os
+e os Sons (seções abaixo), o Ovo (DESFAZER/REFAZER e a fila de até 20 ovos), o botão FORMA e os
 Re-movedores funcionam (abaixo); as outras faixas são só desenhadas, com o interruptor trocando de
 página na Preparação da página e no Visor. Botão sem função: som `0233`,
 balão da opção e "ainda não disponível" no registro.
@@ -136,8 +135,8 @@ balão da opção e "ainda não disponível" no registro.
 |---|---|
 | Palavra pág. 1 | Seleciona-letras `0275`/`0277` (24,61) → `0fa0[3]`; Dimensiona-palavras `0811` (89,61) → `[4]`; Seleciona-cores `027b` (154,61) → `[5]`; Seleciona-estilos `0279` (219,61) → `[7]`; Posicionador `0bc3` (284,61) → `[8]`; Aplicador `080b`/`080d` (349,58) → `[9]`; Ponto de inserção `0831`/`0833` (398,61) → `[10]`; FORMA `0269`/`026b` (443,57) → `[11]`; interruptor `0229`/`022b` (508,59) → `[25]` |
 | Palavra pág. 2 | Iluminador `0863` (24,61) → `[12]`; Efeitos especiais `080f` (89,61) → `[13]`; Mix de estilos `087d` (154,61) → `[14]`; Estilos de parágrafo `0815` (219,61) → `[15]`; Espaçamento `08d5` (284,61) → `[16]`; Recuos `0817` (349,61) → `[17]`; Aplicador (414,58); Ponto de inserção (463,61); interruptor (508,59) |
-| Adesivos | tampas `0245`, `0239`; rolos `0249`/`024b`; Cachorrinho `025d`/`0263` (414,62) → `0fa1[11]`; Cavalete `0881`/`0883` (459,57) → `[6]`; setas `03b3` (511,56), `03b7` (511,86) sobre `08d9`/`08dd` (510,56); rolo → `[2]` |
-| Sons | teatros `024d`/`024f` (20,59), (133,59), (246,59) → `0fa2[2]`; Cachorrinho `025d` (405,62) → `[9]`; Gravador `0265`/`0267` (454,57) → `[5]`; setas |
+| Adesivos | tampas `0245` (16,57, os primeiros 14 px) e `0239` (os últimos 12 px, logo depois do último rolo); rolos `0249`/`024b` de x 30, passo 52; Cachorrinho `025d`/`0263` (414,62) → `0fa1[11]`; Cavalete `0881`/`0883` (459,57) → `[6]`; setas `03b3` (511,56), `03b7` (511,86) sobre `08d9`/`08dd` (510,56); rolo → `[2]` |
+| Sons | teatros `024d`/`024f` (20,59), (133,59), (246,59) → `0fa2[2]`; volume: trilho `0255`/`0257` (368,60), cursor `0259`/`025b` em x 364 → `[4]`; Cachorrinho `025d`/`0263` (405,62) → `[9]`; Gravador `0265`/`0267` (454,57) → `[5]`; setas sobre `08d9` |
 | Página pág. 1 | Fundo `0821`/`0823` (38,57) → `0fa5[2]`; Cria-colunas `086b` (188,61) → `[4]`; Alto ou largo `08c3` (267,61) → `[6]`; Margens `0869` (346,61) → `[8]`; Nº de página `0875` (425,61) → `[9]`; interruptor → `[1]` |
 | Página pág. 2 | Borda `0953`/`0955` (104,57), `0957`/`0959` (212,57), `0825`/`0827` (306,57) → `0fa5[3]` |
 | Corretor | PULAR PARA `08cd`/`08cf` (59,59) → `0fa4[1]`; CORRIGIR `082d`/`082f` (204,59) → `[4]`; TROCAR `0835`/`0837` (344,57) → `[5]`; Embaralhador `08b6`/`08bb` (449,56) → `[9]` |
@@ -190,6 +189,50 @@ Writer (o que veio do Caderno tem preferência) por
 `ClipRequest::PasteAt`. Nas três primeiras vezes que a ferramenta é
 escolhida o McZee abre `0fa3[0]` mesmo desligado. Documento codificado pelo
 Agente secreto (que não deixa recortar, `0805[13]`) fica para o W13.
+
+### Adesivos (`stickers.rs`)
+
+Os rolos são os das quatro bibliotecas de clip-art (`MAXMAG10.ART`,
+`MAX100.ART`, `MAG100.ART`, `C-MAG100.ART`) em ordem de número: 29 rolos,
+7 por página (o original mostra 5 páginas, a última com dois rolos de
+ícone igual ao do rolo 28; o port mostra um). Rolo → tira de filme (x 40 +
+52·casa, y 98..441, 8 casas de 34 px com cantos arredondados, passo 41,
+setinhas `02db`/`02df` em y 428), som `0233`, balão `0fa1[2]`. Adesivo →
+na mão (`022d`, `0fa1[3]`; a miniatura segue o ponteiro na página). Clique
+na folha → objeto solto **centrado no clique** (`021c`, `0fa1[4]`), com o
+`TWPB` calculado; clique fora da folha larga o adesivo. Com a ferramenta,
+arrastar um objeto o move (`022e`, uma ação do Ovo) e clicar nele sem
+arrastar abre o Cavalete com a figura (o OK troca a figura no mesmo lugar,
+numa ação). Cachorrinho (`0226`+`02f1`): o diálogo "achar figuras" do Fine
+Artist (`paint::find_pictures::FindPictures`, rótulo "Autor") com a pasta
+do usuário e, fora de Imaginópolis, os desenhos de exemplo; a figura
+escolhida vai para a mão. Cavalete (`0224`+`0267`, `scenes::writer_easel`,
+com o balão próprio `0fa1[6]` e as barras apagadas atrás): o OK (`02ee`)
+põe o desenho, recortado ao que foi pintado, na folha à vista, no canto da
+área de texto mais o lugar onde foi desenhado. Colar e arrastar não rolam
+a vista.
+
+Falta: o original também lista no Cachorrinho as figuras de dentro dos
+documentos (ANA › Escritório › "Quadro Novo").
+
+### Sons (`sounds.rs`)
+
+A faixa é a ferramenta da pintura (`scenes::sounds::Sounds`) com a
+`Layout` do Escritório (`writer::sounds::LAYOUT`): a lista de nomes cai
+debaixo da faixa clicada (x 30 + 112·faixa, y 95, linhas de 94×22 com
+passo 21, até 17 nomes e uma linha branca de 16 px com as setinhas
+`02db`/`02df`). Escolher um nome toca o som e o põe na mão (`0fa2[3]`);
+o clique numa palavra (ou linhas vazias seguidas), adesivo ou palavra com
+forma associa o som (toca, `0fa2[8]`, uma ação do Ovo): o documento ganha
+a cópia `SND n` (número da biblioteca quando livre) e a palavra guarda o
+som em `CharProps::sound` (gravado no `SNDT`), o objeto no `sound`
+(`0x37`). "Sem Som" tira; clicar no espaço entre palavras mantém o som na
+mão; o número de página responde `0805[18]`. Sem nada na mão, clicar numa
+coisa com som a toca, como a Varinha Mágica do McZee. Palavras com som
+ficam emolduradas de preto (1 px, da altura da linha) na vista, não na
+impressão. Cachorrinho e Gravador são os da pintura (`.wav` da pasta do
+usuário e da subpasta `sons`). Os sons de dentro do `.MAX` tocam por
+`Assets::register_wave` (`SoundRef::Wave`).
 
 ## Barra de baixo
 
@@ -397,7 +440,7 @@ ganchos do `ToolStrip` e `&Editor` no desenho e no cursor. O modelo é o de
 | `ed.apply_dop(\|dop\| …)` | Preparação da página (margens, colunas, alto/largo, número, borda) |
 | `ed.add_object(obj, Some(chunk))` | põe um objeto solto, guardando a cópia do conteúdo com um número livre (`obj.object` é reescrito) |
 | `ed.add_sticker(rolo, item, folha, x, y)` | adesivo de clip-art em tamanho natural, com o contorno (`TWPB`) calculado |
-| `ed.insert_sticker(rolo, item)` | o mesmo, no ponto de inserção |
+| `ed.insert_sticker(rolo, item)` | o mesmo, no ponto de inserção (a faixa dos Adesivos cola com o clique, centrado: `stickers::StickersStrip`) |
 | `ed.add_picture(&img, título, folha, x, y)` | imagem própria (Cavalete, Cachorrinho, Caderno) como objeto: `PICT` com `META` (DIB de 24 bits) e `TWPB` |
 | `ed.remove_object(k)` | tira o objeto `k` |
 | `ed.replace_picture(k, &img)` | troca a figura do objeto `k` por uma imagem (o OK do cavalete): `PICT` novo, mesmo lugar e flutuação |
