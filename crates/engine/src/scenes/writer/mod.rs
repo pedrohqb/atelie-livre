@@ -1076,11 +1076,11 @@ impl Scene for Writer {
                     let tool = self.tool;
                     if let Some((r, _)) = self.rename.as_mut() {
                         r.type_text(t);
-                    } else if self.dialog.is_none() && !self.ctrl {
-                        let tool = self.tool;
-                        if !self.with_tool(tool, &mut fx, assets, |w, ed, cx| w.text(ed, cx, t)) {
-                            self.ed.type_text(t);
-                        }
+                    } else if !self.with_tool(tool, &mut fx, assets, |w, ed, cx| w.text(ed, cx, t))
+                        && self.dialog.is_none()
+                        && !self.ctrl
+                    {
+                        self.ed.type_text(t);
                     }
                 }
                 Input::Shift(on) => self.shift = on,
