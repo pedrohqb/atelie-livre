@@ -32,6 +32,7 @@ mod speller;
 mod stickers;
 pub mod tools;
 mod transformers;
+pub mod view;
 mod viewer;
 mod word_lists;
 mod word_strip;
@@ -109,8 +110,14 @@ impl Tools {
 
 /// Setas ▲▼◀▶ da barra de baixo: rolam a vista (sons `02bc`..`02bf`).
 const SND_ARROWS: [u16; 4] = [0x02bc, 0x02bd, 0x02be, 0x02bf];
-/// Quanto cada clique numa seta rola (provisório: não medido).
-pub const ARROW_STEP: i32 = PAGE.3 / 2;
+/// Quanto cada clique numa seta rola (medido: 36 px, `view.rs`).
+pub const ARROW_STEP: i32 = view::ARROW_STEP;
+/// Ícone de páginas da barra de baixo: abre a visão geral (som ao abrir,
+/// ambíguo pelo tamanho com `0209`/`030a`; `0309` ao voltar) com o balão
+/// `0faa[12]` "Para ir até uma destas páginas".
+const SND_OVERVIEW: u16 = 0x0282;
+const SND_OVERVIEW_BACK: u16 = 0x0309;
+const WHAT_OVERVIEW: usize = 12;
 /// "Andando por aí e olhando as páginas", na primeira seta usada.
 const WHAT_PAGES: usize = 11;
 /// "Salvar": o título vira campo de nome (`0faa[14]`, som `0232`).
@@ -941,6 +948,10 @@ impl Writer {
             self.with_tool(tool, fx, a, |t, ed, cx| t.press(ed, cx, x, y));
             return;
         }
+        if self.ed.view.overview {
+            self.overview_click(x, y, fx);
+            return;
+        }
         if let Some(id) = ToolId::at(x, y) {
             self.select(id, fx, a);
             return;
@@ -955,6 +966,14 @@ impl Writer {
         }
         if inside(TITLE_LABEL, x, y) {
             self.start_rename(After::Stay, fx, a);
+            return;
+        }
+        if inside(chrome::PAGES_ICON_RECT, x, y) {
+            fx.push(snd(SND_OVERVIEW));
+            let mut v = self.ed.view;
+            v.overview = true;
+            self.ed.set_view(v);
+            self.mczee.show((WHAT_GENERAL, WHAT_OVERVIEW), false, a);
             return;
         }
         for (k, p) in [
@@ -983,6 +1002,20 @@ impl Writer {
         }
         let shift = self.shift;
         self.ed.press_page(x, y, shift);
+    }
+
+    /// Clique com a visão geral aberta: numa folha, volta à vista de antes
+    /// mostrando o alto dela (`allp2`); fora das folhas, nada.
+    fn overview_click(&mut self, x: i32, y: i32, fx: &mut Vec<Effect>) {
+        let Some(p) = self.ed.to_page(x, y) else {
+            return;
+        };
+        fx.push(snd(SND_OVERVIEW_BACK));
+        self.mczee.close();
+        let mut v = self.ed.view;
+        v.overview = false;
+        self.ed.set_view(v);
+        self.ed.show_page(p.page);
     }
 
     /// Cursor que o ponto `(x, y)` pede.
@@ -1129,6 +1162,9 @@ impl Scene for Writer {
         tool.draw_strip(&self.ed, f, a);
         self.ed.draw_page(f, a);
         chrome::draw_bottom(f, a, &self.ed, self.floor, self.title());
+        if self.ed.view.overview {
+            chrome::dim_outside(f, PAGE);
+        }
         if let Some((r, _)) = &self.rename {
             let (x, y, w, h) = TITLE_LABEL;
             f.rect(x, y, w, h, [255, 255, 255]);
@@ -1564,10 +1600,39 @@ mod tests {
         w.update(&[click(ux, uy), click(ux, uy)], 0.0, &a);
         assert_eq!(w.editor().scroll.1, 0);
         // a primeira seta abre "Andando por aí…" (só com a ajuda e os dados)
-        for _ in 0..10 {
+        for _ in 0..40 {
             w.update(&[click(dx, dy)], 0.0, &a);
         }
         assert_eq!(w.page(), 2);
+    }
+
+    #[test]
+    fn pages_icon_opens_the_overview_and_a_click_goes_to_the_page() {
+        let (_d, a) = empty_assets();
+        let mut w = Writer::new_blank(None, &a);
+        let mut inputs = Vec::new();
+        for _ in 0..50 {
+            inputs.push(text("a"));
+            inputs.push(key(Key::Enter));
+        }
+        w.update(&inputs, 0.0, &a);
+        w.ed.show_page(0);
+        assert_eq!(w.editor().layout().page_count(), 2);
+        let (ix, iy) = center(chrome::PAGES_ICON_RECT);
+        let fx = w.update(&[click(ix, iy)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![SND_OVERVIEW]);
+        assert!(w.editor().view.overview);
+        // as duas folhas lado a lado (vtodas): a segunda em x 320..581
+        let s = w.editor().sheets();
+        assert_eq!(s.origins, vec![(58, 107), (320, 107)]);
+        // a barra de ferramentas não responde; clicar na folha 2 volta
+        let fx = w.update(&[click(30, 30)], 0.0, &a);
+        assert!(sounds(&fx).is_empty());
+        let fx = w.update(&[click(450, 300)], 0.0, &a);
+        assert_eq!(sounds(&fx), vec![SND_OVERVIEW_BACK]);
+        assert!(w.editor().view.is_normal());
+        assert_eq!(w.page(), 1);
+        assert_eq!(w.editor().page_origin(1).1, ORIGIN.1);
     }
 
     #[test]
@@ -1847,7 +1912,8 @@ mod tests {
         // o interruptor troca a página da faixa da Preparação da página
         w.update(&[tool(ToolId::Page)], 0.0, &a);
         let fx = w.update(&[click(515, 70), click(150, 75)], 0.0, &a);
-        assert!(logs(&fx).contains("Borda"));
+        assert!(sounds(&fx).contains(&tools::SND_OPTION));
+        assert_eq!(w.tools().page.roll(), Some(page_strip::Roll::Border(0)));
     }
 
     #[test]

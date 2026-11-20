@@ -217,9 +217,45 @@ fn dop(d: &max::DopProps) -> (DopProps, Vec<max::Sprm>) {
         border_alt: d.border_alt.map(to_ref),
         border_inner: d.border_inner,
         border_outer: d.border_outer,
-        background: None,
+        background: super::borders::background_ref(d).map(to_ref),
+        obstacles: Vec::new(),
     };
     (out, d.extra.clone())
+}
+
+/// Molduras de fundo (tipo 6, em todas as folhas) que desviam o texto.
+fn is_obstacle(f: &max::Frame) -> bool {
+    f.kind == FrameKind::Other(formats::bor::FRAME_OBSTACLE) && f.page == u16::MAX
+}
+
+/// Sprms sem campo do `DOP`, com o `0x56` (fundo) no lugar dele, posto ou
+/// tirado conforme o modelo.
+fn dop_extra_with_background(d: &DopProps, extra: &[max::Sprm]) -> Vec<max::Sprm> {
+    let code = super::borders::SPRM_BACKGROUND;
+    let arg = d.background.map(|r| {
+        let mut a = r.tag.to_vec();
+        a.extend_from_slice(&r.id.to_le_bytes());
+        a
+    });
+    let mut out: Vec<max::Sprm> = Vec::with_capacity(extra.len() + 1);
+    let mut placed = false;
+    for s in extra {
+        if s.code == code {
+            if let (Some(a), false) = (&arg, placed) {
+                out.push(max::Sprm {
+                    code,
+                    arg: a.clone(),
+                });
+                placed = true;
+            }
+        } else {
+            out.push(s.clone());
+        }
+    }
+    if let (Some(a), false) = (arg, placed) {
+        out.push(max::Sprm { code, arg: a });
+    }
+    out
 }
 
 fn max_dop(d: &DopProps, extra: &[max::Sprm]) -> max::DopProps {
@@ -241,7 +277,7 @@ fn max_dop(d: &DopProps, extra: &[max::Sprm]) -> max::DopProps {
         border: d.border.map(from_ref),
         border_alt: d.border_alt.map(from_ref),
         banner: d.banner,
-        extra: extra.to_vec(),
+        extra: dop_extra_with_background(d, extra),
     }
 }
 
@@ -366,7 +402,7 @@ pub fn from_max(m: &max::Document) -> (Document, MaxExtra) {
                 .collect()
         },
     };
-    let (dop, dop_extra) = dop(&m.dop);
+    let (mut dop, dop_extra) = dop(&m.dop);
     let mut objects = Vec::new();
     let mut frame_extra = Vec::new();
     let mut frames = Vec::new();
@@ -376,6 +412,7 @@ pub fn from_max(m: &max::Document) -> (Document, MaxExtra) {
                 frame_extra.push((o.object, f.extra.clone()));
                 objects.push(o);
             }
+            None if is_obstacle(f) => dop.obstacles.push(f.clone()),
             None => frames.push(f.clone()),
         }
     }
@@ -504,6 +541,7 @@ pub fn to_max(
         })
         .collect();
     frames.extend(extra.frames.iter().cloned());
+    frames.extend(doc.dop.obstacles.iter().cloned());
     let selection = sel.map(|r| (cp_of(doc, r.start).min(len), cp_of(doc, r.end).min(len)));
     max::Document {
         text,

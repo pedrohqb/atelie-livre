@@ -175,7 +175,13 @@ O que já serve, e o que ainda está preso ao Fine Artist:
   `crate::writer::borders` desenha borda e fundo numa folha
   (`border_layout`, `render_page`, `PageArt::from_document`, obstáculos do
   fundo para a diagramação); ver `docs/formats/bor.md`. Os rolos BORDA e
-  FUNDO da Preparação da página ainda não existem.
+  FUNDO ficam em `scenes/writer/page_strip.rs` (cópias dos chunks no
+  documento, `DopProps::{border, background, obstacles}`), e o editor
+  desenha borda e fundo em todas as folhas (`PageArt::load`).
+- **Vistas do Escritório**: `scenes/writer/view.rs` (zoom em 8 níveis,
+  Página inteira, Aumentar visão, Duas páginas, Todas as páginas, Lado a
+  lado, visão geral da barra de baixo), medidas no original; o `Editor`
+  converte e desenha tudo por `Editor::sheets`.
 - **Projetos (Jornal, Cartão, Faixa)**: `crate::writer::assistant` é o
   motor dos assistentes do Max (sem tela, sobre `crate::guide`, como a
   lição da Maggie), com os roteiros como dados em `assistant_news`,
