@@ -165,7 +165,8 @@ impl HelpBalloon {
         let bw = self.w + BOX_EXTRA;
         let p = self.program;
         draw_frame_in(f, p, (bx, by, bw, h), self.tail.is_some());
-        if let Some(tip) = self.tail.filter(|t| t.1 < by - 4) {
+        // rabicho em cima (o de sempre) ou embaixo (os da abelha do Writer)
+        if let Some(tip) = self.tail.filter(|t| t.1 < by - 4 || t.1 > by + h + 3) {
             draw_tail_box_in(f, p, (bx, by, bw, h), tip);
         }
         rich::draw(

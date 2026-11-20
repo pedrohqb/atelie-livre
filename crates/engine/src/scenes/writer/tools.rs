@@ -360,7 +360,12 @@ pub struct Cx<'a> {
     shaped: Option<Option<usize>>,
     /// Pedido dos Re-movedores para a área de transferência ([`Cx::clip`]).
     clip: Option<super::removers::ClipRequest>,
+    help_place: Option<HelpPlace>,
 }
+
+/// Onde abrir um balão fora do lugar de sempre (junto ao McZee): canto de
+/// cima à esquerda da caixa e ponta do rabicho.
+pub type HelpPlace = ((i32, i32), (i32, i32));
 
 impl<'a> Cx<'a> {
     pub fn new(fx: &'a mut Vec<Effect>, assets: &'a Assets) -> Cx<'a> {
@@ -373,6 +378,7 @@ impl<'a> Cx<'a> {
             help_forced: false,
             shaped: None,
             clip: None,
+            help_place: None,
         }
     }
 
@@ -387,6 +393,19 @@ impl<'a> Cx<'a> {
     /// Pede o balão do McZee (aparece se a ajuda estiver ligada).
     pub fn help(&mut self, h: HelpRef) {
         self.help = Some(h);
+        self.help_place = None;
+    }
+
+    /// Como [`Cx::help`], com o balão em outro lugar (os painéis da abelha
+    /// apontam para o campo).
+    pub fn help_at(&mut self, h: HelpRef, place: HelpPlace) {
+        self.help = Some(h);
+        self.help_place = Some(place);
+    }
+
+    /// Lugar pedido para o balão; esvazia o pedido.
+    pub(super) fn take_help_place(&mut self) -> Option<HelpPlace> {
+        self.help_place.take()
     }
 
     /// Pede o balão mesmo com a ajuda desligada (os Re-movedores ajudam nas

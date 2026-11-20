@@ -7,7 +7,7 @@
 //! Writer repassa o pedido a [`McZee::show`], que só abre o balão se o McZee
 //! estiver ligado.
 
-use super::tools::{HelpRef, SND_CHOOSE, WHAT_GENERAL, inside};
+use super::tools::{HelpPlace, HelpRef, SND_CHOOSE, WHAT_GENERAL, inside};
 use crate::Frame;
 use crate::assets::{Assets, Program};
 use crate::balloon::Balloon;
@@ -141,6 +141,12 @@ impl McZee {
     /// Abre o balão `h` (se a ajuda estiver ligada ou `forced`). O registro
     /// `usize::MAX` fecha o balão aberto.
     pub fn show(&mut self, h: HelpRef, forced: bool, a: &Assets) {
+        self.show_at(h, forced, None, a);
+    }
+
+    /// Como [`McZee::show`], com o balão em `place` (canto e rabicho) em
+    /// vez de junto ao McZee.
+    pub fn show_at(&mut self, h: HelpRef, forced: bool, place: Option<HelpPlace>, a: &Assets) {
         if h.1 == usize::MAX {
             self.close();
             return;
@@ -149,6 +155,11 @@ impl McZee {
             return;
         }
         self.open(h, a);
+        if let (Some(((x, y), tip)), Some(b)) = (place, self.help.as_mut()) {
+            b.x = x.min(637 - b.w - crate::balloon::BOX_EXTRA);
+            b.y = y;
+            b.tail = Some(tip);
+        }
     }
 
     fn open(&mut self, (block, index): HelpRef, a: &Assets) {

@@ -528,8 +528,9 @@ impl Writer {
         let r = f(self.tools.get_mut(id), &mut self.ed, &mut cx);
         let shaped = cx.take_shaped();
         let clip = cx.take_clip();
+        let place = cx.take_help_place();
         if let Some((h, forced)) = cx.take_help() {
-            self.mczee.show(h, forced, a);
+            self.mczee.show_at(h, forced, place, a);
         }
         if let Some(editing) = shaped {
             self.open_shaped(editing, fx, a);

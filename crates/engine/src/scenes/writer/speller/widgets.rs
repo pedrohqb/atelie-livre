@@ -6,6 +6,7 @@ use crate::Frame;
 use crate::assets::Assets;
 use crate::scene::Key;
 use crate::ui::Rect;
+use formats::fnt::Font;
 
 pub const BLACK: [u8; 3] = [0, 0, 0];
 pub const WHITE: [u8; 3] = [255, 255, 255];
@@ -51,10 +52,24 @@ pub fn draw_cell(f: &mut Frame, (x, y, w, h): Rect, fill: [u8; 3]) {
     f.rect(x + 1, y + 1, w - 2, h - 2, fill);
 }
 
-/// Pablo Graphos 16 dos campos (ou a de 8 / a 8×8 de reserva).
+/// Negrito sintético do Windows: cada letra desenhada duas vezes, 1 pixel
+/// ao lado, avançando 1 pixel a mais. Devolve a largura.
+fn bold_text(f: &mut Frame, fo: &Font, x: i32, y: i32, s: &str, rgb: [u8; 3]) -> i32 {
+    let mut cx = x;
+    let mut buf = [0u8; 4];
+    for c in s.chars() {
+        let c = c.encode_utf8(&mut buf);
+        f.text_font(fo, cx, y, c, rgb);
+        cx += f.text_font(fo, cx + 1, y, c, rgb) + 1;
+    }
+    cx - x
+}
+
+/// Pablo Graphos 16 dos campos (ou a de 8 / a 8×8 de reserva), em negrito
+/// ("gatu" tem 35 pixels, não 31; `office_83`).
 pub fn field_text(f: &mut Frame, a: &Assets, x: i32, y: i32, s: &str, rgb: [u8; 3]) -> i32 {
     match a.font(16).or_else(|| a.font(8)) {
-        Some(fo) => f.text_font(&fo, x, y, s, rgb),
+        Some(fo) => bold_text(f, &fo, x, y, s, rgb),
         None => {
             f.text(x, y + 6, s, rgb);
             8 * s.chars().count() as i32
@@ -64,17 +79,21 @@ pub fn field_text(f: &mut Frame, a: &Assets, x: i32, y: i32, s: &str, rgb: [u8; 
 
 pub fn field_width(a: &Assets, s: &str) -> i32 {
     match a.font(16).or_else(|| a.font(8)) {
-        Some(fo) => fo.width(s) as i32,
+        Some(fo) => {
+            let mut buf = [0u8; 4];
+            s.chars()
+                .map(|c| fo.width(c.encode_utf8(&mut buf)) as i32 + 1)
+                .sum()
+        }
         None => 8 * s.chars().count() as i32,
     }
 }
 
-/// Texto das listas: Pablo 8 desenhada duas vezes (o "negrito" do original).
+/// Texto das listas: Pablo 8 em negrito.
 pub fn list_text(f: &mut Frame, a: &Assets, x: i32, y: i32, s: &str, rgb: [u8; 3]) {
     match a.font(8) {
         Some(fo) => {
-            f.text_font(&fo, x, y, s, rgb);
-            f.text_font(&fo, x + 1, y, s, rgb);
+            bold_text(f, &fo, x, y, s, rgb);
         }
         None => f.text(x, y + 2, s, rgb),
     }
@@ -185,21 +204,20 @@ impl Field {
         self.caret = best.1;
     }
 
-    /// Desenha o texto em `r` (fundo já pintado); com `focus`, o cursor ou
-    /// o fundo azul da seleção.
+    /// Desenha o texto em `r` (fundo já pintado); com `focus`, o fundo azul
+    /// da seleção (da largura exata do texto) e o cursor logo depois do
+    /// texto que está antes dele (`office_78`, `office_83`).
     pub fn draw(&self, f: &mut Frame, a: &Assets, r: Rect, focus: bool) {
         let (x, y) = (r.0 + 2, r.1);
         let shown = clip(a, &self.text, r.2 - 4);
-        if focus && self.all_selected {
-            let w = field_width(a, &shown);
-            f.rect(x, y, w + 1, FIELD_LINE, HILITE);
-            field_text(f, a, x, y, &shown, WHITE);
-            return;
+        let selected = focus && self.all_selected;
+        if selected {
+            f.rect(x, y, field_width(a, &shown), FIELD_LINE, HILITE);
         }
-        field_text(f, a, x, y, &shown, BLACK);
+        field_text(f, a, x, y, &shown, if selected { WHITE } else { BLACK });
         if focus {
             let before: String = self.text.chars().take(self.caret).collect();
-            let cx = (x + field_width(a, &before) + 1).min(r.0 + r.2 - 2);
+            let cx = (x + field_width(a, &before)).min(r.0 + r.2 - 2);
             f.rect(cx, y, 1, FIELD_LINE, BLACK);
         }
     }

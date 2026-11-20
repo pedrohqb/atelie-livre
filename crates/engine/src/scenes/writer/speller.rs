@@ -25,7 +25,7 @@ mod widgets;
 use super::cursors;
 use super::editor::{Editor, PAGE, PAGE_GAP};
 use super::tools::{
-    Cx, Pic, Rect, SND_CHOOSE, SND_OPTION, SND_SWITCH, StripButton, ToolId, ToolStrip,
+    Cx, HelpPlace, Pic, Rect, SND_CHOOSE, SND_OPTION, SND_SWITCH, StripButton, ToolId, ToolStrip,
     WHAT_SPELLER, inside, strip_button,
 };
 use crate::Frame;
@@ -109,6 +109,12 @@ const ALERTS: [(usize, i32, &str); 3] = [
         "Já procurei no seu documento inteiro.",
     ),
 ];
+/// Lugar dos balões (canto da caixa, ponta do rabicho), medido no original:
+/// `0fa4[1]` sob o campo AJUDE A ACHAR (`office_77`); `[5]` e `[9]` sobre a
+/// barra, apontando para o TROCAR ISTO (`office_87`, `office_90`). Os outros
+/// balões de cada painel usam o mesmo lugar.
+const HELP_FIND: HelpPlace = ((170, 176), (240, 153));
+const HELP_REPLACE: HelpPlace = ((20, 16), (48, 118));
 /// "(Sem sugestões)" (`STR# 0808`).
 const NO_SUGGESTIONS: &str = "(Sem sugestões)";
 /// Sugestões pedidas ao dicionário.
@@ -267,6 +273,17 @@ impl Kind {
             Kind::Find | Kind::Spell => SND_OPTION,
             Kind::Replace => SND_REPLACE,
             Kind::Scramble => SND_SCRAMBLE,
+        }
+    }
+
+    /// Pede o balão `0fa4[n]`: no Pular para, apontando para o campo; no
+    /// Trocar e no Embaralhar, no alto à esquerda, apontando para o TROCAR
+    /// ISTO; no Corrigir, junto ao McZee.
+    fn help(self, cx: &mut Cx, n: usize) {
+        match self {
+            Kind::Find => cx.help_at((WHAT_SPELLER, n), HELP_FIND),
+            Kind::Spell => cx.help((WHAT_SPELLER, n)),
+            Kind::Replace | Kind::Scramble => cx.help_at((WHAT_SPELLER, n), HELP_REPLACE),
         }
     }
 
@@ -474,7 +491,7 @@ impl SpellerStrip {
 
     fn open(&mut self, kind: Kind, ed: &mut Editor, cx: &mut Cx) {
         cx.sound(kind.sound());
-        cx.help((WHAT_SPELLER, kind.helps()[0]));
+        kind.help(cx, kind.helps()[0]);
         let mut p = Panel::new(kind);
         match kind {
             Kind::Find => {}
@@ -679,7 +696,7 @@ impl SpellerStrip {
         p.fields[1].all_selected = false;
         p.dropdown = false;
         if !std::mem::replace(&mut p.helped[1], true) {
-            cx.help((WHAT_SPELLER, p.kind.helps()[2]));
+            p.kind.help(cx, p.kind.helps()[2]);
         }
     }
 
@@ -739,8 +756,8 @@ impl SpellerStrip {
         match sugg.first() {
             Some(s) => {
                 p.fields[1] = Field::with(s);
+                // a lista abre sem destaque; o clique numa linha a destaca
                 p.list = List::new(sugg.clone());
-                p.list.chosen = Some(0);
             }
             None => {
                 p.fields[1] = Field::with(&word);
@@ -787,7 +804,7 @@ impl SpellerStrip {
     fn panel_button(&mut self, b: Btn, ed: &mut Editor, cx: &mut Cx) {
         let Some(kind) = self.kind() else { return };
         if cx.ctrl && matches!(b, Btn::Find | Btn::One | Btn::All) {
-            cx.help((WHAT_SPELLER, if b == Btn::Find { 3 } else { 13 }));
+            kind.help(cx, if b == Btn::Find { 3 } else { 13 });
         }
         match b {
             Btn::Done => {
@@ -841,7 +858,7 @@ impl SpellerStrip {
                     p.fields[k].click(cx.assets, r.0 + 2, x);
                 }
                 if k == 1 && kind != Kind::Spell && !std::mem::replace(&mut p.helped[0], true) {
-                    cx.help((WHAT_SPELLER, kind.helps()[1]));
+                    kind.help(cx, kind.helps()[1]);
                 }
                 return;
             }
@@ -1009,7 +1026,7 @@ impl ToolStrip for SpellerStrip {
         let first = p.fields[k].text.is_empty();
         p.fields[k].type_text(s);
         match p.kind {
-            Kind::Find if first => cx.help((WHAT_SPELLER, 2)),
+            Kind::Find if first => Kind::Find.help(cx, 2),
             Kind::Spell => p.list.chosen = None,
             _ => {}
         }
