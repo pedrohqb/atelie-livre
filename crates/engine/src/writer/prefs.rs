@@ -224,6 +224,37 @@ pub fn remember_last(
     save(users, user, &p)
 }
 
+/// Como [`remember_last`], depois de salvar: com `replaced` (o arquivo
+/// antigo que "Salvar só a nova" apagou), os lugares da parede do usuário
+/// que apontavam para ele (molduras da Biblioteca) passam para `file`.
+pub fn remember_saved(
+    users: &Path,
+    user: &str,
+    data: &Path,
+    file: &Path,
+    title: &str,
+    replaced: Option<&Path>,
+) -> io::Result<()> {
+    let mut p = load(Some(users), user, data);
+    let doc = wall_doc(file, title, Some(users), data).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} fora das pastas conhecidas", file.display()),
+        )
+    })?;
+    if let Some(old) = replaced.and_then(|o| o.file_name()) {
+        let old = old.to_string_lossy();
+        for d in &mut p.wall {
+            if d.slot != LAST_SLOT && is_own(d, user) && d.file.eq_ignore_ascii_case(&old) {
+                d.file = doc.file.clone();
+                d.title = title.to_string();
+            }
+        }
+    }
+    set_slot(&mut p, LAST_SLOT, doc);
+    save(users, user, &p)
+}
+
 /// Troca o título de um documento do usuário: o `TITL`/`ADD ` do `.MAX` e o
 /// título nos lugares da parede que apontam para ele.
 pub fn retitle(users: &Path, user: &str, file: &Path, title: &str) -> Result<(), String> {
