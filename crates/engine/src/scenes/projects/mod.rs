@@ -230,7 +230,7 @@ pub fn load_meta(dir: &Path, stem: &str) -> Vec<(String, String)> {
 /// Estado do projeto dentro da tela de pintura.
 #[derive(Debug, Clone)]
 pub enum Project {
-    Comics(comics::Comics),
+    Comics(Box<comics::Comics>),
     Button(button::Button),
     Flipbook(Box<flipbook::Flipbook>),
 }
@@ -238,7 +238,7 @@ pub enum Project {
 impl Project {
     pub fn new(kind: ProjectKind) -> Project {
         match kind {
-            ProjectKind::Comics => Project::Comics(comics::Comics::default()),
+            ProjectKind::Comics => Project::Comics(Box::default()),
             ProjectKind::Button => Project::Button(button::Button::new(false)),
             ProjectKind::Sticker => Project::Button(button::Button::new(true)),
             ProjectKind::Flipbook => Project::Flipbook(Box::default()),
