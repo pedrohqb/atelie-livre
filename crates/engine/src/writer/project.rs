@@ -185,6 +185,10 @@ pub struct Snapshot {
     pub stickers: usize,
     /// Folhas na diagramação.
     pub pages: usize,
+    /// Uma borda escolhida no rolo, à espera do clique na folha.
+    pub border_armed: bool,
+    /// Um adesivo na mão (da tira, do Cachorrinho).
+    pub sticker_held: bool,
 }
 
 impl Snapshot {
@@ -201,7 +205,16 @@ impl Snapshot {
             shaped: count(ObjectKind::Shaped),
             stickers: count(ObjectKind::Sticker),
             pages,
+            border_armed: false,
+            sticker_held: false,
         }
+    }
+
+    /// O que está na mão nas faixas: borda armada e adesivo pego.
+    pub fn with_hand(mut self, border_armed: bool, sticker_held: bool) -> Snapshot {
+        self.border_armed = border_armed;
+        self.sticker_held = sticker_held;
+        self
     }
 }
 
@@ -228,14 +241,24 @@ pub fn events(kind: Kind, before: &Snapshot, after: &Snapshot) -> Vec<Event> {
         let code = after.page_number.code().unwrap_or(LABEL_NONE);
         v.push(Event::MenuItem(Menu::PageNumber, code));
     }
-    if after.border != before.border && after.border.is_some() {
+    // escolher no rolo já é a escolha; sem ela (outro caminho), a borda
+    // posta conta como escolhida
+    if (after.border_armed && !before.border_armed)
+        || (after.border != before.border && after.border.is_some() && !before.border_armed)
+    {
         v.push(Event::BorderPicked);
     }
     if after.shaped > before.shaped {
         v.push(Event::ShapedOk);
     }
+    if after.sticker_held && !before.sticker_held {
+        v.push(Event::StickerPicked);
+    }
     if after.stickers > before.stickers {
-        v.extend([Event::StickerPicked, Event::StickerPlaced]);
+        if !before.sticker_held {
+            v.push(Event::StickerPicked);
+        }
+        v.push(Event::StickerPlaced);
     }
     if kind == Kind::Card && before.pages < CARD_FIFTH_PAGE && after.pages >= CARD_FIFTH_PAGE {
         v.push(Event::FifthPage);
@@ -408,6 +431,38 @@ mod tests {
         assert_eq!(
             events(Kind::Card, &s0, &Snapshot::of(&d, 4)),
             [Event::StickerPicked, Event::StickerPlaced]
+        );
+    }
+
+    /// Como no original (`projects-cartao.md`): escolher a borda no rolo
+    /// (`[51]` → `[52]` "… então, clique em qualquer lugar do cartão") e
+    /// pegar o adesivo na tira (`[57]` → `[58]`) já são a escolha; o clique
+    /// na página é que aplica. Antes o port só mandava a escolha junto com
+    /// a aplicação, e o balão do passo seguinte nunca aparecia.
+    #[test]
+    fn picking_in_the_strip_comes_before_placing() {
+        let (mut d, _) = blank(Kind::Card);
+        let s0 = Snapshot::of(&d, 4);
+        let armed = Snapshot::of(&d, 4).with_hand(true, false);
+        assert_eq!(events(Kind::Card, &s0, &armed), [Event::BorderPicked]);
+        d.dop.border = Some(ObjRef {
+            tag: *b"BDR ",
+            id: 2,
+        });
+        // aplicada: a escolha já foi mandada
+        let applied = Snapshot::of(&d, 4);
+        assert!(events(Kind::Card, &armed, &applied).is_empty());
+        let held = Snapshot::of(&d, 4).with_hand(false, true);
+        assert_eq!(events(Kind::Card, &applied, &held), [Event::StickerPicked]);
+        let r = ObjRef {
+            tag: *b"PICT",
+            id: 1,
+        };
+        d.objects
+            .push(FloatObject::new(ObjectKind::Sticker, r, 0, 10, 10, 40, 40));
+        assert_eq!(
+            events(Kind::Card, &held, &Snapshot::of(&d, 4)),
+            [Event::StickerPlaced]
         );
     }
 

@@ -265,7 +265,9 @@ impl ProjectScene {
 
     fn snapshot(&self) -> Snapshot {
         let ed = self.w.editor();
+        let tools = self.w.tools();
         Snapshot::of(ed.doc(), ed.layout().pages.len())
+            .with_hand(tools.page.border_armed(), tools.stickers.held().is_some())
     }
 
     /// Manda um evento ao assistente e executa o que ele pedir.
