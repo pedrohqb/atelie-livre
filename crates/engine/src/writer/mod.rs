@@ -26,6 +26,8 @@
 //! - [`rebus_apply`]: Coloca-figuras (Maçã): figuras depois das palavras.
 //! - [`cipher`]: Agente Secreto 009 (texto embaralhado na tela, senha).
 //! - [`splot`]: palavras com forma (`SPLE`): desenho, montagem e escolhas.
+//! - [`print`]: as folhas impressas (página por folha, cartão em quatro,
+//!   faixa em folhas deitadas), com borda e fundo.
 
 pub mod assistant;
 pub mod assistant_banner;
@@ -42,6 +44,7 @@ pub mod ideas;
 pub mod layout;
 pub mod object;
 pub mod prefs;
+pub mod print;
 pub mod rebus_apply;
 pub mod selection;
 pub mod splot;

@@ -23,7 +23,7 @@ mod exit;
 pub mod mczee;
 pub mod notebook;
 mod page_strip;
-mod print;
+pub mod print;
 mod removers;
 pub mod shaped;
 mod sounds;
@@ -446,8 +446,39 @@ impl Writer {
         self.tool
     }
 
+    /// Abre a máquina de impressão do McZee para o documento (W18; os
+    /// assistentes da Oficina de Projetos a chamam no fim): escolhe a
+    /// ferramenta Imprimir e abre a máquina, com as escolhas ou, com
+    /// `quick`, direto ao "pronto". `kind` = o projeto (jornal, cartão,
+    /// faixa); `None` = o gravado no documento. Ver [`print::print_document`].
+    pub fn print_document(
+        &mut self,
+        kind: Option<crate::writer::assistant::Kind>,
+        quick: bool,
+        assets: &Assets,
+    ) -> Vec<Effect> {
+        let mut fx = Vec::new();
+        if self.tool != ToolId::Print {
+            self.select(ToolId::Print, &mut fx, assets);
+        }
+        let (strip, ed) = (&mut self.tools.print, &self.ed);
+        let mut cx = Cx::new(&mut fx, assets);
+        strip.open(ed, &mut cx, quick, kind);
+        self.mczee.show((0, usize::MAX), false, assets);
+        fx
+    }
+
+    /// A máquina de impressão está aberta.
+    pub fn printing(&self) -> bool {
+        self.tools.print.is_open()
+    }
+
     pub fn tools(&self) -> &Tools {
         &self.tools
+    }
+
+    pub fn tools_mut(&mut self) -> &mut Tools {
+        &mut self.tools
     }
 
     /// Folha no meio da vista.
@@ -1042,6 +1073,7 @@ impl Scene for Writer {
                     alt: false,
                 } => self.key(key, ctrl, &mut fx, assets),
                 Input::Text(ref t) => {
+                    let tool = self.tool;
                     if let Some((r, _)) = self.rename.as_mut() {
                         r.type_text(t);
                     } else if self.dialog.is_none() && !self.ctrl {
@@ -1068,6 +1100,9 @@ impl Scene for Writer {
         let t = self.tool;
         if dt.is_finite() {
             self.tools.get_mut(t).tick(&mut self.ed, dt.max(0.0));
+            self.with_tool(t, &mut fx, assets, |tl, ed, cx| {
+                tl.update(ed, cx, dt.max(0.0))
+            });
         }
         self.ed.caret_visible = !self.tools.get(t).modal()
             && self.dialog.is_none()
