@@ -1815,11 +1815,13 @@ mod tests {
         // de novo na mesma: som de reabrir o balão
         let fx = w.update(&[tool(ToolId::Word)], 0.0, &a);
         assert_eq!(sounds(&fx), vec![SND_TOOL_AGAIN]);
-        // botão de faixa ainda sem função: som de opção e registro
+        // o Gravador dos Sons abre (som 0224) e toma os cliques; Esc fecha
         w.update(&[tool(ToolId::Sounds)], 0.0, &a);
         let fx = w.update(&[click(470, 70)], 0.0, &a);
-        assert!(logs(&fx).contains("Gravador"));
-        assert_eq!(sounds(&fx), vec![tools::SND_OPTION]);
+        assert_eq!(sounds(&fx), vec![0x0224]);
+        assert!(w.tools.get(ToolId::Sounds).modal());
+        w.update(&[key(Key::Escape)], 0.0, &a);
+        assert!(!w.tools.get(ToolId::Sounds).modal());
         // o interruptor troca a página da faixa da Preparação da página
         w.update(&[tool(ToolId::Page)], 0.0, &a);
         let fx = w.update(&[click(515, 70), click(150, 75)], 0.0, &a);

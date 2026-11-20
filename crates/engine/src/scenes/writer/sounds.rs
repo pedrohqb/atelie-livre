@@ -331,7 +331,7 @@ impl SoundsStrip {
                     cx.log("Seleciona-sons: som sem dados");
                     return true;
                 }
-                if attach(ed, t, s) {
+                if super::stickers::keep_view(ed, |ed| attach(ed, t, s)) {
                     cx.fx.extend(hand.sound().cloned().map(Effect::PlaySound));
                     cx.help((WHAT_SOUNDS, HELP_AFTER));
                 }

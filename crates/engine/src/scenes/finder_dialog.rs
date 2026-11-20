@@ -318,6 +318,18 @@ pub fn draw_left(
 /// Metade direita, abaixo da figura: "Título" (com setas, se
 /// `title_arrows`) e "Artista".
 pub fn draw_right(f: &mut Frame, a: &Assets, title: &str, artist: &str, title_arrows: bool) {
+    draw_right_as(f, a, title, artist, "Artista", title_arrows);
+}
+
+/// [`draw_right`] com outro rótulo no segundo campo (o Writer diz "Autor").
+pub fn draw_right_as(
+    f: &mut Frame,
+    a: &Assets,
+    title: &str,
+    artist: &str,
+    label: &str,
+    title_arrows: bool,
+) {
     let pen = Pen::new(a);
     pen.centered(f, 422, 282, "Título", BLACK);
     if title_arrows {
@@ -325,7 +337,7 @@ pub fn draw_right(f: &mut Frame, a: &Assets, title: &str, artist: &str, title_ar
         masked(f, a, TITLE_NEXT, ARROW_RIGHT);
     }
     field(f, &pen, TITLE_FIELD, title);
-    pen.centered(f, 422, 320, "Artista", BLACK);
+    pen.centered(f, 422, 320, label, BLACK);
     field(f, &pen, ARTIST_FIELD, artist);
 }
 
