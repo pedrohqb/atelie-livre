@@ -24,10 +24,11 @@
 //!   aberta, páginas) e aplica as restrições do projeto com o aviso do Rex
 //!   (`0805[17]`, `[32]`; P20).
 //!
-//! Ganchos para outras frentes: as visões de página (`SetView`) são da
-//! ferramenta Visor/Página (cw-tool-page) e a máquina de impressão do
-//! McZee (P15/P16) é do cw-print — enquanto não existem no main, a visão
-//! só é registrada e o "imprimir" termina na hora (`Printed`).
+//! O botão do McZee da faixa do Imprimir abre a máquina de impressão do
+//! Escritório (`scenes::writer::print`, com o projeto gravado no
+//! documento); quando ela fecha, o assistente recebe `Printed`. Gancho
+//! para outra frente: as visões de página (`SetView`) são do Visor
+//! (cw-tool-page) e, enquanto não existem no main, só são registradas.
 
 use super::portfolio::{Action as BinderAction, Binder};
 use super::writer::tools::{SWITCH_RECT, inside};
@@ -40,7 +41,7 @@ use crate::scenes::room::Floor;
 use crate::text_balloon::TextBalloon;
 use crate::ui::Rect;
 use crate::writer::assistant::{
-    self as max, Assistant, Button, Command, Context, Event, Kind, Out, Pat, Tool,
+    self as max, Assistant, Button, Command, Context, Event, Kind, Out, Tool,
 };
 use crate::writer::project::{self, Snapshot};
 use std::path::PathBuf;
@@ -51,6 +52,8 @@ pub const DOOR_RECT: Rect = (581, 16, 55, 88);
 pub const SND_LEAVE: [u16; 2] = [0x02d7, 0x02c0];
 /// Aviso do Rex.
 const SND_REX: u16 = 0x02fe;
+/// Cinza do pontilhado por baixo do cavalete e da máquina de impressão.
+const DIM: [u8; 3] = [100, 100, 100];
 
 /// Ferramenta do assistente com o mesmo nome da do editor.
 pub fn tool_of(id: ToolId) -> Tool {
@@ -157,6 +160,8 @@ pub struct ProjectScene {
     naming: bool,
     /// Página da faixa em que está cada ferramenta com alavanca.
     more: [bool; 2],
+    /// A máquina de impressão estava aberta no quadro anterior.
+    printing: bool,
     /// O documento como o assistente o viu por último (depois dos próprios
     /// comandos): a diferença para ele são as ações das ferramentas.
     last: Snapshot,
@@ -197,6 +202,7 @@ impl ProjectScene {
             notice: None,
             naming: false,
             more: [false; 2],
+            printing: false,
             last,
             clock: 0.0,
         }
@@ -227,6 +233,17 @@ impl ProjectScene {
 
     pub fn notice(&self) -> Option<&TextBalloon> {
         self.notice.as_ref()
+    }
+
+    /// Uma tela do Escritório está por cima do editor (cavalete de palavras
+    /// com forma, máquina de impressão, Caderno de Idéias, Central de
+    /// Controle): os cliques são dela.
+    fn overlay(&self) -> bool {
+        let w = &self.w;
+        w.shaped().is_open()
+            || w.printing()
+            || w.notebook().is_some()
+            || w.control_center().is_some()
     }
 
     fn lever(&self, id: ToolId) -> Option<usize> {
@@ -363,7 +380,11 @@ impl ProjectScene {
     /// ou página. Atualiza a página da faixa das ferramentas com alavanca.
     fn classify(&mut self, x: i32, y: i32, a: &Assets) -> Vec<Event> {
         let w = &self.w;
-        if w.dialog().is_some() || w.renaming().is_some() || w.mczee().covers(a, x, y) {
+        if self.overlay()
+            || w.dialog().is_some()
+            || w.renaming().is_some()
+            || w.mczee().covers(a, x, y)
+        {
             return Vec::new();
         }
         let tool = w.tool();
@@ -407,7 +428,9 @@ impl ProjectScene {
         let ev = self
             .max
             .click(a, x, y)
-            .or_else(|| inside(DOOR_RECT, x, y).then_some(Event::MaxClicked));
+            .or_else(|| inside(DOOR_RECT, x, y).then_some(Event::MaxClicked))
+            // com o cavalete ou a máquina por cima, o Max fica apagado
+            .filter(|&e| !(e == Event::MaxClicked && self.overlay()));
         if let Some(ev) = ev {
             self.send(ev, fx, a);
             return true;
@@ -458,15 +481,6 @@ impl ProjectScene {
             (b.x, b.y) = ((640 - w) / 2, ((480 - h) / 2).max(110));
             self.notice = Some(b);
         }
-    }
-
-    /// Impressão (P15/P16, cw-print): enquanto a máquina do McZee não existe
-    /// no Writer, termina na hora.
-    fn print(&mut self, fx: &mut Vec<Effect>, a: &Assets) {
-        fx.push(Effect::Log(
-            "impressão: máquina do McZee do Writer ainda não disponível".into(),
-        ));
-        self.send(Event::Printed, fx, a);
     }
 }
 
@@ -531,13 +545,13 @@ impl Scene for ProjectScene {
                 pending.push(Event::Saved);
             }
         }
+        // a máquina de impressão fechou: "Tudo pronto!"
+        let printing = self.w.printing();
+        if std::mem::replace(&mut self.printing, printing) && !printing {
+            pending.push(Event::Printed);
+        }
         for ev in pending {
             self.send(ev, &mut fx, assets);
-            if ev == Event::ButtonClicked(Button::PrintMcZee)
-                && self.max.expects().contains(&Pat::Printed)
-            {
-                self.print(&mut fx, assets);
-            }
         }
         self.max.tick(dt);
         fx
@@ -548,6 +562,9 @@ impl Scene for ProjectScene {
         let (x, y, w, h) = DOOR_RECT;
         f.rect(x, y, w, h, [0, 0, 0]);
         self.max.draw_max(f, a);
+        if self.overlay() {
+            crate::ui::checker(f, DOOR_RECT, DIM);
+        }
         if let Some(folder) = &self.folder {
             folder.binder.draw(f, a, &folder.items, &[]);
         }

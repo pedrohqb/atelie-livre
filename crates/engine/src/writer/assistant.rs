@@ -246,6 +246,10 @@ impl Anchor {
             // (`projects_07_jornal_amostra`, `projects_95_seta`)
             Anchor::Folder(Spot::More) => (496, 287),
             Anchor::Folder(Spot::Ok) => (263, 356),
+            // campo e OK do cavalete de palavras com forma
+            // (`projects_33_manchete_3`)
+            Anchor::Easel(Spot::Text) => (234, 295),
+            Anchor::Easel(Spot::Ok) => (512, 393),
             Anchor::NameBar => (320, 461),
             _ => return None,
         })
@@ -269,6 +273,10 @@ pub fn place(anchor: Anchor, w: i32, h: i32) -> ((i32, i32), Option<(i32, i32)>)
         }
         Some((px, py)) if anchor == Anchor::Folder(Spot::Ok) => {
             ((clamp_x(px - 23), py + 24), Some((px, py)))
+        }
+        // embaixo do OK do cavalete, à esquerda dele (350,418)
+        Some((px, py)) if anchor == Anchor::Easel(Spot::Ok) => {
+            ((clamp_x(px + 18 - w), py + 25), Some((px, py)))
         }
         Some((px, py)) if py > 240 => ((clamp_x(px - w / 2), py - 16 - h), Some((px, py))),
         Some((px, py)) if px < 320 => ((clamp_x(px - 25), py + 44), Some((px, py + 14))),

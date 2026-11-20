@@ -235,10 +235,17 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
   gravado (Enter, ou as duas versões), a cena manda `Saved`. `Discard`,
   `NewDocument` (`Editor::new_from` com o projeto em branco) e `Leave`
   (sons `02d7`+`02c0`, andar dos Projetos).
-- **Ganchos**: `SetView` só é registrado até as visões de página
-  existirem (cw-tool-page); o McZee do Imprimir termina a impressão na hora
-  (`Printed`) até a máquina de impressão do Writer existir (cw-print) —
-  `ProjectScene::print` é o lugar de chamá-la.
+- **Impressão**: o McZee da faixa do Imprimir abre a máquina de impressão
+  do Escritório (`scenes::writer::print`, com o projeto gravado no
+  documento); quando ela fecha (`Writer::printing` volta a `false`), a cena
+  manda `Printed` e o assistente vai ao "Tudo pronto!".
+- **Telas por cima** (cavalete de palavras com forma, máquina de
+  impressão, Caderno, Central de Controle): os cliques são delas, nada vira
+  evento e o Max fica apagado (o mesmo pontilhado cinza) e não responde.
+  Os balões do cavalete apontam o campo (234,295) e o OK (512,393), com o
+  "Quando terminar, clique aqui." embaixo dele (`projects_33_manchete_3`).
+- **Gancho**: `SetView` só é registrado até as visões de página existirem
+  (Visor, cw-tool-page).
 
 ### Faixa: palavra através das folhas (P12)
 

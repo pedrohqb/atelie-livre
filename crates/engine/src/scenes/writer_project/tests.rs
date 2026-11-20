@@ -188,13 +188,21 @@ fn save_names_marks_the_file_then_print_and_leave() {
     assert_eq!(m.add.view, 1);
     assert_eq!(m.add.title, "Jornal Teste");
     assert_eq!(p.writer().title(), "Jornal Teste");
-    // imprimir: ferramenta, botão do McZee e (sem a máquina) pronto
+    // imprimir: ferramenta, botão do McZee (a máquina de impressão do
+    // Escritório abre) e, quando ela fecha, "Tudo pronto!"
     p.send(Event::Option(0), &mut fx, &a);
     assert_eq!(p.assistant().at(), "imprimir");
     at(&mut p, &a, PRINT_TOOL);
     assert_eq!(p.assistant().at(), "imprimir-mczee");
     let fx = at(&mut p, &a, PRINT_MCZEE);
-    assert!(logs(&fx).contains("impressão"));
+    assert!(logs(&fx).contains("imprimir:"), "{}", logs(&fx));
+    assert!(p.writer().printing());
+    assert_eq!(p.assistant().at(), "imprimindo");
+    // o Max fica apagado por baixo da máquina
+    at(&mut p, &a, (600, 50));
+    assert!(!p.assistant().quitting());
+    p.update(&[key(Key::Escape)], 0.0, &a);
+    assert!(!p.writer().printing());
     assert_eq!(p.assistant().at(), "pronto");
     let mut fx = Vec::new();
     p.send(Event::Option(2), &mut fx, &a);
@@ -394,4 +402,36 @@ fn reopened_project_exits_to_the_projects_floor() {
     let f = e.editor_mut().save_as("Texto", "Ana", false).unwrap();
     let w = Writer::open(Some(users.path().join("ana")), &f, &a).unwrap();
     assert_ne!(w.floor(), project::FLOOR_LABEL);
+}
+
+/// Com os dados reais: FORMA abre o cavalete de palavras com forma do
+/// Escritório, os balões apontam o campo e o OK (`projects_33_manchete_3`)
+/// e o OK põe a palavra, o que leva o assistente adiante.
+#[test]
+fn real_assets_shaped_easel_ok_moves_the_news_on() {
+    let Some(a) = assets() else { return };
+    let (_u, mut p) = project(Kind::News, &a);
+    let mut fx = Vec::new();
+    for o in [1, 1, 0] {
+        p.send(Event::Option(o), &mut fx, &a);
+    }
+    assert_eq!(p.assistant().at(), "forma");
+    at(&mut p, &a, SHAPE);
+    assert_eq!(p.assistant().at(), "manchete");
+    assert!(p.writer().shaped().is_open());
+    let placed = p.assistant().placed(&a);
+    let ok = placed
+        .iter()
+        .find(|b| b.shown.anchor == max::Anchor::Easel(max::Spot::Ok))
+        .unwrap();
+    assert_eq!(ok.balloon.y, 418);
+    assert!(ok.balloon.x + ok.balloon.box_width() > 512);
+    // o Max fica apagado com o cavalete aberto
+    at(&mut p, &a, (600, 50));
+    assert!(!p.assistant().quitting());
+    let (x, y, w, h) = crate::scenes::paint::words::shaped_easel::OK;
+    at(&mut p, &a, (x + w / 2, y + h / 2));
+    assert!(!p.writer().shaped().is_open());
+    assert_eq!(p.writer().doc().objects.len(), 1);
+    assert_eq!(p.assistant().at(), "livre");
 }
