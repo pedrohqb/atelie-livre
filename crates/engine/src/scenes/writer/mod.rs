@@ -1073,6 +1073,7 @@ impl Scene for Writer {
                     alt: false,
                 } => self.key(key, ctrl, &mut fx, assets),
                 Input::Text(ref t) => {
+                    let tool = self.tool;
                     if let Some((r, _)) = self.rename.as_mut() {
                         r.type_text(t);
                     } else if !self.with_tool(tool, &mut fx, assets, |w, ed, cx| w.text(ed, cx, t))
