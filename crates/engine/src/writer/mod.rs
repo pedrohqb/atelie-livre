@@ -23,6 +23,9 @@
 //! - [`store`]: os `.MAX` na pasta do usuário (nome a partir do título) e
 //!   "Salvar como texto".
 //! - [`borders`]: borda e fundo de página (rolos BORDA e FUNDO).
+//! - [`effects`]: relógio e passos dos efeitos especiais animados;
+//! - [`mix`]: os 7 "Mix de estilos" da Palavra;
+//! - [`new_style`]: o estilo dos documentos novos (Ctrl+Aplicador).
 
 pub mod assistant;
 pub mod assistant_banner;
@@ -32,10 +35,13 @@ pub mod borders;
 pub mod convert;
 pub mod dict;
 pub mod doc;
+pub mod effects;
 pub mod fold_figure;
 pub mod fonts;
 pub mod ideas;
 pub mod layout;
+pub mod mix;
+pub mod new_style;
 pub mod object;
 pub mod prefs;
 pub mod selection;
