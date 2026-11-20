@@ -1015,6 +1015,7 @@ impl Scene for Writer {
         fx.retain(|e| *e != Effect::Quit);
         if !std::mem::replace(&mut self.started, true) {
             fx.push(snd(mczee::SND_ENTER));
+            speller::preload(assets);
             self.mczee.show(self.welcome, false, assets);
         }
         for i in input {
