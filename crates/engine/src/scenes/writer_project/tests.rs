@@ -475,3 +475,89 @@ fn set_view_uses_the_page_viewer() {
     p.send(Event::Option(1), &mut fx, &a);
     assert_eq!(p.writer().editor().view.arrange, Arrange::All);
 }
+
+/// Teste de jogo do Writer: no cartão, a borda escolhida no rolo leva ao
+/// `[52]` ("… então, clique em qualquer lugar do cartão") antes do clique
+/// na folha, e o adesivo pego na tira ao `[58]`; antes o `[51]`/`[57]`
+/// ficavam abertos com a borda ou o adesivo na mão e o passo seguinte só
+/// passava num relance.
+#[test]
+fn real_assets_card_border_picked_in_the_roll_asks_for_the_click() {
+    let Some(a) = assets() else { return };
+    let (_users, mut p) = project(Kind::Card, &a);
+    let tap = |p: &mut ProjectScene, (x, y): (i32, i32)| {
+        p.update(&[click(x, y)], 0.0, &a);
+        p.update(
+            &[Input::MouseUp {
+                button: MouseButton::Left,
+                x,
+                y,
+            }],
+            0.05,
+            &a,
+        );
+        p.update(&[], 0.05, &a);
+    };
+    // começar, em branco, todas as páginas, Largo pela Preparação da página
+    for pt in [(444, 209), (460, 210), (573, 300), (469, 181), (578, 210)] {
+        tap(&mut p, pt);
+    }
+    assert_eq!(p.assistant().at(), "largo");
+    for pt in [PAGE_TOOL, (290, 77), (300, 167)] {
+        tap(&mut p, pt);
+    }
+    assert_eq!(p.assistant().at(), "borda?");
+    // quero uma borda, alavanca, rolo BORDA 1
+    for pt in [(469, 209), (515, 77), (165, 77)] {
+        tap(&mut p, pt);
+    }
+    assert_eq!(p.assistant().at(), "escolha-borda");
+    tap(&mut p, (172, 290));
+    assert_eq!(
+        p.assistant().at(),
+        "aplica-borda",
+        "a borda escolhida pede o clique"
+    );
+    assert!(p.writer().editor().doc().dop.border.is_none());
+    tap(&mut p, (300, 300));
+    assert!(p.writer().editor().doc().dop.border.is_some());
+    assert_eq!(p.assistant().at(), "figura?");
+}
+
+/// Teste de jogo do Writer: com a máquina de impressão aberta por cima
+/// (pela ferramenta, antes de responder "Você quer imprimir?"), os balões do
+/// Max não ficam por cima dela nem pegam os cliques que são da máquina (o
+/// SEGUE dela ficava debaixo do balão).
+#[test]
+fn real_assets_print_machine_hides_the_max_balloons() {
+    let Some(a) = assets() else { return };
+    let (_users, mut p) = project(Kind::News, &a);
+    let mut fx = Vec::new();
+    for o in [1, 1, 1] {
+        p.send(Event::Option(o), &mut fx, &a);
+    }
+    p.update(&[text("Notícias")], 0.0, &a);
+    at(&mut p, &a, (600, 50));
+    p.send(Event::Option(0), &mut fx, &a);
+    p.update(&[text("Jornal Maquina"), key(Key::Enter)], 0.0, &a);
+    assert_eq!(p.assistant().at(), "imprimir?");
+    let yes = {
+        let placed = p.assistant().placed(&a);
+        let b = &placed[0].balloon;
+        let r = b.option_rect(&a, 0).expect("opção");
+        (r.0 + r.2 / 2, r.1 + r.3 / 2)
+    };
+    at(&mut p, &a, PRINT_TOOL);
+    at(&mut p, &a, PRINT_MCZEE);
+    assert!(p.writer().printing());
+    at(&mut p, &a, yes);
+    assert_eq!(p.assistant().at(), "imprimir?", "o clique é da máquina");
+    // a máquina fecha: o Max volta a perguntar; "É" com a máquina aberta de
+    // novo vai direto ao passo invisível
+    p.update(&[key(Key::Escape)], 0.0, &a);
+    assert!(!p.writer().printing());
+    at(&mut p, &a, PRINT_MCZEE);
+    assert!(p.writer().printing());
+    p.send(Event::Option(0), &mut fx, &a);
+    assert_eq!(p.assistant().at(), "imprimindo");
+}

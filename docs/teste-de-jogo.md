@@ -1,7 +1,8 @@
 # Teste de jogo
 
-Testes de integração que jogam o Fine Artist como uma criança, de uma cena
-para outra, para achar falhas entre partes feitas separadamente.
+Testes de integração que jogam o Fine Artist e o Creative Writer como uma
+criança, de uma cena para outra, para achar falhas entre partes feitas
+separadamente.
 
 ## No engine (`crates/engine/tests/`)
 
@@ -16,15 +17,22 @@ para outra, para achar falhas entre partes feitas separadamente.
   um `leave` devolve e o app só imprimiria.
 - `playtest_monkey.rs` — macaco determinístico: rajadas aleatórias de
   cliques, arrastos, duplos cliques, teclas e texto em todas as cenas do
-  Fine Artist, seguindo as trocas de cena; procura pânicos no `update`, no
+  Fine Artist e do Creative Writer (prédio, Biblioteca, pasta, Escritório,
+  Oficina de Idéias, projetos do Max), seguindo as trocas de cena; procura pânicos no `update`, no
   `draw` e no `leave`. `PLAYTEST_BURSTS` (padrão 25), `PLAYTEST_SEEDS`
   (padrão 1) e `PLAYTEST_SCENE` (ex. `Paint`) ajustam a rodada.
 - `playtest_paint.rs`, `playtest_rooms.rs`, `playtest_files.rs` — percursos
   e regressões (sons e aspirador, Coloca-adesivos, adesivos do usuário ×
   projeto Adesivo, galeria abrindo e jogando fora desenhos com objetos,
   clique duplo em máquina lenta, desenhos de exemplo).
+- `playtest_writer.rs` — percursos do Writer (caminho de criança entre o
+  saguão, o Escritório e a Oficina de Idéias; som numa palavra ao lado da
+  capitular). As regressões dos defeitos achados no teste de jogo do Writer
+  ficam perto do código (`text_balloon`, `writer::layout`,
+  `writer::project`, `writer::assistant`, `scenes::writer_project`).
 - `playtest_perf.rs` (ignorado por padrão) — tempo de CPU por quadro de
-  cada cena; rode em release com `-- --ignored --nocapture`.
+  cada cena (também as do Writer); rode em release com `-- --ignored
+  --nocapture`.
 
 Todos precisam de `ATELIE_DATA`; sem ela são pulados.
 
@@ -35,7 +43,9 @@ push`, `TRACE back`...) e, desde o teste de jogo, `TRACE quadro-lento N ms`
 para cada quadro (atualizar + desenhar) acima de 50 ms. Com
 `XDG_DATA_HOME` próprio e `ATELIE_LP` apontando para um `lp` de mentira, um
 robô externo (xdotool + capturas) pode jogar o programa inteiro sem tocar
-nos desenhos do usuário nem na impressora.
+nos desenhos do usuário nem na impressora. Meça os quadros lentos num
+executável **release**: o de depuração passa de 50 ms por quadro no
+Escritório (no teste de jogo do Writer isso pareceu um defeito e não era).
 
 ## Clique duplo
 

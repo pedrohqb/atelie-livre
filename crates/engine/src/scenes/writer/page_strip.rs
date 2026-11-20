@@ -514,6 +514,12 @@ impl PageStrip {
         self.armed
     }
 
+    /// Uma borda escolhida no rolo espera o clique na folha.
+    pub fn border_armed(&self) -> bool {
+        self.armed
+            .is_some_and(|a| matches!(a.roll, Roll::Border(_)))
+    }
+
     fn catalog(&self, a: &Assets) -> &Catalog {
         self.catalog.get_or_init(|| Catalog::load(a))
     }

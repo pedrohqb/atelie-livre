@@ -1,7 +1,7 @@
 //! Teste de macaco: entradas aleatórias de criança (cliques, arrastos,
-//! teclas, texto, esperas) em todas as cenas do Fine Artist, seguindo as
-//! trocas de cena como o laço do app. Procura pânicos no `update`, no
-//! `draw` e no `leave`. Reproduzível pela semente.
+//! teclas, texto, esperas) em todas as cenas do Fine Artist e do Creative
+//! Writer, seguindo as trocas de cena como o laço do app. Procura pânicos
+//! no `update`, no `draw` e no `leave`. Reproduzível pela semente.
 //!
 //! `PLAYTEST_BURSTS` (padrão 25, rápido para o `cargo test`; a rodada do teste
 //! de jogo usou 120) dá o número de rajadas por cena e semente;
@@ -11,9 +11,12 @@
 mod common;
 
 use common::{Director, Rng, kid_burst, real_assets};
-use engine::scene::{Input, SceneId};
+use engine::scene::{CwScene, Input, SceneId};
 use engine::scenes::projects::ProjectKind;
+use engine::scenes::room::Floor;
 use engine::scenes::wizard::TrickKind;
+use engine::writer::assistant::Kind as WriterProject;
+use engine::writer::ideas::story::IdeaSource;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 fn env_num(name: &str, default: u64) -> u64 {
@@ -45,6 +48,28 @@ fn starts() -> Vec<SceneId> {
         SceneId::Tricks(TrickKind::ThreeD),
         SceneId::TricksStudio(TrickKind::Basic, TrickKind::Basic.studio_step()),
         SceneId::TricksStudio(TrickKind::ThreeD, TrickKind::ThreeD.studio_step()),
+        // Creative Writer (teste de jogo do Writer)
+        SceneId::WriterSplash,
+        SceneId::Cw(CwScene::Entry),
+        SceneId::Cw(CwScene::Story),
+        SceneId::Cw(CwScene::Imaginopolis),
+        SceneId::Cw(CwScene::Street),
+        SceneId::Cw(CwScene::Building(Floor::Lobby)),
+        SceneId::Cw(CwScene::Building(Floor::Studio)),
+        SceneId::Cw(CwScene::Building(Floor::Projects)),
+        SceneId::Cw(CwScene::Building(Floor::Tricks)),
+        SceneId::Cw(CwScene::Building(Floor::Attic)),
+        SceneId::Cw(CwScene::Library),
+        SceneId::Cw(CwScene::Portfolio),
+        SceneId::Cw(CwScene::NewDocument),
+        SceneId::Writer,
+        SceneId::Cw(CwScene::IdeaMachine),
+        SceneId::Cw(CwScene::PictureBoard),
+        SceneId::Cw(CwScene::IdeaStory(IdeaSource::Machine)),
+        SceneId::Cw(CwScene::Project(WriterProject::News)),
+        SceneId::Cw(CwScene::Project(WriterProject::Card)),
+        SceneId::Cw(CwScene::Project(WriterProject::Banner)),
+        SceneId::Cw(CwScene::ProjectFolder(WriterProject::Card)),
     ]
 }
 

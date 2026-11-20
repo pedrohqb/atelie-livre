@@ -91,8 +91,8 @@ max.draw(frame, assets);      // figura da dobra e balões com cauda
 | clique na página | `PageClicked` |
 | OK do cavalete de palavras com forma (palavra posta) | `ShapedOk` |
 | "Já" na pasta de amostras (amostra aberta) | `SampleChosen` |
-| adesivo escolhido no rolo / posto na página | `StickerPicked` / `StickerPlaced` |
-| borda escolhida no rolo | `BorderPicked` |
+| adesivo pego na tira (na mão) / posto na página | `StickerPicked` / `StickerPlaced` |
+| borda escolhida (armada) no rolo | `BorderPicked` |
 | título gravado com Enter (depois de `AskName`) | `Saved` |
 | a máquina de impressão fechou | `Printed` |
 | o cartão ganhou a 5ª página | `FifthPage` (Rex `3c00[106]`) |
@@ -208,9 +208,14 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
   cena guarda o documento como o assistente o viu por último (depois dos
   próprios comandos) e manda o que mudou: colunas → `MenuItem(Columns,
   n)`, orientação → `MenuItem(Orientation, TALL/WIDE)`, etiquetas →
-  `MenuItem(PageNumber, código)`, borda nova → `BorderPicked`, palavra com
-  forma nova → `ShapedOk`, adesivo novo → `StickerPicked` +
-  `StickerPlaced`, a 5ª folha do cartão → `FifthPage`. Funciona com
+  `MenuItem(PageNumber, código)`, borda armada no rolo (ou, sem ela,
+  borda nova) → `BorderPicked`, palavra com forma nova → `ShapedOk`,
+  adesivo na mão → `StickerPicked` e adesivo novo → `StickerPlaced`
+  (com `StickerPicked` antes, se não estava na mão: cavalete, colar), a
+  5ª folha do cartão → `FifthPage`. O que está na mão vem das faixas
+  (`PageStrip::border_armed`, `StickersStrip::held`, em
+  `Snapshot::with_hand`): como no original, escolher no rolo já mostra
+  o `[52]`/`[58]` "… então, clique…" (teste de jogo do Writer). Funciona com
   qualquer interface das ferramentas (menus da Preparação da página,
   cavalete de Forma), que são de outros ramos. Limitação: escolher no menu
   o valor que já estava (2 colunas no jornal) não muda nada e não avança.
@@ -221,7 +226,7 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
   escolher Largo nela trocaria as medidas) e um fundo posto por outro
   caminho volta com o Rex (som `02fe`).
 - **Ordem**: os eventos do documento vão antes dos de clique do mesmo
-  quadro (a borda aplicada com um clique na página é `BorderPicked` e
+  quadro (uma borda aplicada sem ter passado pelo rolo é `BorderPicked` e
   depois `PageClicked`, e o roteiro do cartão não fica parado no
   "aplique a borda").
 - **Teclado**: com o campo de páginas da faixa no balão, os dígitos,
@@ -245,7 +250,11 @@ sem as boas-vindas do McZee) e o `Assistant`. O documento começa com
 - **Impressão**: o McZee da faixa do Imprimir abre a máquina de impressão
   do Escritório (`scenes::writer::print`, com o projeto gravado no
   documento); quando ela fecha (`Writer::printing` volta a `false`), a cena
-  manda `Printed` e o assistente vai ao "Tudo pronto!".
+  manda `Printed` e o assistente vai ao "Tudo pronto!". Com a máquina já
+  aberta (a criança usou a ferramenta antes de responder "Você quer
+  imprimir?"), os balões do Max somem e não pegam cliques enquanto ela
+  está por cima, e o "É, imprimir" vai direto a `imprimindo`
+  (`Cond::Printing`, `Context::printing`).
 - **Telas por cima** (cavalete de palavras com forma, máquina de
   impressão, Caderno, Central de Controle): os cliques são delas, nada vira
   evento e o Max fica apagado (o mesmo pontilhado cinza) e não responde.

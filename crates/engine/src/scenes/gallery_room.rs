@@ -880,9 +880,12 @@ impl GalleryRoom {
             Modal::Trash(_, None) => vec![OPT_TRASH, OPT_KEEP],
             Modal::Quit | Modal::NotYours(_) | Modal::Notice => Vec::new(),
         };
-        let (balloon, ids) = match assets.dialogs(self.spec.kit.program, block).get(k) {
+        let records = assets.dialogs(self.spec.kit.program, block);
+        let (balloon, ids) = match records.get(k) {
             Some(r) => (
-                TextBalloon::from_record(r, pos.0, pos.1, "", Vec::new()),
+                TextBalloon::from_record(r, pos.0, pos.1, "", Vec::new())
+                    .with_glossary(&records)
+                    .with_program(self.spec.kit.program),
                 r.options().into_iter().map(|o| o.0).collect(),
             ),
             None => {

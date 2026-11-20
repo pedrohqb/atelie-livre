@@ -86,7 +86,9 @@ removido).
 A letra é ampliada até as maiúsculas irem do alto das maiúsculas da 1ª
 linha à base da 3ª (`Measure::cap_height`; ~32×40 px na fonte padrão). As
 linhas ao lado começam depois da letra, e os parágrafos seguintes também
-enquanto a capitular não acaba.
+enquanto a capitular não acaba. A letra fica no começo do primeiro trecho
+livre na altura dela: com um adesivo ou desenho encostado na margem, ao
+lado dele (antes ficava por baixo do objeto, e só o texto fugia dele).
 
 ## Efeitos especiais animados
 

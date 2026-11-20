@@ -479,6 +479,8 @@ pub enum Cond {
     WordActive,
     /// A faixa de opções da ferramenta já está aberta.
     StripOpen(Tool),
+    /// A máquina de impressão do McZee já está aberta.
+    Printing,
 }
 
 /// Um passo do roteiro.
@@ -589,7 +591,8 @@ pub const END_FLOW: &[Step] = &[
             anchor: Anchor::Button(Button::PrintMcZee),
         }],
         Wait::On(&[(Pat::Button(Button::PrintMcZee), go("imprimindo"))]),
-    ),
+    )
+    .skip_if(Cond::Printing, "imprimindo"),
     step(
         "imprimir-aberto",
         &[Say {
@@ -597,7 +600,8 @@ pub const END_FLOW: &[Step] = &[
             anchor: Anchor::Button(Button::PrintMcZee),
         }],
         Wait::On(&[(Pat::Button(Button::PrintMcZee), go("imprimindo"))]),
-    ),
+    )
+    .skip_if(Cond::Printing, "imprimindo"),
     // a máquina de impressão por cima; quando ela fecha, "Tudo pronto!"
     step("imprimindo", &[], Wait::On(&[(Pat::Printed, go("pronto"))])),
     step(
@@ -722,6 +726,8 @@ pub struct Context {
     pub open_strip: Option<Tool>,
     /// Número de páginas do documento (valor inicial do campo da faixa).
     pub pages: u8,
+    /// A máquina de impressão está aberta por cima do editor.
+    pub printing: bool,
 }
 
 impl Context {
@@ -729,6 +735,7 @@ impl Context {
         match c {
             Cond::WordActive => self.word_active,
             Cond::StripOpen(t) => self.open_strip == Some(t),
+            Cond::Printing => self.printing,
         }
     }
 }
@@ -1295,7 +1302,9 @@ impl Assistant {
                 .and_then(|al| al.max)
                 .map(|m| m.to_string())
                 .unwrap_or_default();
-            let mut b = TextBalloon::from_record(r, 0, 0, &name, buttons);
+            let mut b = TextBalloon::from_record(r, 0, 0, &name, buttons)
+                .with_glossary(&records)
+                .with_program(Program::Writer);
             let options = option_kinds(r);
             if s.role == Role::Step {
                 if let Some(id) = self.radio {
@@ -1894,6 +1903,29 @@ pub(crate) mod tests {
         assert!(!a.buttons().back);
     }
 
+    /// Teste de jogo do Writer: a criança abriu a máquina de impressão pela
+    /// ferramenta antes de responder "Você quer imprimir?". O "É, imprimir"
+    /// não pede mais "Para imprimir, clique aqui" (por cima da máquina): vai
+    /// direto ao passo invisível, e a máquina fechando dá o "Tudo pronto!".
+    #[test]
+    fn end_flow_with_the_print_machine_already_open() {
+        let mut a = new();
+        walk(
+            &mut a,
+            &[Event::Option(0), Event::SampleChosen, Event::MaxClicked],
+        );
+        walk(&mut a, &[Event::Option(0)]);
+        a.on_event(Event::Saved);
+        assert_eq!(a.at(), "imprimir?");
+        a.ctx.open_strip = Some(Tool::Print);
+        a.ctx.printing = true;
+        a.on_event(Event::Option(0));
+        assert_eq!(a.at(), "imprimindo");
+        assert!(a.shown().is_empty());
+        a.on_event(Event::Printed);
+        assert_eq!(a.at(), "pronto");
+    }
+
     #[test]
     fn end_flow_trash_and_print_strip_already_open() {
         let mut a = new();
@@ -2090,6 +2122,44 @@ pub(crate) mod tests {
                         b.x,
                         b.y
                     );
+                }
+            }
+        }
+    }
+
+    /// As figuras dos balões do Max vêm do `WRITER.PIC` (teste de jogo do
+    /// Writer: o lápis de cera `[80a]` do `3c00[55]` sumia, porque o
+    /// `TextBalloon` procurava tudo no `ARTIST.PIC`).
+    #[test]
+    fn every_picture_of_every_balloon_has_a_writer_icon() {
+        let Some(assets) = crate::scenes::testutil::assets() else {
+            return;
+        };
+        for kind in Kind::ALL {
+            let s = kind.script();
+            for i in 0..s.len() {
+                let mut a = Assistant::with_script(s, Context::default());
+                a.guide.replace(i);
+                a.enter(&mut Vec::new());
+                for p in a.placed(&assets) {
+                    assert_eq!(p.balloon.program, Program::Writer);
+                }
+                for sh in a.shown() {
+                    let recs = assets.dialogs(Program::Writer, sh.block);
+                    let Some(r) = recs.get(sh.record) else {
+                        continue;
+                    };
+                    for it in &r.items {
+                        if let Item::Picture { id, .. } = it
+                            && !matches!(*id, 0 | formats::what::PIC_GLOSSARY)
+                        {
+                            assert!(
+                                crate::help_icons::icon_for(Program::Writer, *id).is_some(),
+                                "{kind:?} {}: figura {id:#x}",
+                                a.at()
+                            );
+                        }
+                    }
                 }
             }
         }
